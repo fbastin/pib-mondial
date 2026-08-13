@@ -1,0 +1,37 @@
+# Tout ce qui se régénère en une minute par le pipeline n'a pas à être versionné :
+#   python gdp_pipeline.py && python visualize_gdp.py && python build_results_page.py
+
+# Données dérivées et livrables
+outputs/
+data/processed/
+data/raw/gdp_imf_weo_raw.json
+data/extraction_metadata.json
+forecasts/weo_forecasts_all_countries.csv
+
+# `data/raw/WEOhistorical.xlsx` est en revanche versionné : le serveur du FMI répond
+# 403 aux requêtes automatisées, il ne peut donc pas être re-téléchargé par script.
+
+# Compilation LaTeX (le PDF, lui, reste versionné : lisible sans installation LaTeX)
+build/
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+myenv/
+
+# Julia
+/.CondaPkg/
+
+# Systèmes de fichiers
+.DS_Store
+Thumbs.db
+desktop.ini
+*~

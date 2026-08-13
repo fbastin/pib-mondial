@@ -1,0 +1,19 @@
+# Collecte et traitement
+requests>=2.28.0
+pandas>=2.0.0
+numpy>=1.24.0
+openpyxl>=3.1.0
+
+# Visualisation
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.14.0
+
+# Notebooks : jupyter pour les ouvrir, nbconvert pour les exécuter en lot.
+# Le notebook Julia se lance depuis le même Jupyter, via le noyau IJulia
+# (voir Project.toml).
+jupyter>=1.0.0
+nbconvert>=7.0.0
+
+# Tests des invariants
+pytest>=7.0.0

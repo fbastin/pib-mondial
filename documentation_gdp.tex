@@ -1,0 +1,223 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{geometry}
+\geometry{top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm}
+
+\usepackage{amsmath, amssymb}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{xcolor}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=blue,
+    urlcolor=blue
+}
+
+\title{\textbf{DOCUMENTATION TECHNIQUE ET FONCTIONNELLE}\\[0.5em]
+\Large Traitement, Analyse et Prévisions du PIB Mondial (2000 -- 2030)}
+\author{}
+\date{Août 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Ce document constitue la référence technique du projet de traitement des données de PIB (Gross Domestic Product). Il détaille la méthodologie d'extraction des données historiques auprès de la Banque Mondiale (2000--2024, 25 ans) et des prévisions auprès du Fonds Monétaire International (FMI WEO, 2025--2030), l'unification des séries temporelles, le calcul des indicateurs de croissance (CAGR), ainsi que le guide du Notebook Jupyter d'analyse interactive.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Introduction et Contexte}
+L'objectif de ce projet est de constituer une base de données consolidée, automatisée et complète pour l'étude du PIB mondial. Les données couvrent plus de 190 pays sur une plage continue de 31 ans:
+\begin{itemize}
+    \item \textbf{Données Historiques (2000 -- 2024)}: 25 ans de séries chronologiques officielles fournies par la Banque Mondiale (World Development Indicators - WDI).
+    \item \textbf{Données de Prévision (2025 -- 2030)}: Projections macroéconomiques à 6 ans établies par le Fonds Monétaire International (FMI - World Economic Outlook).
+\end{itemize}
+
+\section{Sources de Données et APIs}
+
+\subsection{Banque Mondiale (WDI API)}
+La Banque Mondiale fournit une API REST libre d'accès sans clé d'API.
+\begin{itemize}
+    \item \textbf{Endpoint}: \url{https://api.worldbank.org/v2/country/all/indicator/}\texttt{\{code\}}
+    \item \textbf{Indicateurs extraits}:
+    \begin{enumerate}
+        \item \texttt{NY.GDP.MKTP.CD}: PIB Nominal en USD courants.
+        \item \texttt{NY.GDP.MKTP.KD.ZG}: Taux de croissance annuel du PIB (\%).
+        \item \texttt{NY.GDP.PCAP.CD}: PIB par habitant en USD courants.
+        \item \texttt{NY.GDP.MKTP.PP.CD}: PIB en Parité de Pouvoir d'Achat (PPA) en USD internationaux.
+    \end{enumerate}
+\end{itemize}
+
+\subsection{Fonds Monétaire International (IMF DataMapper API)}
+Le FMI met à disposition l'API \textit{DataMapper} (World Economic Outlook - WEO).
+\begin{itemize}
+    \item \textbf{Endpoint}: \url{https://www.imf.org/external/datamapper/api/v1/}\texttt{\{code\}}
+    \item \textbf{Indicateurs extraits}:
+    \begin{enumerate}
+        \item \texttt{NGDPD}: PIB nominal en Milliards USD.
+        \item \texttt{NGDP\_RPCH}: Croissance réelle du PIB (\%).
+        \item \texttt{PPPGDP}: PIB PPA en Milliards d'USD internationaux.
+        \item \texttt{NGDPDPC}: PIB par habitant en USD.
+    \end{enumerate}
+\end{itemize}
+
+\section{Méthodologie et Traitement des Données}
+
+\subsection{Harmonisation des Unités}
+Les données brutes de la Banque Mondiale expriment le PIB nominal en USD bruts ($10^0$), tandis que l'API du FMI exprime le PIB en Milliards d'USD ($10^9$). Le pipeline convertit l'ensemble des valeurs en \textbf{Milliards de Dollars US (Billion USD)} selon la formule:
+\begin{equation}
+\text{PIB}_{\text{Milliards USD}} = \frac{\text{PIB}_{\text{USD Bruts}}}{10^9}
+\end{equation}
+
+\subsection{Calcul du Taux de Croissance Annuel Composé (CAGR)}
+Pour évaluer la dynamique économique de chaque pays sur la période historique (2000--2024) et la période de prévision (2024--2030), nous utilisons le CAGR (\textit{Compound Annual Growth Rate}):
+\begin{equation}
+\text{CAGR} = \left( \frac{V_{\text{finale}}}{V_{\text{initiale}}} \right)^{\frac{1}{n}} - 1
+\end{equation}
+
+Où $V_{\text{initiale}}$ est la valeur de départ, $V_{\text{finale}}$ la valeur d'arrivée, et $n$ le nombre d'années ($n = 24$ pour 2000--2024, $n = 6$ pour 2024--2030).
+
+\subsection{PIB Nominal et PIB en Volume}
+Le PIB nominal en dollars courants agrège trois mouvements distincts: la croissance réelle de l'activité, l'inflation domestique et la variation du taux de change face au dollar. Comparer des CAGR nominaux entre pays revient donc à comparer des grandeurs hétérogènes.
+
+Le pipeline collecte en parallèle deux séries en volume auprès de la Banque Mondiale:
+\begin{itemize}
+    \item \texttt{NY.GDP.MKTP.KD}: PIB à prix constants de 2015, en dollars US.
+    \item \texttt{NY.GDP.MKTP.PP.KD}: PIB à parité de pouvoir d'achat, en dollars internationaux constants de 2021.
+\end{itemize}
+
+Ces deux mesures décrivent le même indice de volume à une constante de conversion près; elles partagent donc, pour un pays donné, un taux de croissance identique.
+
+Le FMI ne publiant pas de \emph{niveau} de PIB en volume mais uniquement un taux (\texttt{NGDP\_RPCH}), les niveaux réels de l'horizon de prévision sont reconstitués par chaînage à partir du dernier point observé:
+\begin{equation}
+\text{PIB}^{\text{réel}}_{y} = \text{PIB}^{\text{réel}}_{y-1} \times \left(1 + \frac{g_{y}}{100}\right)
+\end{equation}
+où $g_{y}$ est la croissance réelle projetée. Une année de croissance manquante interrompt le chaînage, les années suivantes restant vides plutôt qu'extrapolées.
+
+L'écart entre CAGR nominal et CAGR réel, exprimé en points de pourcentage, isole la contribution conjointe de l'inflation et du change. Le Japon en fournit le cas limite: $-0{,}77\%$ de croissance nominale en dollars sur 2000--2024 contre $+0{,}65\%$ en volume, soit un écart de $-1{,}4$ point imputable à la dépréciation du yen. À l'inverse, la Russie affiche $9{,}3\%$ en nominal pour $3{,}1\%$ en volume.
+
+\subsection{Comparaison de Niveaux: la Parité de Pouvoir d'Achat}
+Neutraliser le change sur la \emph{croissance} ne suffit pas à comparer des \emph{niveaux}: la série en volume reste convertie en dollars au taux de l'année de base. Or le taux de change de marché est déterminé par les flux financiers et les biens échangeables, non par ce qu'une unité de production permet d'acheter localement.
+
+Le classement par niveau s'appuie donc en parallèle sur \texttt{NY.GDP.MKTP.PP.KD}, exprimé en dollars internationaux constants de 2021. Les colonnes \texttt{Rank\_PPA\_2024} et \texttt{Rank\_PPA\_2030} en découlent, ainsi que l'écart \texttt{Ecart\_Rang\_Nominal\_PPA\_2024}, positif lorsqu'un pays est mieux classé à parité qu'au taux de marché.
+
+L'effet sur le classement 2024 est substantiel: la Chine devance les États-Unis, l'Inde passe du 5\textsuperscript{e} au 3\textsuperscript{e} rang, la Russie du 10\textsuperscript{e} au 4\textsuperscript{e} et l'Indonésie du 16\textsuperscript{e} au 8\textsuperscript{e}. Symétriquement, le Canada perd six rangs et le Royaume-Uni quatre. Aucune des deux bases n'est intrinsèquement préférable: le taux de marché mesure le poids financier international, la parité de pouvoir d'achat le volume de production réellement disponible.
+
+\subsection{Distinction entre Pays et Agrégats}
+Les deux sources diffusent, au même format et dans le même flux que les pays, des \textbf{agrégats} régionaux et analytiques: \textit{World}, \textit{OECD members}, \textit{Euro area}, groupes de revenu, etc. Ces entités portent elles aussi un code sur trois lettres (\texttt{WLD}, \texttt{OED}, \texttt{EUU}) et ne peuvent donc pas être écartées sur la seule longueur du code.
+
+Le pipeline interroge à cet effet les points d'entrée de métadonnées de chaque source:
+\begin{itemize}
+    \item Banque Mondiale, \texttt{/v2/country}: une entité dont la région est codée \texttt{NA} est un agrégat (78 agrégats pour 217 pays).
+    \item FMI, \texttt{/api/v1/countries}: tout code absent de cette liste de 241 pays est un groupe analytique (\texttt{ADVEC}, \texttt{EURO}, \texttt{MENA}\ldots).
+\end{itemize}
+
+Chaque enregistrement porte le drapeau \texttt{is\_aggregate} qui en résulte. Les agrégats sont \textbf{conservés dans les séries temporelles} (l'évolution du PIB mondial reste une information utile) mais \textbf{exclus des classements}, du calcul des rangs et des visualisations comparatives, où ils écraseraient les pays. La classification de la Banque Mondiale prévaut en cas de désaccord entre les deux sources, afin d'éviter qu'un territoire dont le code entre en collision avec un groupe FMI (ainsi \texttt{MAF}, Saint-Martin) ne soit écarté à tort.
+
+\subsection{Réconciliation des Libellés}
+Un même code ISO reçoit un libellé différent selon la source (\textit{Korea, Rep.} à la Banque Mondiale, \textit{Korea} au FMI), et les payloads d'indicateurs du FMI ne transportent pas les libellés. La jointure historique/prévision s'effectue donc sur le \textbf{seul code pays}, le nom de la Banque Mondiale étant retenu comme forme canonique. Sans cette réconciliation, chaque pays se scinde en deux séries — l'une sans prévision, l'autre sans historique — ce qui vide le PIB 2030, le CAGR prévisionnel et le rang projeté.
+
+\subsection{Portée du Classement à Parité}
+Les niveaux de prévision à parité étant obtenus par chaînage à partir du dernier point observé, le classement \texttt{Rank\_PPA} projeté suppose les facteurs de conversion de 2021 inchangés sur tout l'horizon. Or ces facteurs évoluent avec les niveaux de prix relatifs. Le classement projeté à parité doit donc se lire comme l'extrapolation d'une structure de prix figée, et non comme une prévision du pouvoir d'achat relatif en 2030: son incertitude excède celle des prévisions de croissance dont il dérive.
+
+\section{Architecture des Scripts Python}
+
+\begin{itemize}
+    \item \texttt{fetch\_historical\_gdp.py}: Collecte des données historiques (Banque Mondiale).
+    \item \texttt{fetch\_forecast\_gdp.py}: Collecte des prévisions (FMI WEO).
+    \item \texttt{gdp\_pipeline.py}: Pipeline maître d'unification et d'export Excel / CSV.
+    \item \texttt{visualize\_gdp.py}: Génération des graphiques PNG et du Dashboard HTML.
+    \item \texttt{build\_results\_page.py}: Page HTML de résultats, construite depuis les CSV et les PNG produits.
+    \item \texttt{test\_gdp\_pipeline.py}: Tests des invariants du pipeline.
+    \item \texttt{gdp\_analysis\_notebook.ipynb}: Notebook Jupyter d'analyse interactive (Python).
+    \item \texttt{gdp\_analysis\_notebook\_julia.ipynb}: Même analyse en Julia (CSV.jl, DataFrames.jl, Plots.jl).
+\end{itemize}
+
+\subsection{Bornes Paramétrables}
+Les quatre bornes du run (\texttt{--start-year}, \texttt{--end-year}, \texttt{--fcst-start}, \texttt{--fcst-end}) se propagent à l'ensemble de la chaîne: nom du fichier unifié, années de référence de la synthèse, intitulés de colonnes (\texttt{CAGR\_Historique\_1995\_2023\_Pct} pour un run 1995--2023), frontière historique/prévision et bornes d'axe des graphiques. Ni \texttt{visualize\_gdp.py} ni les notebooks ne codent d'année en dur: les premiers redétectent les bornes dans les données, les seconds reconstruisent les noms de colonnes au chargement.
+
+\section{Évaluation des Prévisions}
+
+Confronter une prévision à ce qui s'est produit suppose de disposer de la prévision \emph{telle qu'elle fut publiée}. L'API DataMapper ne le permet pas: elle ne sert que le millésime courant, dont les valeurs passées sont les estimations d'aujourd'hui. Le FMI consolide en revanche l'ensemble de ses éditions depuis 1990 dans la \textit{WEO Historical Forecasts Database} (\texttt{data/raw/WEOhistorical.xlsx}): 73 éditions, 201 entités, années visées de 1988 à 2031.
+
+\subsection{Obtention du Classeur}
+Ce fichier n'est pas récupérable par script: le serveur du FMI répond \texttt{403} aux requêtes automatisées, sur toutes les variantes d'URL testées. Il se télécharge depuis un navigateur, à l'adresse \url{https://data.imf.org/en/Search-Results} en recherchant «~WEO Historical Forecasts Database~», puis se dépose dans \texttt{data/raw/} sous son nom d'origine.
+
+Le FMI réorganisant régulièrement ses serveurs et publiant deux éditions par an, tout lien direct est appelé à devenir caduc; la page de recherche reste le point d'entrée stable. Le lien direct en vigueur, la structure détaillée du classeur et la marche à suivre complète figurent dans \texttt{data/raw/LISEZ-MOI-WEOhistorical.md}.
+
+Le dossier \texttt{forecasts/} contient par ailleurs un script indépendant du pipeline, qui se limite à extraire les prévisions de ce même classeur sans les confronter au réalisé, pour qui n'aurait besoin que de cette extraction. Il cherche le fichier dans son propre dossier puis dans \texttt{data/raw/}: une seule copie suffit, quel que soit son emplacement.
+
+\subsection{Horizon de Projection}
+Chaque édition couvre huit années relatives, de $-2$ à $+5$ par rapport à sa date de publication. L'horizon se déduit de l'écart entre l'année visée $y$ et l'année de l'édition $v$:
+\begin{equation}
+h = y - v
+\end{equation}
+Un horizon négatif désigne une \emph{ré-estimation} d'une année déjà écoulée, non une prévision: les inclure reviendrait à mesurer la capacité de l'institution à se souvenir du passé. Seules les valeurs telles que $h \geq 0$ sont évaluées.
+
+\subsection{Choix de la Valeur de Référence}
+Comparer une projection au chiffre définitif d'aujourd'hui la pénalise pour des révisions statistiques intervenues des années après coup, hors de portée du prévisionniste. La référence retenue est donc la ré-estimation publiée par le FMI un an après l'année visée ($h = -1$, édition d'automne). Le calcul est mené en parallèle contre la série observée de la Banque Mondiale, les deux résultats étant conservés: une conclusion qui ne tiendrait qu'à une seule référence ne serait pas robuste.
+
+L'erreur est exprimée en points de croissance et non en écart relatif: rapporter l'erreur d'un taux à sa propre valeur produit des rapports arbitrairement grands dès que ce taux approche de zéro.
+
+\subsection{Résultats}
+Sur 69\,169 projections de croissance réelle couvrant 194 pays:
+
+\begin{center}
+\begin{tabular}{lrr}
+\hline
+\textbf{Horizon} & \textbf{Biais moyen} & \textbf{Erreur absolue moyenne} \\
+\hline
+0 (année en cours) & $+0{,}18$ pt & $1{,}70$ pt \\
+1 an & $+0{,}99$ pt & $2{,}74$ pt \\
+3 ans & $+1{,}01$ pt & $2{,}95$ pt \\
+5 ans & $+0{,}93$ pt & $3{,}04$ pt \\
+\hline
+\end{tabular}
+\end{center}
+
+La prévision de l'année en cours est pratiquement sans biais. Au-delà, la croissance est surestimée d'environ un point, et ce biais ne s'atténue pas avec l'horizon alors que la dispersion, elle, continue de croître. Rapportée à l'année visée, l'erreur médiane atteint $+7{,}3$ points pour 2020 et $+3{,}8$ pour 2009: les récessions ne se prévoient pas, et le rebond qui les suit est symétriquement sous-estimé.
+
+\section{Provenance et Reproductibilité}
+
+Chaque exécution écrit \texttt{data/extraction\_metadata.json}: horodatage de l'extraction, bornes du run, indicateurs interrogés, volumes obtenus et couverture par colonne.
+
+Le champ \texttt{derniere\_mise\_a\_jour} reprend le \texttt{lastupdated} déclaré par l'API de la Banque Mondiale, qui donne le millésime réel des séries historiques --- celles-ci étant révisées, deux extractions à quelques mois d'intervalle ne sont pas interchangeables. L'API DataMapper du FMI n'expose pas le millésime de son \textit{World Economic Outlook}, publié en avril et en octobre: seule la date d'extraction permet de le situer, ce que le fichier indique explicitement plutôt que de laisser la lacune passer pour une absence de révision.
+
+\section{Tests des Invariants}
+
+Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (38 tests, sans accès réseau) fixe les propriétés correspondantes:
+
+\begin{itemize}
+    \item les agrégats sont absents des classements par pays;
+    \item un code ISO ne porte qu'un seul libellé sur toute sa série;
+    \item la croissance implicite des volumes chaînés égale le taux publié par le FMI;
+    \item une année de croissance manquante interrompt le chaînage au lieu d'être franchie;
+    \item les intitulés de colonnes suivent les bornes du run;
+    \item chaque rang est cohérent avec le niveau dont il dérive;
+    \item un CAGR non calculable vaut \texttt{NaN} et non une valeur de repli.
+\end{itemize}
+
+Les tests marqués \texttt{donnees} portent sur les fichiers réellement produits et se sautent tant que le pipeline n'a pas été exécuté.
+
+La suite a été validée par mutation: chacun des six défauts correspondants a été réintroduit dans une copie du code afin de vérifier qu'elle échoue effectivement. Les six sont détectés --- un test qui ne tombe jamais ne garantit rien.
+
+\section{Guide du Notebook Jupyter}
+
+Le notebook \texttt{gdp\_analysis\_notebook.ipynb} permet d'explorer les données de manière interactive:
+\begin{enumerate}
+    \item \textbf{Chargement \& Inspection} des données unifiées.
+    \item \textbf{Visualisation temporelle Plotly} avec séparation historique (2000-2024) / prévision (2025-2030).
+    \item \textbf{Comparaison des CAGR} historique vs prévisionnel (Top 15).
+    \item \textbf{Carte de chaleur (Heatmap)} des taux de croissance (2015-2030).
+    \item \textbf{Fonction de recherche interactive} par pays (\texttt{analyze\_country}).
+\end{enumerate}
+
+\end{document}
