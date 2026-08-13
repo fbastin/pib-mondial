@@ -1,5 +1,7 @@
 # Traitement et Analyse des Données de PIB (GDP) - Historique & Prévisions
 
+[![Tests](https://github.com/fbastin/gdp/actions/workflows/tests.yml/badge.svg)](https://github.com/fbastin/gdp/actions/workflows/tests.yml)
+
 Ce projet permet de collecter, traiter, analyser et visualiser automatiquement les données historiques du PIB (GDP) par pays sur une période de **25 ans (2000–2024)** ainsi que les **prévisions de PIB jusqu'en 2030**.
 
 ## 📊 Sources de Données API
