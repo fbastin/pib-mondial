@@ -510,15 +510,27 @@ def unified_csv_path(data_dir: str = "data") -> str:
                             "pour désigner celle du dernier run. Relancez : python gdp_pipeline.py")
 
 
-def latest_observed_year(df_hist: pd.DataFrame) -> int:
+def _last_well_covered_year(df: pd.DataFrame, column: str) -> int:
     """
-    Dernière année publiée par la Banque Mondiale : la plus récente dont le PIB nominal
-    couvre au moins la moitié des pays de l'année la mieux couverte. Quelques valeurs
-    précoces ne font pas encore une année observée.
+    Dernière année dont `column` couvre plus de la moitié des pays de l'année la mieux
+    couverte : quelques valeurs isolées ne font pas encore une année exploitable.
     """
-    pays = df_hist[~df_hist["is_aggregate"].astype(bool)].dropna(subset=["GDP_Nominal_USD"])
+    pays = df[~df["is_aggregate"].astype(bool)].dropna(subset=[column])
     couverture = pays.groupby("year")["country_code"].nunique()
-    return int(couverture[couverture >= couverture.max() / 2].index.max())
+    return int(couverture[couverture > couverture.max() / 2].index.max())
+
+
+def latest_observed_year(df_hist: pd.DataFrame) -> int:
+    """Dernière année publiée par la Banque Mondiale (PIB nominal observé)."""
+    return _last_well_covered_year(df_hist, "GDP_Nominal_USD")
+
+
+def latest_forecast_year(df_fcst: pd.DataFrame) -> int:
+    """
+    Horizon de l'édition du WEO servie par l'API : dernière année de PIB nominal projeté.
+    Il avance d'un an à chaque édition de printemps (2031 pour avril 2026).
+    """
+    return _last_well_covered_year(df_fcst, "GDP_Nominal_Billions_USD")
 
 
 def latest_levels(df_hist: pd.DataFrame) -> pd.Series:
@@ -641,7 +653,7 @@ def _retirer_rapport_recent(data_dir: str, output_dir: str) -> None:
 
 
 def run_pipeline(start_year: int = 2000, end_year: Optional[int] = None, fcst_start: Optional[int] = None,
-                 fcst_end: int = 2030, data_dir: str = "data", output_dir: str = "outputs"):
+                 fcst_end: Optional[int] = None, data_dir: str = "data", output_dir: str = "outputs"):
     """
     Exécution complète du pipeline.
 
@@ -650,6 +662,9 @@ def run_pipeline(start_year: int = 2000, end_year: Optional[int] = None, fcst_st
     dont le classement est quasi complet (voir `choose_reference_year`) ; si la dernière
     année publiée est plus récente, un second rapport lui est consacré dans le
     sous-dossier `plus_recent/` de chacun. Avec `end_year`, un rapport unique.
+
+    Sans `fcst_end`, l'horizon est celui de l'édition du WEO servie par l'API (voir
+    `latest_forecast_year`) : il suit les éditions sans intervention.
 
     La prévision commence l'année suivant la dernière année observée (`fcst_start`, par
     défaut `end_year + 1`). Un trou entre les deux laisserait une année sans aucune
@@ -663,16 +678,15 @@ def run_pipeline(start_year: int = 2000, end_year: Optional[int] = None, fcst_st
         if fcst_start is not None:
             raise ValueError("--fcst-start suppose --end-year : sans lui, la dernière année "
                              "observée est choisie d'après les données.")
-        if not start_year < fcst_end:
-            raise ValueError(f"Bornes incohérentes : {start_year} < {fcst_end} attendu.")
     else:
         if fcst_start is None:
             fcst_start = end_year + 1
         if fcst_start != end_year + 1:
             raise ValueError(f"La prévision doit commencer l'année suivant la fin de l'historique "
                              f"({end_year + 1}), pas en {fcst_start}.")
-        if not start_year < end_year < fcst_end:
-            raise ValueError(f"Bornes incohérentes : {start_year} < {end_year} < {fcst_end} attendu.")
+    bornes = [b for b in (start_year, end_year, fcst_end) if b is not None]
+    if bornes != sorted(set(bornes)):
+        raise ValueError(f"Bornes incohérentes : {' < '.join(map(str, bornes))} attendu.")
 
     raw_dir = os.path.join(data_dir, "raw")
     os.makedirs(raw_dir, exist_ok=True)
@@ -684,16 +698,22 @@ def run_pipeline(start_year: int = 2000, end_year: Optional[int] = None, fcst_st
     if df_hist.empty:
         raise RuntimeError("L'extraction historique n'a rien produit. Annulation du pipeline.")
     derniere = end_year or latest_observed_year(df_hist)
-    if not start_year < derniere < fcst_end:
-        raise ValueError(f"Dernière année observée {derniere} hors de ]{start_year}, {fcst_end}[.")
 
-    # 2. Extraction prévisions (le WEO couvre aussi les années observées)
+    # 2. Extraction prévisions (le WEO couvre aussi les années observées), jusqu'à
+    # l'horizon de l'édition si aucune borne n'est imposée
     logging.info("--- 2. Récupération des données de prévision ---")
     df_fcst, raw_json = fetch_all_forecasts(forecast_start_year=derniere + 1,
                                             forecast_end_year=fcst_end,
                                             history_start_year=start_year)
     if df_fcst.empty:
         raise RuntimeError("L'extraction des prévisions n'a rien produit. Annulation du pipeline.")
+    if fcst_end is None:
+        fcst_end = latest_forecast_year(df_fcst)
+        logging.info(f"-> Horizon de l'édition du WEO : {fcst_end}.")
+    # Des projections isolées au-delà de l'horizon ne doivent pas prolonger la série
+    df_fcst = df_fcst[df_fcst["year"] <= fcst_end]
+    if not start_year < derniere < fcst_end:
+        raise ValueError(f"Dernière année observée {derniere} hors de ]{start_year}, {fcst_end}[.")
 
     if raw_json:
         raw_json_path = os.path.join(raw_dir, "gdp_imf_weo_raw.json")
@@ -762,7 +782,8 @@ if __name__ == "__main__":
                              "si elle diffère (sous-dossiers plus_recent/)")
     parser.add_argument("--fcst-start", type=int, default=None,
                         help="Début de la prévision, avec --end-year seulement (obligatoirement end-year + 1)")
-    parser.add_argument("--fcst-end", type=int, default=2030)
+    parser.add_argument("--fcst-end", type=int, default=None,
+                        help="Dernière année de prévision (par défaut : horizon de l'édition du WEO)")
     parser.add_argument("--data-dir", type=str, default="data", help="Dossier des données")
     parser.add_argument("--output-dir", type=str, default="outputs", help="Dossier des livrables")
     args = parser.parse_args()

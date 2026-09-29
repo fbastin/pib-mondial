@@ -22,7 +22,7 @@
 }
 
 \title{\textbf{DOCUMENTATION TECHNIQUE ET FONCTIONNELLE}\\[0.5em]
-\Large Traitement, Analyse et Prévisions du PIB Mondial (2000 -- 2030)}
+\Large Traitement, Analyse et Prévisions du PIB Mondial}
 \author{}
 \date{Septembre 2026}
 
@@ -31,7 +31,7 @@
 \maketitle
 
 \begin{abstract}
-Ce document constitue la référence technique du projet de traitement des données de PIB (Gross Domestic Product). Il détaille la méthodologie d'extraction des données historiques auprès de la Banque Mondiale (2000--2024, 25 ans) et des prévisions auprès du Fonds Monétaire International (FMI WEO, 2025--2030), l'unification des séries temporelles, le calcul des indicateurs de croissance (CAGR), ainsi que le guide du Notebook Jupyter d'analyse interactive.
+Ce document constitue la référence technique du projet de traitement des données de PIB (Gross Domestic Product). Il détaille la méthodologie d'extraction des données historiques auprès de la Banque Mondiale (2000--2024, 25 ans) et des prévisions auprès du Fonds Monétaire International (FMI WEO, jusqu'à l'horizon de l'édition en cours), l'unification des séries temporelles, le calcul des indicateurs de croissance (CAGR), ainsi que le guide du Notebook Jupyter d'analyse interactive.
 \end{abstract}
 
 \tableofcontents
@@ -41,7 +41,7 @@ Ce document constitue la référence technique du projet de traitement des donn�
 L'objectif de ce projet est de constituer une base de données consolidée, automatisée et complète pour l'étude du PIB mondial. Les données couvrent plus de 190 pays sur une plage continue de 31 ans:
 \begin{itemize}
     \item \textbf{Données Historiques (2000 -- 2024)}: 25 ans de séries chronologiques officielles fournies par la Banque Mondiale (World Development Indicators - WDI).
-    \item \textbf{Données de Prévision (2025 -- 2030)}: Projections macroéconomiques à 6 ans établies par le Fonds Monétaire International (FMI - World Economic Outlook).
+    \item \textbf{Données de Prévision (2025 -- 2031)}: Projections macroéconomiques du Fonds Monétaire International (FMI - World Economic Outlook), jusqu'à l'horizon de l'édition en cours --- cinq ans après l'année de l'édition, soit 2031 pour celle d'avril 2026.
 \end{itemize}
 
 \section{Sources de Données et APIs}
@@ -81,12 +81,12 @@ Les données brutes de la Banque Mondiale expriment le PIB nominal en USD bruts 
 \end{equation}
 
 \subsection{Calcul du Taux de Croissance Annuel Composé (CAGR)}
-Pour évaluer la dynamique économique de chaque pays sur la période historique (2000--2024) et la période de prévision (2024--2030), nous utilisons le CAGR (\textit{Compound Annual Growth Rate}):
+Pour évaluer la dynamique économique de chaque pays sur la période historique (2000--2024) et la période de prévision (2024--2031), nous utilisons le CAGR (\textit{Compound Annual Growth Rate}):
 \begin{equation}
 \text{CAGR} = \left( \frac{V_{\text{finale}}}{V_{\text{initiale}}} \right)^{\frac{1}{n}} - 1
 \end{equation}
 
-Où $V_{\text{initiale}}$ est la valeur de départ, $V_{\text{finale}}$ la valeur d'arrivée, et $n$ le nombre d'années ($n = 24$ pour 2000--2024, $n = 6$ pour 2024--2030).
+Où $V_{\text{initiale}}$ est la valeur de départ, $V_{\text{finale}}$ la valeur d'arrivée, et $n$ le nombre d'années ($n = 24$ pour 2000--2024, $n = 7$ pour 2024--2031).
 
 \subsection{PIB Nominal et PIB en Volume}
 Le PIB nominal en dollars courants agrège trois mouvements distincts: la croissance réelle de l'activité, l'inflation domestique et la variation du taux de change face au dollar. Comparer des CAGR nominaux entre pays revient donc à comparer des grandeurs hétérogènes.
@@ -126,7 +126,7 @@ Les facteurs appliqués sont conservés dans les colonnes:
 \subsection{Comparaison de Niveaux: la Parité de Pouvoir d'Achat}
 Neutraliser le change sur la \emph{croissance} ne suffit pas à comparer des \emph{niveaux}: la série en volume reste convertie en dollars au taux de l'année de base. Or le taux de change de marché est déterminé par les flux financiers et les biens échangeables, non par ce qu'une unité de production permet d'acheter localement.
 
-Le classement par niveau s'appuie donc en parallèle sur \texttt{NY.GDP.MKTP.PP.KD}, exprimé en dollars internationaux constants de 2021. Les colonnes \texttt{Rank\_PPA\_2024} et \texttt{Rank\_PPA\_2030} en découlent, ainsi que l'écart \texttt{Ecart\_Rang\_Nominal\_PPA\_2024}, positif lorsqu'un pays est mieux classé à parité qu'au taux de marché.
+Le classement par niveau s'appuie donc en parallèle sur \texttt{NY.GDP.MKTP.PP.KD}, exprimé en dollars internationaux constants de 2021. Les colonnes \texttt{Rank\_PPA\_2024} et \texttt{Rank\_PPA\_2031} en découlent, ainsi que l'écart \texttt{Ecart\_Rang\_Nominal\_PPA\_2024}, positif lorsqu'un pays est mieux classé à parité qu'au taux de marché.
 
 L'effet sur le classement 2024 est substantiel: la Chine devance les États-Unis, l'Inde passe du 5\textsuperscript{e} au 3\textsuperscript{e} rang, la Russie du 10\textsuperscript{e} au 4\textsuperscript{e} et l'Indonésie du 16\textsuperscript{e} au 8\textsuperscript{e}. Symétriquement, le Canada perd six rangs et le Royaume-Uni quatre. Aucune des deux bases n'est intrinsèquement préférable: le taux de marché mesure le poids financier international, la parité de pouvoir d'achat le volume de production réellement disponible.
 
@@ -150,7 +150,7 @@ La jointure sur le code suppose que les deux sources désignent un territoire pa
 Tous les rangs portent sur un même panel: les pays renseignés à la dernière année observée et à l'horizon de prévision, au taux de marché comme à parité (183 pays). Un écart de rang (\texttt{Rank\_Change}, \texttt{Ecart\_Rang\_Nominal\_PPA\_2024}) traduit alors un mouvement, et non l'entrée ou la sortie d'un pays du classement. Classer chaque colonne sur les pays qu'elle couvre faussait 140 écarts de rang sur 183: Taïwan, absent de la Banque Mondiale, entrait 22\textsuperscript{e} au classement 2030; le Pakistan, sans projection du FMI au-delà de 2025, en sortait. Les pays hors panel conservent leurs niveaux de PIB dans la synthèse, sans rang.
 
 \subsection{Portée du Classement à Parité}
-Les niveaux de prévision à parité étant obtenus par chaînage à partir du dernier point observé, le classement \texttt{Rank\_PPA} projeté suppose les facteurs de conversion de 2021 inchangés sur tout l'horizon. Or ces facteurs évoluent avec les niveaux de prix relatifs. Le classement projeté à parité doit donc se lire comme l'extrapolation d'une structure de prix figée, et non comme une prévision du pouvoir d'achat relatif en 2030: son incertitude excède celle des prévisions de croissance dont il dérive.
+Les niveaux de prévision à parité étant obtenus par chaînage à partir du dernier point observé, le classement \texttt{Rank\_PPA} projeté suppose les facteurs de conversion de 2021 inchangés sur tout l'horizon. Or ces facteurs évoluent avec les niveaux de prix relatifs. Le classement projeté à parité doit donc se lire comme l'extrapolation d'une structure de prix figée, et non comme une prévision du pouvoir d'achat relatif à l'horizon: son incertitude excède celle des prévisions de croissance dont il dérive.
 
 \section{Architecture des Scripts Python}
 
@@ -170,6 +170,8 @@ Les niveaux de prévision à parité étant obtenus par chaînage à partir du d
 
 \subsection{Bornes Paramétrables}
 Les quatre bornes du run (\texttt{-{}-start-year}, \texttt{-{}-end-year}, \texttt{-{}-fcst-start}, \texttt{-{}-fcst-end}) se propagent à l'ensemble de la chaîne: nom du fichier unifié, onglet Excel des séries, années de référence de la synthèse, intitulés de colonnes (\texttt{CAGR\_Historique\_1995\_2023\_Pct} pour un run 1995--2023), frontière historique/prévision et bornes d'axe des graphiques. Ni \texttt{visualize\_gdp.py} ni les notebooks ne codent d'année en dur: les premiers redétectent les bornes dans les données, les seconds reconstruisent les noms de colonnes au chargement.
+
+Sans \texttt{-{}-fcst-end}, l'horizon est celui de l'édition du WEO servie par l'API: la dernière année dont le PIB projeté couvre plus de la moitié des pays (2031 pour l'édition d'avril 2026). Il avance ainsi d'un an à chaque édition de printemps, sans intervention.
 
 La prévision doit commencer l'année suivant la fin de l'historique (\texttt{-{}-fcst-start} vaut par défaut \texttt{-{}-end-year}$+1$): un trou laisserait une année sans donnée, qu'un chaînage franchirait; un chevauchement ferait passer une prévision pour la base observée du raccord. Des bornes incohérentes sont refusées avant toute requête.
 
@@ -262,9 +264,9 @@ La suite a été validée par mutation: chaque défaut correspondant a été ré
 Le notebook \texttt{gdp\_analysis\_notebook.ipynb} permet d'explorer les données de manière interactive:
 \begin{enumerate}
     \item \textbf{Chargement \& Inspection} des données unifiées.
-    \item \textbf{Visualisation temporelle Plotly} avec séparation historique (2000-2024) / prévision (2025-2030).
+    \item \textbf{Visualisation temporelle Plotly} avec séparation historique / prévision.
     \item \textbf{Comparaison des CAGR} historique vs prévisionnel (Top 15).
-    \item \textbf{Carte de chaleur (Heatmap)} des taux de croissance (2015-2030).
+    \item \textbf{Carte de chaleur (Heatmap)} des taux de croissance, des dix dernières années observées à l'horizon.
     \item \textbf{Fonction de recherche interactive} par pays (\texttt{analyze\_country}).
 \end{enumerate}
 

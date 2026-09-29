@@ -42,11 +42,12 @@ def code(source: str) -> dict:
 
 cells = [
     md("""
-# 📊 Analyse du PIB (GDP) en Julia : Historique (2000-2024) & Prévisions (2025-2030)
+# 📊 Analyse du PIB (GDP) en Julia : Historique & Prévisions
 
 Transposition Julia du notebook Python. Les données proviennent des mêmes fichiers,
-produits par `gdp_pipeline.py` à partir des API de la **Banque Mondiale** (2000-2024)
-et du **FMI WEO** (2025-2030).
+produits par `gdp_pipeline.py` à partir des API de la **Banque Mondiale** (historique)
+et du **FMI WEO** (prévisions). Les bornes dépendent du run du pipeline : elles sont
+affichées au chargement (section 2) et reprises dans chaque titre.
 
 > **Avant de commencer.** Depuis le dossier du projet :
 > ```julia
@@ -126,7 +127,7 @@ println("Période : $an_debut → $an_obs observé → $an_fin projeté")
 tonum(v) = [ismissing(x) ? NaN : Float64(x) for x in v]
 """),
 
-    md("## 3. Inspection des Données : Top 10 des Économies Mondiales (2024)"),
+    md("## 3. Inspection des Données : Top 10 des Économies Mondiales (dernière année observée)"),
     code("""
 first(select(df_summary,
     :country_code, :country_name,
@@ -135,7 +136,7 @@ first(select(df_summary,
 """),
 
     md("""
-## 4. Visualisation Interactive : Trajectoire du PIB par Pays (2000 - 2030)
+## 4. Visualisation Interactive : Trajectoire du PIB par Pays
 
 Backend `plotly()` de Plots.jl : zoom, survol et masquage d'un pays par clic sur la légende.
 Trait plein pour l'historique Banque Mondiale, trait pointillé pour la prévision FMI ;
@@ -170,7 +171,7 @@ for (i, cd) in enumerate(selected)
     plot!(p4, hist.year, tonum(hist.GDP_Nominal_Billions_USD);
         color = color, lw = 2.2, label = cname)
 
-    # 2024 est repris pour raccorder la prévision à l'historique
+    # L'année frontière est reprise pour raccorder la prévision à l'historique
     fcst = cdata[cdata.year .>= an_obs, :]
     plot!(p4, fcst.year, tonum(fcst.GDP_Nominal_Billions_USD);
         color = color, lw = 2.2, linestyle = :dash, label = "")
@@ -184,8 +185,8 @@ p4
     md("""
 ## 5. Comparaison des Taux de Croissance Annuels Composés (CAGR)
 
-Croissance annuelle moyenne observée (2000-2024) face à la croissance projetée (2024-2030),
-pour les 15 premières économies.
+Croissance annuelle moyenne observée face à la croissance projetée, sur les périodes
+indiquées en légende, pour les 15 premières économies.
 """),
     code("""
 gr()   # retour au backend statique
@@ -210,7 +211,7 @@ plot!(p; yticks = (ypos, df15.country_name), ylims = (0.4, nrow(df15) + 0.6),
     left_margin = 5mm, bottom_margin = 4mm)
 """),
 
-    md("## 6. Carte de Chaleur des Taux de Croissance (2015 - 2030)"),
+    md("## 6. Carte de Chaleur des Taux de Croissance (dix dernières années observées, puis prévisions)"),
     code("""
 gr()   # les annotations de la heatmap sont rendues par GR
 
@@ -356,7 +357,7 @@ les dix dernières années disponibles, prévisions comprises.
 """),
     code("""
 fmt(x)     = ismissing(x) ? "n/d" : @sprintf("%.2f", x)
-fmtrank(x) = ismissing(x) ? "n/d" : string("#", Int(x))
+fmtrank(x) = ismissing(x) ? "hors classement" : string("#", Int(x))
 
 \"\"\"
     analyze_country(query)
@@ -381,16 +382,16 @@ function analyze_country(query::AbstractString)
     srow = df_summary[df_summary.country_code .== code, :]
     if !isempty(srow)
         r = first(srow)
-        println("• PIB 2000                : ", fmt(r[C_GDP_DEBUT]), " Md USD")
-        println("• PIB 2024                : ", fmt(r[C_GDP_OBS]), " Md USD")
-        println("• PIB 2030 (prévision)    : ", fmt(r[C_GDP_FIN]), " Md USD")
-        println("• CAGR 2000-2024          : ", fmt(r[C_CAGR_H]), " % nominal · ",
+        println("• PIB $(an_debut)                : ", fmt(r[C_GDP_DEBUT]), " Md USD")
+        println("• PIB $(an_obs)                : ", fmt(r[C_GDP_OBS]), " Md USD")
+        println("• PIB $(an_fin) (prévision)    : ", fmt(r[C_GDP_FIN]), " Md USD")
+        println("• CAGR $(an_debut)-$(an_obs)          : ", fmt(r[C_CAGR_H]), " % nominal · ",
                                                 fmt(r[C_CAGR_RH]), " % en volume")
-        println("• CAGR 2024-2030          : ", fmt(r[C_CAGR_P]), " % nominal · ",
+        println("• CAGR $(an_obs)-$(an_fin)          : ", fmt(r[C_CAGR_P]), " % nominal · ",
                                                 fmt(r[C_CAGR_RP]), " % en volume")
-        println("• Rang mondial 2024       : ", fmtrank(r[C_RANK]), " nominal · ",
+        println("• Rang mondial $(an_obs)       : ", fmtrank(r[C_RANK]), " nominal · ",
                                                 fmtrank(r[C_RANK_PPA]), " à PPA")
-        println("• Rang mondial 2030       : ", fmtrank(r[C_RANK_FIN]))
+        println("• Rang mondial $(an_fin)       : ", fmtrank(r[C_RANK_FIN]))
     else
         println("(agrégat : absent des classements par pays)")
     end

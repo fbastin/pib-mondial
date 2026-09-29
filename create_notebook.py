@@ -14,9 +14,9 @@ notebook_content = {
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "# 📊 Notebook d'Analyse Interactive du PIB (GDP) : Historique (2000-2024) & Prévisions (2025-2030)\n",
+    "# 📊 Notebook d'Analyse Interactive du PIB (GDP) : Historique & Prévisions\n",
     "\n",
-    "Ce notebook permet d'explorer, de visualiser et d'analyser les données de PIB mondial compilées à partir des API de la **Banque Mondiale** (2000-2024, 25 ans) et du **Fonds Monétaire International (FMI WEO)** (2025-2030).\n",
+    "Ce notebook permet d'explorer, de visualiser et d'analyser les données de PIB mondial compilées à partir des API de la **Banque Mondiale** (historique) et du **Fonds Monétaire International (FMI WEO)** (prévisions). Les bornes dépendent du run du pipeline : elles sont affichées au chargement (section 2) et reprises dans chaque titre.\n",
     "\n",
     "---"
    ]
@@ -111,7 +111,7 @@ notebook_content = {
    "metadata": {},
    "outputs": [],
    "source": [
-    "# Top 10 des plus grandes économies mondiales en 2024\n",
+    "# Top 10 des plus grandes économies mondiales, dernière année observée\n",
     "display(df_summary.head(10)[[\n",
     "    'country_code', 'country_name', C_GDP_DEBUT, C_GDP_OBS,\n",
     "    C_GDP_FIN, C_CAGR_H, C_CAGR_P, C_RANK, C_RANK_FIN\n",
@@ -122,9 +122,9 @@ notebook_content = {
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "## 4. Visualisation Interactive : Trajectoire du PIB par Pays (2000 - 2030)\n",
+    "## 4. Visualisation Interactive : Trajectoire du PIB par Pays\n",
     "\n",
-    "Ce graphique interactif Plotly permet de comparer l'évolution du PIB nominal (en Milliards USD). La ligne pointillée représente la période de prévision FMI (2025-2030)."
+    "Ce graphique interactif Plotly permet de comparer l'évolution du PIB nominal (en Milliards USD). La ligne pointillée représente la période de prévision FMI."
    ]
   },
   {
@@ -143,7 +143,7 @@ notebook_content = {
     "    y='GDP_Nominal_Billions_USD',\n",
     "    color='country_name',\n",
     "    line_dash='is_forecast',\n",
-    "    title='<b>Évolution du PIB Nominal (2000 - 2030) - Sélection de Puissances Économiques</b>',\n",
+    "    title=f'<b>Évolution du PIB Nominal ({an_debut} - {an_fin}) - Sélection de Puissances Économiques</b>',\n",
     "    labels={'year': 'Année', 'GDP_Nominal_Billions_USD': 'PIB (Milliards USD)', 'country_name': 'Pays'},\n",
     "    hover_data=['GDP_Growth_Pct']\n",
     ")\n",
@@ -160,7 +160,7 @@ notebook_content = {
    "source": [
     "## 5. Comparaison des Taux de Croissance Annuels Composés (CAGR)\n",
     "\n",
-    "Comparaison entre la croissance annuelle moyenne historique (2000-2024) et la croissance projetée (2024-2030)."
+    "Comparaison entre la croissance annuelle moyenne historique et la croissance projetée, sur les périodes indiquées en légende."
    ]
   },
   {
@@ -176,8 +176,8 @@ notebook_content = {
     "y = np.arange(len(df_top15))\n",
     "height = 0.35\n",
     "\n",
-    "plt.barh(y - height/2, df_top15[C_CAGR_H], height, label='CAGR Historique (2000-2024)', color='#3498db')\n",
-    "plt.barh(y + height/2, df_top15[C_CAGR_P], height, label='CAGR Prévisionnel (2024-2030)', color='#2ecc71')\n",
+    "plt.barh(y - height/2, df_top15[C_CAGR_H], height, label=f'CAGR Historique ({an_debut}-{an_obs})', color='#3498db')\n",
+    "plt.barh(y + height/2, df_top15[C_CAGR_P], height, label=f'CAGR Prévisionnel ({an_obs}-{an_fin})', color='#2ecc71')\n",
     "\n",
     "plt.yticks(y, df_top15['country_name'])\n",
     "plt.xlabel('CAGR (%)')\n",
@@ -191,7 +191,7 @@ notebook_content = {
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "## 6. Heatmap des Taux de Croissance du PIB (2015 - 2030)"
+    "## 6. Heatmap des Taux de Croissance du PIB (dix dernières années observées, puis prévisions)"
    ]
   },
   {
@@ -201,13 +201,14 @@ notebook_content = {
    "outputs": [],
    "source": [
     "top10_codes = df_summary.head(10)['country_code'].tolist()\n",
-    "df_growth = df_unified[(df_unified['country_code'].isin(top10_codes)) & (df_unified['year'] >= 2015)].copy()\n",
+    "an_heatmap = max(an_debut, an_obs - 9)\n",
+    "df_growth = df_unified[(df_unified['country_code'].isin(top10_codes)) & (df_unified['year'] >= an_heatmap)].copy()\n",
     "\n",
     "pivot_growth = df_growth.pivot_table(index='country_name', columns='year', values='GDP_Growth_Pct')\n",
     "\n",
     "plt.figure(figsize=(14, 6), dpi=150)\n",
     "sns.heatmap(pivot_growth, annot=True, fmt=\".1f\", cmap=\"YlGnBu\", cbar_kws={'label': 'Taux de Croissance du PIB (%)'})\n",
-    "plt.title('Carte de Chaleur du Taux de Croissance Annuel du PIB (2015 - 2030)')\n",
+    "plt.title(f'Carte de Chaleur du Taux de Croissance Annuel du PIB ({an_heatmap} - {an_fin})')\n",
     "plt.xlabel('Année')\n",
     "plt.ylabel('Pays')\n",
     "plt.tight_layout()\n",
@@ -246,7 +247,7 @@ notebook_content = {
     "plt.scatter(nominal, y, s=70, color='#2980b9', zorder=3, label='CAGR nominal (USD courants)')\n",
     "plt.axvline(0, color='#bbbbbb', linewidth=0.9)\n",
     "plt.yticks(y, df_cmp['country_name'])\n",
-    "plt.xlabel('CAGR 2000-2024 (%)')\n",
+    "plt.xlabel(f'CAGR {an_debut}-{an_obs} (%)')\n",
     "plt.title(\"Effet de l'inflation et du change sur la croissance affichée\")\n",
     "plt.legend(loc='lower right')\n",
     "plt.grid(axis='x', linestyle='--', alpha=0.6)\n",
@@ -291,8 +292,8 @@ notebook_content = {
     "         label='Nominal (USD courants, taux de marché)', color='#2980b9')\n",
     "\n",
     "plt.yticks(y, df_ppa['country_name'])\n",
-    "plt.xlabel('PIB 2024 (Milliards)')\n",
-    "plt.title('Niveaux de PIB 2024 : taux de marché contre parité de pouvoir d\\'achat')\n",
+    "plt.xlabel(f'PIB {an_obs} (Milliards)')\n",
+    "plt.title(f'Niveaux de PIB {an_obs} : taux de marché contre parité de pouvoir d\\'achat')\n",
     "plt.legend(loc='lower right')\n",
     "plt.grid(axis='x', linestyle='--', alpha=0.6)\n",
     "plt.tight_layout()\n",
@@ -334,18 +335,20 @@ notebook_content = {
     "    # Récupérer les valeurs clés\n",
     "    summary_row = df_summary[df_summary['country_code'] == cdata['country_code'].iloc[0]]\n",
     "    if not summary_row.empty:\n",
-    "        print(f\"• PIB 2000 : ${summary_row[C_GDP_DEBUT].values[0]:,.2f} M$\")\n",
-    "        print(f\"• PIB 2024 : ${summary_row[C_GDP_OBS].values[0]:,.2f} M$\")\n",
-    "        print(f\"• PIB 2030 (Prévision) : ${summary_row[C_GDP_FIN].values[0]:,.2f} M$\")\n",
-    "        print(f\"• CAGR Historique (2000-2024) : {summary_row[C_CAGR_H].values[0]:.2f}% nominal\")\n",
+    "        # Hors du panel de classement (couverture incomplète), un pays n'a pas de rang\n",
+    "        rang = lambda v: f\"#{int(v)}\" if pd.notna(v) else \"hors classement\"\n",
+    "        print(f\"• PIB {an_debut} : {summary_row[C_GDP_DEBUT].values[0]:,.2f} Md$\")\n",
+    "        print(f\"• PIB {an_obs} : {summary_row[C_GDP_OBS].values[0]:,.2f} Md$\")\n",
+    "        print(f\"• PIB {an_fin} (Prévision) : {summary_row[C_GDP_FIN].values[0]:,.2f} Md$\")\n",
+    "        print(f\"• CAGR Historique ({an_debut}-{an_obs}) : {summary_row[C_CAGR_H].values[0]:.2f}% nominal\")\n",
     "        print(f\"                                 {summary_row[C_CAGR_RH].values[0]:.2f}% en volume\")\n",
-    "        print(f\"• CAGR Prévision (2024-2030) : {summary_row[C_CAGR_P].values[0]:.2f}% nominal\")\n",
+    "        print(f\"• CAGR Prévision ({an_obs}-{an_fin}) : {summary_row[C_CAGR_P].values[0]:.2f}% nominal\")\n",
     "        print(f\"                                 {summary_row[C_CAGR_RP].values[0]:.2f}% en volume\")\n",
-    "        print(f\"• Rang Mondial 2024 : #{int(summary_row[C_RANK].values[0])} (nominal)\")\n",
+    "        print(f\"• Rang Mondial {an_obs} : {rang(summary_row[C_RANK].values[0])} (nominal)\")\n",
     "        rang_ppa = summary_row[C_RANK_PPA].values[0]\n",
     "        if pd.notna(rang_ppa):\n",
     "            print(f\"                      #{int(rang_ppa)} (parité de pouvoir d'achat)\")\n",
-    "        print(f\"• Rang Mondial 2030 (Projeté) : #{int(summary_row[C_RANK_FIN].values[0])}\")\n",
+    "        print(f\"• Rang Mondial {an_fin} (Projeté) : {rang(summary_row[C_RANK_FIN].values[0])}\")\n",
     "    \n",
     "    display(cdata[['year', 'data_type', 'GDP_Nominal_Billions_USD', 'GDP_Real_Billions_USD', 'GDP_Growth_Pct', 'GDP_Per_Capita_USD']].tail(10))\n",
     "\n",

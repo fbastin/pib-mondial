@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/fbastin/pib-mondial/actions/workflows/tests.yml/badge.svg)](https://github.com/fbastin/pib-mondial/actions/workflows/tests.yml)
 
-Ce projet permet de collecter, traiter, analyser et visualiser automatiquement les données historiques du PIB (GDP) par pays sur une période de **25 ans (2000–2024)** ainsi que les **prévisions de PIB jusqu'en 2030**.
+Ce projet permet de collecter, traiter, analyser et visualiser automatiquement les données historiques du PIB (GDP) par pays depuis 2000 jusqu'à la dernière année publiée, ainsi que les **prévisions de PIB jusqu'à l'horizon du FMI** (2031 avec l'édition d'avril 2026).
 
 ## 📊 Sources de Données API
 
@@ -13,7 +13,7 @@ Ce projet permet de collecter, traiter, analyser et visualiser automatiquement l
    - Accès API libre et direct sans clé d'API.
 
 2. **Fonds Monétaire International (FMI - World Economic Outlook)** :
-   - Prévisions macroéconomiques et projections officielles jusqu'en 2030 (horizon 2025-2030).
+   - Prévisions macroéconomiques et projections officielles jusqu'à l'horizon de l'édition en cours (cinq ans après l'année de l'édition : 2031 pour avril 2026).
    - Indicateurs : `NGDPD` (PIB nominal en Milliards USD), `NGDP_RPCH` (Croissance réelle %), `PPPGDP` (PIB PPA), `NGDPDPC` (PIB/habitant).
    - Accès API libre (IMF DataMapper API v1).
 
@@ -31,8 +31,8 @@ pib-mondial/
 │   │   └── LISEZ-MOI-WEOhistorical.md  # Provenance et structure de ce classeur
 │   ├── processed/
 │   │   ├── gdp_historical_2000_2024.csv # Données historiques Banque Mondiale
-│   │   ├── gdp_forecast_2025_2030.csv   # Prévisions FMI 2025-2030
-│   │   ├── gdp_unified_2000_2030.csv    # Série temporelle unifiée (2000-2030)
+│   │   ├── gdp_forecast_2025_2031.csv   # Prévisions FMI 2025-2031
+│   │   ├── gdp_unified_2000_2031.csv    # Série temporelle unifiée (2000-2031)
 │   │   ├── gdp_country_summary.csv      # Synthèse par pays, CAGR & classements
 │   │   ├── weo_forecast_evaluation_<indicateur>.csv # Une ligne par projection d'époque
 │   │   └── weo_forecast_bias_<indicateur>.csv       # Biais et erreurs par horizon
@@ -41,7 +41,7 @@ pib-mondial/
 │       └── processed/
 ├── outputs/                            # Livrables Excel & Visualisations
 │   ├── gdp_master_dataset.xlsx         # Classeur Excel multi-onglets complet
-│   ├── gdp_top10_trajectories_2000_2030.png # Graphique HD trajectoires Top 10
+│   ├── gdp_top10_trajectories_2000_2031.png # Graphique HD trajectoires Top 10
 │   ├── gdp_cagr_comparison_top15.png   # Graphique HD comparaison CAGR
 │   ├── gdp_nominal_vs_real_cagr_top15.png   # Écart croissance nominale / volume
 │   ├── gdp_nominal_vs_real_trajectories.png # Trajectoires prix courants vs volume
@@ -102,7 +102,7 @@ Arguments personnalisables :
 - `--start-year` : Année de début historique (par défaut: `2000`)
 - `--end-year` : Dernière année observée (par défaut : choisie d'après les données, avec un second rapport sur la dernière année publiée si elle diffère ; imposée, elle donne un rapport unique)
 - `--fcst-start` : Année de début prévision, avec `--end-year` seulement (obligatoirement `--end-year` + 1)
-- `--fcst-end` : Année de fin prévision (par défaut: `2030`)
+- `--fcst-end` : Année de fin prévision (par défaut : horizon de l'édition du WEO servie par l'API, 2031 aujourd'hui ; il avance d'un an à chaque édition de printemps)
 - `--data-dir` / `--output-dir` : Dossiers de sortie (par défaut: `data` et `outputs`)
 
 *Exemple pour un historique de 30 ans (1995-2024) :*
@@ -110,7 +110,7 @@ Arguments personnalisables :
 python gdp_pipeline.py --start-year 1995
 ```
 
-**Les bornes se propagent partout.** Le nom du fichier unifié (`gdp_unified_1995_2030.csv`), les colonnes de synthèse (`CAGR_Historique_1995_2024_Pct`), l'onglet Excel des séries, la frontière historique/prévision des graphiques et les titres suivent les années demandées. Les scripts en aval et les deux notebooks lisent la série du dernier run d'après `data/extraction_metadata.json` (voir *Provenance*) ; aucun n'a d'année codée en dur.
+**Les bornes se propagent partout.** Le nom du fichier unifié (`gdp_unified_1995_2031.csv`), les colonnes de synthèse (`CAGR_Historique_1995_2024_Pct`), l'onglet Excel des séries, la frontière historique/prévision des graphiques et les titres suivent les années demandées. Les scripts en aval et les deux notebooks lisent la série du dernier run d'après `data/extraction_metadata.json` (voir *Provenance*) ; aucun n'a d'année codée en dur.
 
 **Un échec interrompt tout.** Chaque requête est retentée trois fois. Si une source ou un indicateur reste injoignable, ou si les bornes sont incohérentes (prévision qui ne suit pas immédiatement l'historique), le script s'arrête avec un code de sortie non nul, sans rien écrire : `gdp_pipeline.py && visualize_gdp.py` n'enchaîne jamais sur des données partielles ou sur celles d'un run précédent.
 
@@ -123,7 +123,7 @@ python gdp_pipeline.py --start-year 1995
 
 - **Récupérer uniquement les prévisions** :
   ```bash
-  python fetch_forecast_gdp.py --forecast-start 2025 --forecast-end 2030
+  python fetch_forecast_gdp.py --forecast-start 2025    # jusqu'à l'horizon de l'édition
   ```
 
 - **Générer les graphiques et le dashboard interactif** (pour le rapport le plus récent : `--data-dir data/plus_recent --output-dir outputs/plus_recent`) :
@@ -242,13 +242,13 @@ Le pipeline produit en parallèle une lecture **en volume** (USD constants 2015)
 
 | Colonne | Contenu |
 |---|---|
-| `GDP_Real_Billions_USD` | PIB à prix constants 2015 (série continue 2000-2030) |
+| `GDP_Real_Billions_USD` | PIB à prix constants 2015 (série continue jusqu'à l'horizon) |
 | `GDP_Real_PPP_Billions_Intl` | PIB PPA à prix constants 2021 |
 | `CAGR_Reel_Historique_2000_2024_Pct` | Croissance annuelle en volume, observée |
-| `CAGR_Reel_Prevision_2024_2030_Pct` | Croissance annuelle en volume, projetée |
+| `CAGR_Reel_Prevision_2024_2031_Pct` | Croissance annuelle en volume, projetée |
 | `Ecart_Nominal_Reel_2000_2024_Pts` | Nominal − réel : la part d'inflation et de change |
 
-Le FMI ne publiant qu'un **taux** de croissance réelle (`NGDP_RPCH`) et non un niveau, les valeurs en volume 2025-2030 sont chaînées à partir du dernier point observé en 2024. Une année de croissance manquante interrompt le chaînage plutôt que d'extrapoler.
+Le FMI ne publiant qu'un **taux** de croissance réelle (`NGDP_RPCH`) et non un niveau, les valeurs en volume de l'horizon de prévision sont chaînées à partir du dernier point observé en 2024. Une année de croissance manquante interrompt le chaînage plutôt que d'extrapoler.
 
 Quelques écarts sur 2000-2024 : Japon −0,77 % nominal contre +0,65 % en volume (yen déprécié), Russie 9,3 % contre 3,1 %, Chine 12,0 % contre 8,1 %.
 
@@ -258,13 +258,13 @@ Corriger la **croissance** ne suffit pas pour comparer des **niveaux** : le PIB 
 
 | Colonne | Contenu |
 |---|---|
-| `GDP_PPA_2024_Billion_Intl_2021` | Niveau à PPA, prix constants (idem 2000 et 2030) |
-| `Rank_PPA_2024` / `Rank_PPA_2030` | Rang mondial sur cette base |
+| `GDP_PPA_2024_Billion_Intl_2021` | Niveau à PPA, prix constants (idem 2000 et 2031) |
+| `Rank_PPA_2024` / `Rank_PPA_2031` | Rang mondial sur cette base |
 | `Ecart_Rang_Nominal_PPA_2024` | Rangs gagnés en passant du taux de marché à la PPA |
 
 Le classement 2024 change sensiblement : la Chine passe 1ʳᵉ devant les États-Unis, l'Inde 3ᵉ (au lieu de 5ᵉ), la Russie 4ᵉ (au lieu de 10ᵉ), l'Indonésie 8ᵉ (au lieu de 16ᵉ) ; à l'inverse le Canada recule de 6 rangs et le Royaume-Uni de 4.
 
-> **Portée du rang PPA projeté.** Les niveaux à parité de 2025-2030 étant chaînés depuis le dernier point observé, `Rank_PPA_2030` suppose les facteurs de conversion de 2021 inchangés sur tout l'horizon — alors qu'ils suivent les niveaux de prix relatifs. Ce classement projeté extrapole donc une structure de prix figée ; son incertitude dépasse celle des prévisions de croissance dont il dérive. Le rang PPA de l'année observée (`Rank_PPA_2024`) n'a pas cette limite.
+> **Portée du rang PPA projeté.** Les niveaux à parité de l'horizon de prévision étant chaînés depuis le dernier point observé, `Rank_PPA_2031` suppose les facteurs de conversion de 2021 inchangés sur tout l'horizon — alors qu'ils suivent les niveaux de prix relatifs. Ce classement projeté extrapole donc une structure de prix figée ; son incertitude dépasse celle des prévisions de croissance dont il dérive. Le rang PPA de l'année observée (`Rank_PPA_2024`) n'a pas cette limite.
 
 ---
 
@@ -289,7 +289,7 @@ Chaque rapport décrit ce choix dans le bloc `rapport` de son `extraction_metada
 
 Les deux API diffusent les agrégats (`WLD` World, `OED` OECD members, `EUU` European Union, groupes de revenu…) dans le même flux que les pays, avec un code sur 3 lettres identique en apparence. Le pipeline les identifie via les endpoints de métadonnées (`/v2/country` côté Banque Mondiale, région `NA` ; `/api/v1/countries` côté FMI) et marque chaque ligne d'un drapeau **`is_aggregate`** :
 
-- **conservés** dans `gdp_unified_2000_2030.csv` et l'onglet `Series_Temporelles` (le PIB mondial reste exploitable) ;
+- **conservés** dans `gdp_unified_2000_2031.csv` et l'onglet `Series_Temporelles` (le PIB mondial reste exploitable) ;
 - **exclus** des classements, des rangs et de toutes les visualisations comparatives.
 
 Sans ce filtre, le « Top 10 mondial » se compose d'agrégats et les États-Unis n'apparaissent qu'en 12ᵉ position.
@@ -300,7 +300,7 @@ La jointure historique/prévision se fait sur le **code ISO seul**, les deux sou
 
 ## 🏅 Classements : un même panel de pays
 
-Tous les rangs (`Rank_2024`, `Rank_2030_Forecast`, `Rank_PPA_*`) portent sur les mêmes pays : ceux renseignés aux deux dates, au taux de marché comme à parité — 183 pays. Un écart de rang (`Rank_Change`, `Ecart_Rang_Nominal_PPA_2024`) traduit alors un mouvement, et non l'entrée ou la sortie d'un pays du classement.
+Tous les rangs (`Rank_2024`, `Rank_2031_Forecast`, `Rank_PPA_*`) portent sur les mêmes pays : ceux renseignés aux deux dates, au taux de marché comme à parité — 183 pays. Un écart de rang (`Rank_Change`, `Ecart_Rang_Nominal_PPA_2024`) traduit alors un mouvement, et non l'entrée ou la sortie d'un pays du classement.
 
 Classer chaque colonne sur les pays qu'elle couvre faussait 140 écarts de rang sur 183 : Taïwan, absent de la Banque Mondiale, entrait 22ᵉ au classement 2030 ; le Pakistan, sans projection FMI au-delà de 2025, en sortait. La Belgique affichait −4 rangs au lieu de −3, l'Iran −16 au lieu de −15.
 
@@ -351,7 +351,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 
 1. **`outputs/gdp_master_dataset.xlsx`** :
    - `Top30_Economies` : Vue rapide des 30 premières puissances économiques mondiales.
-   - `Synthese_Pays` : Indicateurs clés (PIB 2000, 2010, 2024, 2030), CAGR historique (2000-2024), CAGR prévisionnel (2024-2030), et évolution des rangs mondiaux (sur le panel décrit plus haut).
+   - `Synthese_Pays` : Indicateurs clés (PIB 2000, 2010, 2024, 2031), CAGR historique (2000-2024), CAGR prévisionnel (2024-2031), et évolution des rangs mondiaux (sur le panel décrit plus haut).
    - `Series_Temporelles_<début>_<fin>` : Données continues fusionnées pour tous les pays.
    - `Donnees_Historiques_Brutes` / `Previsions_FMI_Brutes` : Extractions directes des API.
 

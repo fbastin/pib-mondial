@@ -35,6 +35,7 @@ from gdp_pipeline import (
     run_pipeline,
     unified_csv_path,
     latest_observed_year,
+    latest_forecast_year,
     choose_reference_year,
 )
 from visualize_gdp import detect_years
@@ -534,6 +535,48 @@ class TestDeuxRapports:
         note_recente = note_rapport(str(data / "plus_recent"), 2025)
         assert "Rapport de référence" in note_reference and "plus_recent/resultats_gdp.html" in note_reference
         assert "Pays C sort du classement" in note_recente and "../resultats_gdp.html" in note_recente
+
+
+class TestHorizonAutomatique:
+    """
+    L'horizon de prévision suit l'édition du WEO (2031 pour avril 2026) au lieu d'être
+    figé à 2030 : une année projetée par le FMI n'est plus téléchargée puis écartée.
+    """
+
+    @staticmethod
+    def _fmi_jusqu_en_2031(annee_isolee: bool = False) -> pd.DataFrame:
+        fmi = _fmi_avec_historique()
+        horizon = fmi[fmi.year == 2030].copy()
+        horizon["year"] = 2031
+        horizon["GDP_Nominal_Billions_USD"] *= 1.03
+        morceaux = [fmi, horizon]
+        if annee_isolee:                          # une projection 2032 pour un seul pays
+            isolee = horizon[horizon.country_code == "AAA"].copy()
+            isolee["year"] = 2032
+            morceaux.append(isolee)
+        return pd.concat(morceaux, ignore_index=True)
+
+    def test_horizon_de_l_edition(self):
+        assert latest_forecast_year(_fmi_avec_historique()) == 2030
+        assert latest_forecast_year(self._fmi_jusqu_en_2031()) == 2031
+
+    def test_projection_isolee_ignoree(self):
+        assert latest_forecast_year(self._fmi_jusqu_en_2031(annee_isolee=True)) == 2031
+
+    def test_le_pipeline_suit_l_horizon(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(gdp_pipeline, "fetch_all_historical_gdp", lambda start_year, end_year: _historique())
+        monkeypatch.setattr(gdp_pipeline, "fetch_all_forecasts",
+                            lambda **kwargs: (self._fmi_jusqu_en_2031(annee_isolee=True), {}))
+        data = tmp_path / "data"
+        run_pipeline(data_dir=str(data), output_dir=str(tmp_path / "outputs"))
+
+        meta = json.loads((data / "extraction_metadata.json").read_text(encoding="utf-8"))
+        assert meta["bornes"]["prevision"] == [2025, 2031]
+        unifie = pd.read_csv(unified_csv_path(str(data)))
+        assert unifie["year"].max() == 2031               # la projection isolée de 2032 est écartée
+        synthese = pd.read_csv(data / "processed" / "gdp_country_summary.csv")
+        assert synthese["CAGR_Prevision_2024_2031_Pct"].notna().all()
+        assert synthese["Rank_2031_Forecast"].notna().all()
 
 
 class TestRecouvrementSources:

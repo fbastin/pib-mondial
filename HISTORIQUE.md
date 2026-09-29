@@ -5,6 +5,14 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 🔭 Horizon de Prévision Automatique (29 Septembre 2026)
+
+L'API DataMapper renvoie à chaque appel toutes les années de l'édition du WEO — jusqu'en 2031 pour celle d'avril 2026 —, mais le pipeline coupait à `--fcst-end 2030`. Sans cette option, l'horizon est désormais celui de l'édition : la dernière année dont le PIB projeté couvre plus de la moitié des pays. Il avancera d'un an à chaque édition de printemps. 2031 couvre les mêmes 188 pays que 2030 : aucun pays ne perd son rang (183 dans le rapport de référence, 180 dans le plus récent).
+
+Les noms suivent : `gdp_unified_2000_2031.csv`, `CAGR_Prevision_2024_2031_Pct`, `Rank_2031_Forecast`… Les titres et libellés des deux notebooks, qui portaient encore 2030 ou 2024 en dur, suivent désormais les bornes du run ; au passage, `analyze_country` du notebook Python plantait sur un pays sans rang (`int(NaN)`) et affichait des milliards en « M$ ».
+
+---
+
 ## 📅 Deux Rapports : Référence et Plus Récent (29 Septembre 2026)
 
 La Banque Mondiale publie 2025 pour 186 pays, mais pas encore pour les Émirats arabes unis (27ᵉ économie), les Bahamas et Aruba. `--end-year 2025` les privait de rang ; `--end-year 2024`, défaut jusque-là, ignorait les données publiées.

@@ -146,7 +146,7 @@ def parse_imf_data(raw_data: Dict[str, Any], indicator_code: str, forecast_start
     return pd.DataFrame(records)
 
 
-def fetch_all_forecasts(forecast_start_year: int = 2025, forecast_end_year: int = 2030,
+def fetch_all_forecasts(forecast_start_year: int = 2025, forecast_end_year: Optional[int] = None,
                         history_start_year: Optional[int] = None) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """
     Récupère et combine les séries FMI.
@@ -156,6 +156,9 @@ def fetch_all_forecasts(forecast_start_year: int = 2025, forecast_end_year: int 
     conservées : elles permettent de confronter les deux sources sur les mêmes années et
     de mesurer la marche que produirait un simple changement de fournisseur à la jonction.
     Sans cet argument, seule la période de projection est retournée (comportement d'origine).
+
+    Sans `forecast_end_year`, toutes les années projetées sont conservées : l'API sert
+    l'horizon complet de l'édition en cours (2031 pour celle d'avril 2026).
 
     Retourne le DataFrame pivoté et le dictionnaire des réponses brutes par indicateur.
     Lève `RuntimeError` si une source ou un indicateur reste injoignable.
@@ -176,8 +179,9 @@ def fetch_all_forecasts(forecast_start_year: int = 2025, forecast_end_year: int 
     combined_df = pd.concat(parsed_dfs, ignore_index=True)
     
     borne_basse = history_start_year if history_start_year is not None else forecast_start_year
-    filtered_df = combined_df[(combined_df["year"] >= borne_basse) &
-                              (combined_df["year"] <= forecast_end_year)]
+    filtered_df = combined_df[combined_df["year"] >= borne_basse]
+    if forecast_end_year is not None:
+        filtered_df = filtered_df[filtered_df["year"] <= forecast_end_year]
 
     if history_start_year is not None:
         n_hist = int((filtered_df["year"] < forecast_start_year).sum())
@@ -198,7 +202,8 @@ def fetch_all_forecasts(forecast_start_year: int = 2025, forecast_end_year: int 
 def main():
     parser = argparse.ArgumentParser(description="Extraction des prévisions de GDP FMI WEO.")
     parser.add_argument("--forecast-start", type=int, default=2025, help="Année de début des prévisions (par défaut: 2025)")
-    parser.add_argument("--forecast-end", type=int, default=2030, help="Année de fin des prévisions (par défaut: 2030)")
+    parser.add_argument("--forecast-end", type=int, default=None,
+                        help="Année de fin des prévisions (par défaut : horizon complet de l'édition du WEO)")
     parser.add_argument("--output-dir", type=str, default="data", help="Dossier de sortie des données")
     args = parser.parse_args()
 
@@ -220,7 +225,7 @@ def main():
         json.dump(raw_json, f, indent=2, ensure_ascii=False)
     logging.info(f"Données brutes JSON enregistrées dans : {raw_json_path}")
 
-    csv_path = os.path.join(processed_dir, f"gdp_forecast_{args.forecast_start}_{args.forecast_end}.csv")
+    csv_path = os.path.join(processed_dir, f"gdp_forecast_{args.forecast_start}_{int(df_forecast['year'].max())}.csv")
     df_forecast.to_csv(csv_path, index=False, encoding="utf-8-sig")
     logging.info(f"Prévisions enregistrées avec succès dans : {csv_path}")
 
