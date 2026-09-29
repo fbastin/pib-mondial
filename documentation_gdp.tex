@@ -160,6 +160,7 @@ Les niveaux de prévision à parité étant obtenus par chaînage à partir du d
     \item \texttt{http\_utils.py}: Requêtes HTTP communes aux deux collectes (nouvelles tentatives, échec explicite).
     \item \texttt{gdp\_pipeline.py}: Pipeline maître d'unification et d'export Excel / CSV.
     \item \texttt{produire\_rapports.py}: Chaîne complète, pour le rapport de référence et, le cas échéant, le plus récent.
+    \item \texttt{update\_weo\_editions.py}: Éditions récentes du WEO, depuis l'API SDMX du FMI.
     \item \texttt{evaluate\_forecasts.py}: Évaluation des prévisions d'époque du FMI.
     \item \texttt{visualize\_gdp.py}: Génération des graphiques PNG et du Dashboard HTML.
     \item \texttt{build\_results\_page.py}: Page HTML de résultats, construite depuis les CSV et les PNG produits.
@@ -196,6 +197,11 @@ Confronter une prévision à ce qui s'est produit suppose de disposer de la pré
 Ce fichier n'est pas récupérable par script: le serveur du FMI répond \texttt{403} aux requêtes automatisées, sur toutes les variantes d'URL testées. Il se télécharge depuis un navigateur, à l'adresse \url{https://data.imf.org/en/Search-Results} en recherchant «~WEO Historical Forecasts Database~», puis se dépose dans \texttt{data/raw/} sous son nom d'origine.
 
 Le FMI réorganisant régulièrement ses serveurs et publiant deux éditions par an, tout lien direct est appelé à devenir caduc; la page de recherche reste le point d'entrée stable. Le lien direct en vigueur, la structure détaillée du classeur et la marche à suivre complète figurent dans \texttt{data/raw/LISEZ-MOI-WEOhistorical.md}.
+
+\subsection{Éditions Récentes: l'API SDMX du FMI}
+Le téléchargement manuel n'est plus nécessaire pour suivre les nouvelles éditions. L'API SDMX du FMI (\url{https://api.imf.org}), qui accepte les scripts, sert l'édition courante du WEO et quelques éditions archivées, aux valeurs du classeur (vérifié sur les éditions d'avril 2026 et d'octobre 2025, écart inférieur à $0{,}0005$ point) et avec les mêmes codes pays. Le script \texttt{update\_weo\_editions.py} ajoute les éditions absentes du classeur au fichier \texttt{weo\_editions\_api.csv} de \texttt{data/raw/}, cumulatif et versionné que l'évaluation lit en complément; pour une édition présente des deux côtés, le classeur fait foi.
+
+Le flux courant ne précise pas son édition. Elle est déduite de la plus récente archive --- l'édition d'octobre 2025 étant archivée, le flux courant est celle d'avril 2026 --- puis vérifiée: la dernière année servie doit valoir l'année de l'édition plus cinq. Faute de quoi le script s'arrête plutôt que de deviner.
 
 \subsection{Horizon de Projection}
 Chaque édition couvre huit années relatives, de $-2$ à $+5$ par rapport à sa date de publication. L'horizon se déduit de l'écart entre l'année visée $y$ et l'année de l'édition $v$:
@@ -237,7 +243,7 @@ Le champ \texttt{derniere\_mise\_a\_jour} reprend le \texttt{lastupdated} décla
 
 \section{Tests des Invariants}
 
-Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (91 tests, sans accès réseau) fixe les propriétés correspondantes:
+Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (102 tests, sans accès réseau) fixe les propriétés correspondantes:
 
 \begin{itemize}
     \item les agrégats sont absents des classements par pays;
@@ -252,7 +258,9 @@ Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur si
     \item une source injoignable interrompt la collecte, et une réponse paginée est lue en entier;
     \item la série lue en aval est celle du dernier run;
     \item la référence Banque Mondiale ne sert qu'à évaluer la croissance du PIB;
-    \item le rapport de référence reste quasi complet, le plus récent s'y ajoute sans le remplacer, et un rapport devenu sans objet est supprimé.
+    \item le rapport de référence reste quasi complet, le plus récent s'y ajoute sans le remplacer, et un rapport devenu sans objet est supprimé;
+    \item l'horizon de prévision suit l'édition du WEO, sans prolonger la série par des projections isolées;
+    \item une édition du WEO lue dans l'API n'est nommée que si l'horizon servi le confirme, le complément reste cumulatif et le classeur fait foi.
 \end{itemize}
 
 Les tests marqués \texttt{donnees} portent sur les fichiers réellement produits et se sautent tant que le pipeline n'a pas été exécuté.

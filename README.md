@@ -16,6 +16,7 @@ Ce projet permet de collecter, traiter, analyser et visualiser automatiquement l
    - Prévisions macroéconomiques et projections officielles jusqu'à l'horizon de l'édition en cours (cinq ans après l'année de l'édition : 2031 pour avril 2026).
    - Indicateurs : `NGDPD` (PIB nominal en Milliards USD), `NGDP_RPCH` (Croissance réelle %), `PPPGDP` (PIB PPA), `NGDPDPC` (PIB/habitant).
    - Accès API libre (IMF DataMapper API v1).
+   - Éditions récentes du WEO, pour l'évaluation des prévisions : API SDMX (`api.imf.org`).
 
 ---
 
@@ -28,6 +29,7 @@ pib-mondial/
 │   ├── raw/
 │   │   ├── gdp_imf_weo_raw.json        # Données brutes FMI WEO JSON
 │   │   ├── WEOhistorical.xlsx          # Prévisions d'époque, toutes éditions depuis 1990 (versionné)
+│   │   ├── weo_editions_api.csv        # Éditions plus récentes, lues dans l'API du FMI (versionné)
 │   │   └── LISEZ-MOI-WEOhistorical.md  # Provenance et structure de ce classeur
 │   ├── processed/
 │   │   ├── gdp_historical_2000_2024.csv # Données historiques Banque Mondiale
@@ -56,6 +58,7 @@ pib-mondial/
 ├── fetch_forecast_gdp.py               # Collecte des prévisions (FMI)
 ├── http_utils.py                       # Requêtes HTTP communes : nouvelles tentatives, échec explicite
 ├── gdp_pipeline.py                     # Pipeline maître d'unification et d'analyse
+├── update_weo_editions.py              # Éditions récentes du WEO depuis l'API SDMX du FMI
 ├── evaluate_forecasts.py               # Évaluation des prévisions d'époque
 ├── visualize_gdp.py                    # Générateur de graphiques et dashboard
 ├── build_results_page.py               # Page de résultats pilotée par les données
@@ -204,7 +207,12 @@ Visualisé par `gdp_source_discrepancy_2024.png`.
 
 Mesurer si les prévisions étaient bonnes suppose les publications **d'époque**. Le FMI les consolide dans la *WEO Historical Forecasts Database* : 73 éditions depuis 1990, 201 entités, horizons −2 à +5. Le fichier se télécharge manuellement (le site refuse les scripts) et se dépose dans `data/raw/WEOhistorical.xlsx` — voir `data/raw/LISEZ-MOI-WEOhistorical.md`.
 
+**Les éditions plus récentes que le classeur arrivent seules.** L'API SDMX du FMI (`api.imf.org`), qui accepte les scripts, sert l'édition courante du WEO et quelques éditions archivées, aux mêmes valeurs que le classeur. `update_weo_editions.py` ajoute celles qui manquent au classeur dans `data/raw/weo_editions_api.csv`, versionné, que l'évaluation lit en complément ; `produire_rapports.py` le lance à chaque exécution. Après l'édition d'octobre 2026, `F2026` sera donc ajoutée sans téléchargement. Retélécharger le classeur reste possible : pour une édition présente des deux côtés, le classeur fait foi.
+
+L'API ne dit pas quelle édition porte son flux courant : le script la déduit de la plus récente archive (après `F2025`, c'est `S2026`) et vérifie que la dernière année servie vaut l'année de l'édition + 5 ; sinon il s'arrête plutôt que de deviner.
+
 ```bash
+python update_weo_editions.py                       # éditions récentes, depuis l'API
 python evaluate_forecasts.py                        # croissance du PIB réel
 python evaluate_forecasts.py --indicateur pcpi_pch  # inflation
 ```
@@ -315,7 +323,7 @@ pytest test_gdp_pipeline.py -v
 pytest test_gdp_pipeline.py -m "not donnees"   # sans les fichiers produits
 ```
 
-91 tests, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
+102 tests, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
 
 | Invariant | Ce qu'il empêche |
 |---|---|
@@ -332,6 +340,8 @@ pytest test_gdp_pipeline.py -m "not donnees"   # sans les fichiers produits
 | La série lue est celle du dernier run | Un graphique ou une évaluation bâtis sur un autre run |
 | La référence Banque Mondiale ne sert qu'à la croissance | Une inflation projetée comparée à la croissance observée |
 | Le rapport de référence reste quasi complet, le plus récent s'y ajoute sans le remplacer | Un classement privé des Émirats faute de donnée 2025, ou un rapport périmé laissé en place |
+| L'horizon suit l'édition du WEO, sans projection isolée | Une année projetée téléchargée puis écartée, ou une série prolongée par un seul pays |
+| Une édition lue dans l'API n'est nommée que si l'horizon servi le confirme ; complément cumulatif, classeur prioritaire | Des prévisions d'octobre attribuées à avril, ou une édition perdue quand l'API cesse de la servir |
 
 Chaque invariant est **validé par mutation** : le défaut correspondant, réintroduit dans une copie du code, fait bien échouer la suite. Les tests marqués `donnees` contrôlent les CSV réellement produits et se sautent tant que le pipeline n'a pas tourné.
 

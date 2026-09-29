@@ -2,7 +2,8 @@
 """
 produire_rapports.py
 --------------------
-Chaîne complète en une commande : collecte et calcul (`gdp_pipeline.py`), puis, pour
+Chaîne complète en une commande : collecte et calcul (`gdp_pipeline.py`), ajout des
+éditions récentes du WEO servies par l'API du FMI (`update_weo_editions.py`), puis, pour
 chaque rapport produit — la référence, et le cas échéant le plus récent, dans
 `plus_recent/` —, évaluation des prévisions, graphiques et page de résultats.
 
@@ -37,6 +38,8 @@ def main():
     parser.add_argument("--end-year", type=int, default=None,
                         help="Impose la dernière année observée (rapport unique)")
     parser.add_argument("--fcst-end", type=int, default=None)
+    parser.add_argument("--sans-editions-api", action="store_true",
+                        help="Ne pas interroger l'API du FMI pour les éditions récentes du WEO")
     parser.add_argument("--data-dir", type=str, default="data")
     parser.add_argument("--output-dir", type=str, default="outputs")
     args = parser.parse_args()
@@ -55,8 +58,10 @@ def main():
         if os.path.isdir(recent[0]):
             rapports.append(recent)
 
-        # Le classeur des prévisions d'époque est commun aux deux rapports
+        # Le classeur des prévisions d'époque, et son complément, sont communs aux deux rapports
         classeur = os.path.join(args.data_dir, "raw", "WEOhistorical.xlsx")
+        if not args.sans_editions_api:
+            lancer("update_weo_editions.py", "--classeur", classeur)
         for data_dir, output_dir in rapports:
             if os.path.exists(classeur):
                 lancer("evaluate_forecasts.py", "--data-dir", data_dir, "--classeur", classeur)

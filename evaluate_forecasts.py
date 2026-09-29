@@ -15,7 +15,9 @@ centaine de fichiers d'éditions séparés.
     data/raw/WEOhistorical.xlsx
 
 Le téléchargement reste manuel : le site refuse les requêtes automatisées (403).
-Voir `data/raw/LISEZ-MOI-WEOhistorical.md` pour le lien et la marche à suivre.
+Voir `data/raw/LISEZ-MOI-WEOhistorical.md` pour le lien et la marche à suivre. Les
+éditions plus récentes que le classeur sont lues dans `weo_editions_api.csv`, tenu à
+jour depuis l'API du FMI par `update_weo_editions.py`.
 
 Structure du classeur : une ligne par (pays, année visée), une colonne par édition,
 nommée `S2019ngdp_rpch` (printemps) ou `F2019ngdp_rpch` (automne). L'horizon de
@@ -69,9 +71,14 @@ SEUIL_VALEURS_EXTREMES = 10.0
 PREFIXE_AGREGAT = "G"
 
 
-def lire_base_historique(chemin: str = CLASSEUR, indicateur: str = "ngdp_rpch") -> pd.DataFrame:
+def lire_base_historique(chemin: str = CLASSEUR, indicateur: str = "ngdp_rpch",
+                         complement: Optional[str] = None) -> pd.DataFrame:
     """
     Lit un onglet du classeur et le remet au format long.
+
+    Les éditions absentes du classeur sont ajoutées depuis `complement` (par défaut
+    `weo_editions_api.csv` à côté du classeur, s'il existe) ; pour une édition présente
+    des deux côtés, le classeur fait foi.
 
     Retourne les colonnes : country, country_code, year, vintage, saison,
     annee_millesime, horizon, valeur, est_projection.
@@ -97,6 +104,20 @@ def lire_base_historique(chemin: str = CLASSEUR, indicateur: str = "ngdp_rpch") 
 
     # « S2019ngdp_rpch » -> « S2019 »
     long["vintage"] = long["vintage"].str.replace(indicateur, "", regex=False)
+
+    complement = complement or os.path.join(os.path.dirname(chemin), "weo_editions_api.csv")
+    if os.path.exists(complement):
+        api = pd.read_csv(complement)
+        api = api[(api["indicateur"] == indicateur) & ~api["vintage"].isin(set(long["vintage"]))]
+        if not api.empty:
+            logging.info(f"-> Éditions ajoutées depuis l'API du FMI : {', '.join(sorted(api['vintage'].unique()))}")
+            # Libellés du classeur quand il connaît le code (« Aruba » plutôt que
+            # « Aruba, Kingdom of the Netherlands »), pour une sortie homogène
+            noms = long.drop_duplicates("ISOAlpha_3Code").set_index("ISOAlpha_3Code")["country"]
+            api = api.assign(country=api["country_code"].map(noms).fillna(api["country"]))
+            long = pd.concat([long, api.rename(columns={"country_code": "ISOAlpha_3Code"})
+                              [["country", "ISOAlpha_3Code", "year", "vintage", "valeur"]]],
+                             ignore_index=True)
 
     # Les valeurs manquantes sont notées « . » dans le classeur
     long["valeur"] = pd.to_numeric(long["valeur"], errors="coerce")
@@ -268,6 +289,8 @@ def main():
     parser.add_argument("--data-dir", type=str, default="data")
     parser.add_argument("--classeur", type=str, default=None,
                         help="Chemin du classeur WEOhistorical.xlsx")
+    parser.add_argument("--complement", type=str, default=None,
+                        help="Éditions ajoutées depuis l'API (par défaut : weo_editions_api.csv à côté du classeur)")
     parser.add_argument("--indicateur", type=str, default="ngdp_rpch",
                         choices=sorted(INDICATEURS), help="Onglet à évaluer")
     parser.add_argument("--garder-agregats", action="store_true",
@@ -277,7 +300,7 @@ def main():
     chemin = args.classeur or os.path.join(args.data_dir, "raw", "WEOhistorical.xlsx")
 
     try:
-        base = lire_base_historique(chemin, args.indicateur)
+        base = lire_base_historique(chemin, args.indicateur, args.complement)
     except (FileNotFoundError, ValueError) as e:
         logging.error(str(e))
         sys.exit(1)

@@ -15,6 +15,7 @@ les fichiers réellement produits et se sautent d'eux-mêmes s'ils sont absents.
 """
 
 import os
+import re
 import json
 
 import numpy as np
@@ -971,6 +972,120 @@ class TestBaseHistoriqueWEO:
         assert {"horizon", "biais_moyen", "erreur_absolue_moyenne"} <= set(synthese.columns)
 
 
+class TestEditionsAPI:
+    """
+    Éditions récentes du WEO lues dans l'API SDMX du FMI, en complément du classeur
+    téléchargé à la main. Le flux courant ne dit pas quelle édition il porte : le nom est
+    déduit des archives, et vérifié par l'horizon servi plutôt que deviné.
+    """
+
+    def test_edition_courante_apres_un_automne(self):
+        from update_weo_editions import nommer_editions
+        assert nommer_editions(["WEO", "WEO_2025_OCT_VINTAGE"], horizon_courant=2031) == {
+            "WEO": "S2026", "WEO_2025_OCT_VINTAGE": "F2025"}
+
+    def test_edition_courante_apres_un_printemps(self):
+        from update_weo_editions import nommer_editions
+        noms = nommer_editions(["WEO", "WEO_2025_OCT_VINTAGE", "WEO_2026_APR_VINTAGE"], horizon_courant=2031)
+        assert noms["WEO"] == "F2026" and noms["WEO_2026_APR_VINTAGE"] == "S2026"
+
+    def test_horizon_incoherent_refuse(self):
+        from update_weo_editions import nommer_editions
+        with pytest.raises(RuntimeError, match="incohérente"):
+            nommer_editions(["WEO", "WEO_2025_OCT_VINTAGE"], horizon_courant=2030)
+
+    def test_sans_archive_rien_n_est_devine(self):
+        from update_weo_editions import nommer_editions
+        with pytest.raises(RuntimeError, match="archivée"):
+            nommer_editions(["WEO"], horizon_courant=2031)
+
+    def test_lecture_de_la_reponse_sdmx(self, monkeypatch):
+        """Années non ordonnées et valeurs textuelles, comme dans les réponses réelles."""
+        import update_weo_editions
+        reponse = {
+            "structure": {"dimensions": {
+                "series": [{"id": "COUNTRY", "values": [{"id": "FRA", "name": "France"},
+                                                        {"id": "KOS", "name": "Kosovo"}]},
+                           {"id": "INDICATOR", "values": [{"id": "NGDP_RPCH"}]},
+                           {"id": "FREQUENCY", "values": [{"id": "A"}]}],
+                "observation": [{"id": "TIME_PERIOD", "values": [{"id": "2025"}, {"id": "2024"}]}]}},
+            "dataSets": [{"series": {"0:0:0": {"observations": {"0": ["0.7"], "1": ["1.1"]}},
+                                     "1:0:0": {"observations": {"1": ["4.0"], "0": [None]}}}}],
+        }
+        monkeypatch.setattr(update_weo_editions, "get_json", lambda url, **kwargs: reponse)
+        table = update_weo_editions.lire_flux("WEO", "NGDP_RPCH").set_index(["country_code", "year"])
+        assert table.loc[("FRA", 2025), "valeur"] == pytest.approx(0.7)
+        assert table.loc[("FRA", 2024), "valeur"] == pytest.approx(1.1)
+        assert table.loc[("KOS", 2024), "valeur"] == pytest.approx(4.0)
+        assert len(table) == 3                               # la valeur nulle est écartée
+
+    @staticmethod
+    def _classeur(dossier, editions):
+        """Classeur à trois onglets ne contenant que `editions`."""
+        chemin = dossier / "WEOhistorical.xlsx"
+        with pd.ExcelWriter(chemin) as writer:
+            for feuille in ("ngdp_rpch", "pcpi_pch", "bca_gdp_bp6"):
+                pd.DataFrame([dict(country="France", WEO_Country_Code=132, ISOAlpha_3Code="FRA", year=2024,
+                                   **{f"{e}{feuille}": 1.0 for e in editions})]).to_excel(
+                    writer, sheet_name=feuille, index=False)
+        return chemin
+
+    @staticmethod
+    def _api(monkeypatch):
+        import update_weo_editions
+        monkeypatch.setattr(update_weo_editions, "lister_flux", lambda: ["WEO", "WEO_2025_OCT_VINTAGE"])
+        horizons = {"WEO": 2031, "WEO_2025_OCT_VINTAGE": 2030}
+        monkeypatch.setattr(update_weo_editions, "lire_flux", lambda flux, ind: pd.DataFrame(
+            [dict(country_code="FRA", country="France", year=a, valeur=float(a - 2000))
+             for a in range(1980, horizons[flux] + 1)]))
+        return update_weo_editions
+
+    def test_ajout_des_editions_absentes_du_classeur(self, tmp_path, monkeypatch):
+        module = self._api(monkeypatch)
+        classeur = self._classeur(tmp_path, ["F2024", "F2025"])
+        complement = tmp_path / "weo_editions_api.csv"
+        module.mettre_a_jour(str(classeur), str(complement))
+
+        ajout = pd.read_csv(complement)
+        assert set(ajout["vintage"]) == {"S2026"}             # F2025 est déjà dans le classeur
+        assert set(ajout["indicateur"]) == {"ngdp_rpch", "pcpi_pch", "bca_gdp_bp6"}
+        assert sorted(ajout["year"].unique()) == list(range(2024, 2032))   # horizons −2 à +5
+
+    def test_complement_cumulatif_et_classeur_prioritaire(self, tmp_path, monkeypatch):
+        """
+        Une édition que l'API ne sert plus reste dans le complément ; une édition arrivée
+        entre-temps dans le classeur en sort.
+        """
+        module = self._api(monkeypatch)
+        classeur = self._classeur(tmp_path, ["F2025"])
+        complement = tmp_path / "weo_editions_api.csv"
+        pd.DataFrame([
+            dict(indicateur="ngdp_rpch", vintage="S2025", flux="WEO", country="France",
+                 country_code="FRA", year=2025, valeur=1.2, extrait_le="2025-06-01"),
+            dict(indicateur="ngdp_rpch", vintage="F2025", flux="WEO", country="France",
+                 country_code="FRA", year=2025, valeur=0.9, extrait_le="2025-11-01"),
+        ]).to_csv(complement, index=False)
+        module.mettre_a_jour(str(classeur), str(complement))
+
+        editions = set(pd.read_csv(complement).query("indicateur == 'ngdp_rpch'")["vintage"])
+        assert editions == {"S2025", "S2026"}
+
+    def test_lecture_du_classeur_completee(self, tmp_path):
+        """Le complément ajoute ses éditions ; pour une édition commune, le classeur fait foi."""
+        from evaluate_forecasts import lire_base_historique
+        classeur = TestBaseHistoriqueWEO._classeur(tmp_path)
+        pd.DataFrame([
+            dict(indicateur="ngdp_rpch", vintage="F2022", flux="WEO_2022_OCT_VINTAGE", country="France",
+                 country_code="FRA", year=2020, valeur=-7.5, extrait_le="2026-09-29"),
+            dict(indicateur="ngdp_rpch", vintage="F2021", flux="WEO_2021_OCT_VINTAGE", country="France",
+                 country_code="FRA", year=2020, valeur=99.0, extrait_le="2026-09-29"),
+        ]).to_csv(tmp_path / "weo_editions_api.csv", index=False)
+
+        table = lire_base_historique(str(classeur)).set_index(["country_code", "year", "vintage"])
+        assert table.loc[("FRA", 2020, "F2022"), "horizon"] == -2
+        assert table.loc[("FRA", 2020, "F2021"), "valeur"] == pytest.approx(-7.9)
+
+
 # ------------------------------------------- fichiers réellement produits
 
 @pytest.mark.donnees
@@ -1039,11 +1154,12 @@ class TestFichiersProduits:
 
     def test_ecarts_de_rang_sur_un_meme_panel(self, fichiers):
         _, synthese = fichiers
-        if "Rank_2024" not in synthese.columns:
-            pytest.skip("run sur d'autres bornes")
-        classes = synthese.dropna(subset=["Rank_2024"])
-        assert (classes["Rank_Change"] == classes["Rank_2024"] - classes["Rank_2030_Forecast"]).all()
-        assert classes[["Rank_2030_Forecast", "Rank_PPA_2024", "Rank_PPA_2030"]].notna().all().all()
+        # Les colonnes portent les bornes du run : on les retrouve plutôt que de les figer
+        obs = int(next(c for c in synthese.columns if re.fullmatch(r"Rank_\d{4}", c))[5:])
+        fin = int(next(c for c in synthese.columns if re.fullmatch(r"Rank_\d{4}_Forecast", c))[5:9])
+        classes = synthese.dropna(subset=[f"Rank_{obs}"])
+        assert (classes["Rank_Change"] == classes[f"Rank_{obs}"] - classes[f"Rank_{fin}_Forecast"]).all()
+        assert classes[[f"Rank_{fin}_Forecast", f"Rank_PPA_{obs}", f"Rank_PPA_{fin}"]].notna().all().all()
 
     def test_codes_propres_au_fmi_convertis(self, fichiers):
         unifie, _ = fichiers

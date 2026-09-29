@@ -20,17 +20,20 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
 
 def get_json(url: str, params: Optional[Dict[str, Any]] = None,
-             tentatives: int = 3, pause: float = 2.0, timeout: int = 30) -> Any:
+             tentatives: int = 3, pause: float = 2.0, timeout: int = 30,
+             headers: Optional[Dict[str, str]] = None) -> Any:
     """
     Interroge `url` et retourne la réponse JSON décodée.
 
     Les erreurs réseau, HTTP et de décodage sont retentées `tentatives` fois, avec une
-    pause croissante ; la dernière est levée en `RuntimeError`.
+    pause croissante ; la dernière est levée en `RuntimeError`. `headers` complète les
+    en-têtes par défaut (l'API SDMX du FMI ne répond en JSON que sur demande).
     """
     derniere = None
     for essai in range(1, tentatives + 1):
         try:
-            response = requests.get(url, params=params, headers=HEADERS, timeout=timeout)
+            response = requests.get(url, params=params, headers={**HEADERS, **(headers or {})},
+                                    timeout=timeout)
             response.raise_for_status()
             return response.json()
         except (requests.RequestException, ValueError) as e:

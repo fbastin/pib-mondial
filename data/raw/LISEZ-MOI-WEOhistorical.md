@@ -54,6 +54,31 @@ direct a de fortes chances d'être caduc d'ici 2027** ; passer alors par la page
 
 Déposer le fichier ici, sous ce nom, sans le convertir.
 
+## Complément automatique : `weo_editions_api.csv`
+
+Retélécharger le classeur n'est plus nécessaire pour suivre les nouvelles éditions.
+L'API SDMX du FMI (`api.imf.org`), qui accepte les scripts, sert l'édition courante du WEO
+(flux `WEO`) et quelques éditions archivées (`WEO_2025_OCT_VINTAGE`…). Leurs valeurs sont
+celles du classeur — vérifié sur `S2026` et `F2025`, écart ≤ 0,0005 point — avec les mêmes
+codes pays (`KOS`, `WBG`) et agrégats (`G001`…).
+
+`python update_weo_editions.py` (lancé aussi par `produire_rapports.py`) ajoute dans
+`weo_editions_api.csv` les éditions servies par l'API et absentes du classeur, pour les
+trois onglets, sur les horizons −2 à +5. Correspondance des indicateurs :
+
+| Onglet | Indicateur SDMX |
+|---|---|
+| `ngdp_rpch` | `NGDP_RPCH` |
+| `pcpi_pch` | `PCPIPCH` |
+| `bca_gdp_bp6` | `BCA_NGDPD` |
+
+* Le fichier est **cumulatif** : l'API ne garde que les éditions récentes, une édition
+  qu'elle ne sert plus reste dans le complément. Il est versionné, comme le classeur.
+* Le **classeur fait foi** : une édition qu'il contient sort du complément.
+* Le flux courant ne dit pas quelle édition il porte. Le script la déduit de la plus récente
+  archive (après `F2025`, c'est `S2026`) et vérifie que la dernière année servie vaut
+  l'année de l'édition + 5 ; sinon il s'arrête plutôt que de deviner.
+
 ## Utilisation
 
 ```bash

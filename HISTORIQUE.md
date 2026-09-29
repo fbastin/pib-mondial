@@ -5,6 +5,18 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 📥 Éditions du WEO depuis l'API SDMX du FMI (29 Septembre 2026)
+
+`WEOhistorical.xlsx` ne se télécharge qu'à la main (403 pour les scripts, y compris sur le lien d'un autre dépôt consulté, `thompalec/Forecasting-IMF-World-Economic-Outlook-using-nowcasts`, qui procède lui aussi manuellement). L'API SDMX du FMI (`api.imf.org`) accepte en revanche les scripts : elle sert l'édition courante (`WEO`) et des archives (`WEO_2025_OCT_VINTAGE`), identiques au classeur (écart nul sur `S2026`, ≤ 0,0005 sur `F2025`), mêmes codes pays.
+
+`update_weo_editions.py` ajoute les éditions absentes du classeur à `data/raw/weo_editions_api.csv` (cumulatif, versionné, classeur prioritaire), sur les horizons −2 à +5 et pour les trois onglets (`NGDP_RPCH`, `PCPIPCH`, `BCA_NGDPD`). Le flux courant n'indique pas son édition : elle est déduite de la plus récente archive et vérifiée par l'horizon servi (édition + 5), faute de quoi le script s'arrête. `produire_rapports.py` le lance à chaque exécution (`--sans-editions-api` pour s'en passer).
+
+Aujourd'hui, le classeur contient déjà les deux éditions servies : rien n'est ajouté. Vérifié en simulant le cas d'octobre — classeur privé de `S2026` : l'API la rétablit, et l'évaluation est identique à celle du classeur complet (78 490 projections, valeurs à 5·10⁻⁷ près, synthèse par horizon identique).
+
+102 tests ; dix mutations de l'horizon et des éditions, toutes rattrapées.
+
+---
+
 ## 🔭 Horizon de Prévision Automatique (29 Septembre 2026)
 
 L'API DataMapper renvoie à chaque appel toutes les années de l'édition du WEO — jusqu'en 2031 pour celle d'avril 2026 —, mais le pipeline coupait à `--fcst-end 2030`. Sans cette option, l'horizon est désormais celui de l'édition : la dernière année dont le PIB projeté couvre plus de la moitié des pays. Il avancera d'un an à chaque édition de printemps. 2031 couvre les mêmes 188 pays que 2030 : aucun pays ne perd son rang (183 dans le rapport de référence, 180 dans le plus récent).
