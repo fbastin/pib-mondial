@@ -29,13 +29,16 @@ pib-mondial/
 │   │   ├── gdp_imf_weo_raw.json        # Données brutes FMI WEO JSON
 │   │   ├── WEOhistorical.xlsx          # Prévisions d'époque, toutes éditions depuis 1990 (versionné)
 │   │   └── LISEZ-MOI-WEOhistorical.md  # Provenance et structure de ce classeur
-│   └── processed/
-│       ├── gdp_historical_2000_2024.csv # Données historiques Banque Mondiale
-│       ├── gdp_forecast_2025_2030.csv   # Prévisions FMI 2025-2030
-│       ├── gdp_unified_2000_2030.csv    # Série temporelle unifiée (2000-2030)
-│       ├── gdp_country_summary.csv      # Synthèse par pays, CAGR & classements
-│       ├── weo_forecast_evaluation_<indicateur>.csv # Une ligne par projection d'époque
-│       └── weo_forecast_bias_<indicateur>.csv       # Biais et erreurs par horizon
+│   ├── processed/
+│   │   ├── gdp_historical_2000_2024.csv # Données historiques Banque Mondiale
+│   │   ├── gdp_forecast_2025_2030.csv   # Prévisions FMI 2025-2030
+│   │   ├── gdp_unified_2000_2030.csv    # Série temporelle unifiée (2000-2030)
+│   │   ├── gdp_country_summary.csv      # Synthèse par pays, CAGR & classements
+│   │   ├── weo_forecast_evaluation_<indicateur>.csv # Une ligne par projection d'époque
+│   │   └── weo_forecast_bias_<indicateur>.csv       # Biais et erreurs par horizon
+│   └── plus_recent/                    # Rapport sur la dernière année publiée, s'il diffère
+│       ├── extraction_metadata.json
+│       └── processed/
 ├── outputs/                            # Livrables Excel & Visualisations
 │   ├── gdp_master_dataset.xlsx         # Classeur Excel multi-onglets complet
 │   ├── gdp_top10_trajectories_2000_2030.png # Graphique HD trajectoires Top 10
@@ -46,7 +49,9 @@ pib-mondial/
 │   ├── gdp_source_discrepancy_2024.png # Écart entre sources et marche évitée
 │   ├── gdp_forecast_accuracy.png       # Exactitude des prévisions FMI depuis 1990
 │   ├── gdp_dashboard_interactive.html  # Tableau de bord interactif HTML (Plotly)
-│   └── resultats_gdp.html              # Page de résultats autonome
+│   ├── resultats_gdp.html              # Page de résultats autonome
+│   └── plus_recent/                    # Mêmes livrables pour le rapport le plus récent
+├── produire_rapports.py                # Chaîne complète, pour chaque rapport
 ├── fetch_historical_gdp.py             # Collecte historique (Banque Mondiale)
 ├── fetch_forecast_gdp.py               # Collecte des prévisions (FMI)
 ├── http_utils.py                       # Requêtes HTTP communes : nouvelles tentatives, échec explicite
@@ -81,7 +86,13 @@ Les commandes ci-dessous supposent ce venv actif (`source ~/.venvs/gdp/bin/activ
 
 ### 2. Exécution du Pipeline Complet (Recommandé)
 
-Pour exécuter la collecte historique, les prévisions, l'unification des séries temporelles (2000-2030) et la génération du fichier Excel maître :
+Une commande enchaîne la collecte, l'unification des séries, le classeur Excel, l'évaluation des prévisions, les graphiques et la page de résultats, pour chaque rapport produit (voir *Deux rapports*) :
+
+```bash
+python produire_rapports.py
+```
+
+Elle transmet ses bornes à `gdp_pipeline.py`, qui peut aussi être lancé seul (collecte, séries et Excel uniquement) :
 
 ```bash
 python gdp_pipeline.py
@@ -89,8 +100,8 @@ python gdp_pipeline.py
 
 Arguments personnalisables :
 - `--start-year` : Année de début historique (par défaut: `2000`)
-- `--end-year` : Année de fin historique (par défaut: `2024`)
-- `--fcst-start` : Année de début prévision (par défaut, et obligatoirement : `--end-year` + 1)
+- `--end-year` : Dernière année observée (par défaut : choisie d'après les données, avec un second rapport sur la dernière année publiée si elle diffère ; imposée, elle donne un rapport unique)
+- `--fcst-start` : Année de début prévision, avec `--end-year` seulement (obligatoirement `--end-year` + 1)
 - `--fcst-end` : Année de fin prévision (par défaut: `2030`)
 - `--data-dir` / `--output-dir` : Dossiers de sortie (par défaut: `data` et `outputs`)
 
@@ -115,7 +126,7 @@ python gdp_pipeline.py --start-year 1995
   python fetch_forecast_gdp.py --forecast-start 2025 --forecast-end 2030
   ```
 
-- **Générer les graphiques et le dashboard interactif** :
+- **Générer les graphiques et le dashboard interactif** (pour le rapport le plus récent : `--data-dir data/plus_recent --output-dir outputs/plus_recent`) :
   ```bash
   python visualize_gdp.py [--data-dir data] [--output-dir outputs]
   ```
@@ -257,6 +268,23 @@ Le classement 2024 change sensiblement : la Chine passe 1ʳᵉ devant les États
 
 ---
 
+## 📅 Deux rapports : référence et plus récent
+
+La Banque Mondiale publie une nouvelle année pays par pays. En septembre 2026, 2025 est déjà disponible pour 186 pays, mais pas pour les Émirats arabes unis (27ᵉ économie), les Bahamas ou Aruba. Retenir 2025 comme dernière année observée les priverait de rang ; s'en tenir à 2024 ignorerait des données publiées. Le pipeline produit donc deux rapports :
+
+| Rapport | Emplacement | Dernière année observée | Pays classés |
+|---|---|---|---|
+| Référence | `data/`, `outputs/` | 2024 | 183 |
+| Plus récent | `data/plus_recent/`, `outputs/plus_recent/` | 2025 | 180 |
+
+**Règle de la référence.** Parmi les cinq dernières années observées, la plus récente dont les pays privés de rang pèsent moins de 0,1 % du PIB des pays classables sur ces cinq ans. Un seuil en PIB plutôt qu'en nombre de pays : 2023 classe un pays de plus que 2024 (Saint-Marin, 0,002 % du PIB), ce qui ne justifie pas de perdre une année ; 2025 en perd trois qui pèsent 0,49 %, dont les Émirats.
+
+**Le rapport le plus récent n'existe que s'il diffère.** Quand la dernière année publiée devient quasi complète, elle devient la référence et `plus_recent/` est supprimé : un rapport devenu sans objet ne reste pas en place, périmé.
+
+Chaque rapport décrit ce choix dans le bloc `rapport` de son `extraction_metadata.json` (années candidates, pays classés et poids des absents pour chacune), et sa page de résultats situe le lecteur, avec un lien vers l'autre rapport. Les notebooks lisent le rapport de référence.
+
+---
+
 ## ⚠️ Pays vs Agrégats
 
 Les deux API diffusent les agrégats (`WLD` World, `OED` OECD members, `EUU` European Union, groupes de revenu…) dans le même flux que les pays, avec un code sur 3 lettres identique en apparence. Le pipeline les identifie via les endpoints de métadonnées (`/v2/country` côté Banque Mondiale, région `NA` ; `/api/v1/countries` côté FMI) et marque chaque ligne d'un drapeau **`is_aggregate`** :
@@ -287,7 +315,7 @@ pytest test_gdp_pipeline.py -v
 pytest test_gdp_pipeline.py -m "not donnees"   # sans les fichiers produits
 ```
 
-85 tests, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
+91 tests, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
 
 | Invariant | Ce qu'il empêche |
 |---|---|
@@ -303,6 +331,7 @@ pytest test_gdp_pipeline.py -m "not donnees"   # sans les fichiers produits
 | Une source injoignable interrompt la collecte | Une colonne vide, ou des agrégats classés comme pays |
 | La série lue est celle du dernier run | Un graphique ou une évaluation bâtis sur un autre run |
 | La référence Banque Mondiale ne sert qu'à la croissance | Une inflation projetée comparée à la croissance observée |
+| Le rapport de référence reste quasi complet, le plus récent s'y ajoute sans le remplacer | Un classement privé des Émirats faute de donnée 2025, ou un rapport périmé laissé en place |
 
 Chaque invariant est **validé par mutation** : le défaut correspondant, réintroduit dans une copie du code, fait bien échouer la suite. Les tests marqués `donnees` contrôlent les CSV réellement produits et se sautent tant que le pipeline n'a pas tourné.
 

@@ -14,8 +14,10 @@ import os
 import sys
 import glob
 import json
+import shutil
 import logging
 import argparse
+import contextlib
 from datetime import datetime
 from typing import Optional
 
@@ -36,6 +38,16 @@ RACCORDS = {
     "GDP_PPP_Billions_USD": ("GDP_PPP_FMI_Billions_USD", "Facteur_Raccord_PPA"),
     "GDP_Per_Capita_USD": ("GDP_Per_Capita_FMI_USD", "Facteur_Raccord_Par_Habitant"),
 }
+
+# Deux rapports, quand la dernière année publiée est encore incomplète. La Banque Mondiale
+# publie une année pays par pays : en septembre 2026, 2025 manque encore pour les Émirats
+# arabes unis (27ᵉ économie). Le rapport de référence retient donc, parmi les
+# FENETRE_ANNEES dernières années observées, la plus récente dont les pays privés de rang
+# pèsent moins de SEUIL_PERTE_PIB_PCT % du PIB des pays classables sur la fenêtre ; le
+# rapport le plus récent, dans SOUS_DOSSIER_RECENT, porte sur la dernière année publiée.
+FENETRE_ANNEES = 5
+SEUIL_PERTE_PIB_PCT = 0.1
+SOUS_DOSSIER_RECENT = "plus_recent"
 
 
 def calculate_cagr(start_val: float, end_val: float, num_years: int) -> float:
@@ -401,7 +413,8 @@ def compute_country_summary(unified_df: pd.DataFrame, years: dict) -> pd.DataFra
 
 def write_extraction_metadata(data_dir: str, years: dict, fcst_start: int,
                               df_hist: pd.DataFrame, df_fcst: pd.DataFrame,
-                              df_unified: pd.DataFrame, df_summary: pd.DataFrame) -> str:
+                              df_unified: pd.DataFrame, df_summary: pd.DataFrame,
+                              rapport: Optional[dict] = None) -> str:
     """
     Enregistre la provenance de l'extraction à côté des données.
 
@@ -409,6 +422,9 @@ def write_extraction_metadata(data_dir: str, years: dict, fcst_start: int,
     par an : sans cette trace, des chiffres exportés ne sont plus rattachables à une
     version des sources. Le champ `lastupdated` de l'API Banque Mondiale donne le
     millésime réel ; l'API du FMI ne l'expose pas, seule la date d'extraction fait foi.
+
+    `rapport` décrit la place de ce rapport (référence, plus récent ou unique) et le
+    choix de sa dernière année observée.
     """
     y_end = years["end"]
     couverture = {
@@ -449,6 +465,7 @@ def write_extraction_metadata(data_dir: str, years: dict, fcst_start: int,
             "agregats_exclus": int(df_unified[df_unified["is_aggregate"].astype(bool)]["country_code"].nunique()),
         },
         "couverture_non_vide": couverture,
+        "rapport": rapport or {"type": "unique"},
     }
 
     path = os.path.join(data_dir, "extraction_metadata.json")
@@ -493,10 +510,146 @@ def unified_csv_path(data_dir: str = "data") -> str:
                             "pour désigner celle du dernier run. Relancez : python gdp_pipeline.py")
 
 
-def run_pipeline(start_year: int = 2000, end_year: int = 2024, fcst_start: Optional[int] = None,
+def latest_observed_year(df_hist: pd.DataFrame) -> int:
+    """
+    Dernière année publiée par la Banque Mondiale : la plus récente dont le PIB nominal
+    couvre au moins la moitié des pays de l'année la mieux couverte. Quelques valeurs
+    précoces ne font pas encore une année observée.
+    """
+    pays = df_hist[~df_hist["is_aggregate"].astype(bool)].dropna(subset=["GDP_Nominal_USD"])
+    couverture = pays.groupby("year")["country_code"].nunique()
+    return int(couverture[couverture >= couverture.max() / 2].index.max())
+
+
+def latest_levels(df_hist: pd.DataFrame) -> pd.Series:
+    """Dernier PIB nominal observé de chaque pays : le poids de son absence d'un classement."""
+    observe = df_hist.dropna(subset=["GDP_Nominal_USD"]).sort_values("year")
+    return observe.groupby("country_code")["GDP_Nominal_USD"].last()
+
+
+def choose_reference_year(classes: dict, poids: pd.Series,
+                          seuil_pct: float = SEUIL_PERTE_PIB_PCT) -> tuple:
+    """
+    Dernière année observée du rapport de référence.
+
+    `classes` associe à chaque année candidate l'ensemble des pays classés ; `poids` donne
+    le PIB de chaque pays. La perte d'une année est le poids des pays classés une autre
+    année mais pas celle-ci, rapporté au poids de tous les pays classables. Est retenue
+    l'année la plus récente dont la perte reste sous `seuil_pct` % — à défaut, celle qui
+    classe le plus de pays.
+
+    Un seuil en PIB plutôt qu'en nombre de pays : Saint-Marin, absent de 2024, ne doit pas
+    renvoyer le rapport en 2023, quand les Émirats, absents de 2025, justifient d'attendre.
+
+    Retourne l'année retenue et la perte, en %, de chaque année candidate.
+    """
+    classables = set().union(*classes.values())
+    total = poids.reindex(sorted(classables)).fillna(0).sum()
+    pertes = {
+        annee: float(poids.reindex(sorted(classables - pays)).fillna(0).sum() / total * 100) if total else 0.0
+        for annee, pays in classes.items()
+    }
+    retenues = [annee for annee, perte in pertes.items() if perte < seuil_pct]
+    if retenues:
+        return max(retenues), pertes
+    return max(classes, key=lambda annee: (len(classes[annee]), annee)), pertes
+
+
+@contextlib.contextmanager
+def _journal_resume():
+    """Tait le détail des calculs exploratoires ; les avertissements restent visibles."""
+    logging.disable(logging.INFO)
+    try:
+        yield
+    finally:
+        logging.disable(logging.NOTSET)
+
+
+def compute_report(df_hist: pd.DataFrame, df_fcst: pd.DataFrame,
+                   start_year: int, end_year: int, fcst_end: int) -> dict:
+    """
+    Calcule un rapport complet pour une dernière année observée, sans rien écrire.
+
+    L'historique est coupé à `end_year` et la frontière de prévision placée juste après :
+    les estimations du FMI des années antérieures restent en regard, pour le raccord.
+    """
+    hist = df_hist[df_hist["year"] <= end_year].copy()
+    fcst = df_fcst.copy()
+    fcst["is_forecast"] = fcst["year"] > end_year
+
+    unified = build_unified_dataset(hist, fcst)
+    unified = splice_forecast_levels(unified, base_year=end_year)
+    unified = extend_real_series(unified, base_year=end_year)
+
+    years = reference_years(start_year, end_year, fcst_end)
+    # Une année de référence absente viderait silencieusement toute une colonne
+    manquantes = [y for y in years.values() if y not in set(unified["year"])]
+    if manquantes:
+        logging.warning(f"Années de référence absentes des données : {manquantes}. "
+                        "Les colonnes correspondantes resteront vides.")
+
+    return {"years": years, "hist": hist, "fcst": fcst, "unified": unified,
+            "summary": compute_country_summary(unified, years)}
+
+
+def ranked_countries(report: dict) -> set:
+    summary = report["summary"]
+    return set(summary.loc[summary[f"Rank_{report['years']['end']}"].notna(), "country_code"])
+
+
+def write_report(report: dict, data_dir: str, output_dir: str, rapport: dict) -> None:
+    """Écrit les CSV, la provenance et le classeur Excel d'un rapport."""
+    years = report["years"]
+    start_year, end_year, fcst_end = years["start"], years["end"], years["fcst"]
+    processed_dir = os.path.join(data_dir, "processed")
+    os.makedirs(processed_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Extractions de chaque source, puis série unifiée et synthèse. Les noms portent les
+    # bornes réelles du run : un fichier « 2000_2030 » contenant autre chose serait un piège.
+    fichiers = {
+        f"gdp_historical_{start_year}_{end_year}.csv": report["hist"],
+        f"gdp_forecast_{end_year + 1}_{fcst_end}.csv": report["fcst"],
+        f"gdp_unified_{start_year}_{fcst_end}.csv": report["unified"],
+        "gdp_country_summary.csv": report["summary"],
+    }
+    for nom, df in fichiers.items():
+        df.to_csv(os.path.join(processed_dir, nom), index=False, encoding="utf-8-sig")
+    logging.info(f"Fichiers CSV générés dans {processed_dir} : {', '.join(fichiers)}")
+
+    # Provenance : les deux sources révisent leurs séries, il faut pouvoir dater
+    write_extraction_metadata(data_dir, years, end_year + 1, report["hist"], report["fcst"],
+                              report["unified"], report["summary"], rapport)
+
+    excel_path = os.path.join(output_dir, "gdp_master_dataset.xlsx")
+    with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
+        report["summary"].head(30).to_excel(writer, sheet_name="Top30_Economies", index=False)
+        report["summary"].to_excel(writer, sheet_name="Synthese_Pays", index=False)
+        report["unified"].to_excel(writer, sheet_name=f"Series_Temporelles_{start_year}_{fcst_end}", index=False)
+        report["hist"].to_excel(writer, sheet_name="Donnees_Historiques_Brutes", index=False)
+        report["fcst"].to_excel(writer, sheet_name="Previsions_FMI_Brutes", index=False)
+    logging.info(f"Classeur Excel enregistré : {excel_path}")
+
+
+def _retirer_rapport_recent(data_dir: str, output_dir: str) -> None:
+    """Un rapport plus récent qui n'a plus lieu d'être ne doit pas rester en place, périmé."""
+    for dossier in (os.path.join(data_dir, SOUS_DOSSIER_RECENT),
+                    os.path.join(output_dir, SOUS_DOSSIER_RECENT)):
+        if os.path.isdir(dossier):
+            shutil.rmtree(dossier)
+            logging.info(f"Rapport plus récent sans objet, supprimé : {dossier}")
+
+
+def run_pipeline(start_year: int = 2000, end_year: Optional[int] = None, fcst_start: Optional[int] = None,
                  fcst_end: int = 2030, data_dir: str = "data", output_dir: str = "outputs"):
     """
     Exécution complète du pipeline.
+
+    Sans `end_year`, la dernière année observée est choisie d'après les données : le
+    rapport de référence, dans `data_dir` et `output_dir`, porte sur l'année la plus récente
+    dont le classement est quasi complet (voir `choose_reference_year`) ; si la dernière
+    année publiée est plus récente, un second rapport lui est consacré dans le
+    sous-dossier `plus_recent/` de chacun. Avec `end_year`, un rapport unique.
 
     La prévision commence l'année suivant la dernière année observée (`fcst_start`, par
     défaut `end_year + 1`). Un trou entre les deux laisserait une année sans aucune
@@ -506,38 +659,41 @@ def run_pipeline(start_year: int = 2000, end_year: int = 2024, fcst_start: Optio
     Lève `ValueError` sur des bornes incohérentes et `RuntimeError` si une source reste
     injoignable : rien n'est alors écrit.
     """
-    if fcst_start is None:
-        fcst_start = end_year + 1
-    if fcst_start != end_year + 1:
-        raise ValueError(f"La prévision doit commencer l'année suivant la fin de l'historique "
-                         f"({end_year + 1}), pas en {fcst_start}.")
-    if not start_year < end_year < fcst_end:
-        raise ValueError(f"Bornes incohérentes : {start_year} < {end_year} < {fcst_end} attendu.")
+    if end_year is None:
+        if fcst_start is not None:
+            raise ValueError("--fcst-start suppose --end-year : sans lui, la dernière année "
+                             "observée est choisie d'après les données.")
+        if not start_year < fcst_end:
+            raise ValueError(f"Bornes incohérentes : {start_year} < {fcst_end} attendu.")
+    else:
+        if fcst_start is None:
+            fcst_start = end_year + 1
+        if fcst_start != end_year + 1:
+            raise ValueError(f"La prévision doit commencer l'année suivant la fin de l'historique "
+                             f"({end_year + 1}), pas en {fcst_start}.")
+        if not start_year < end_year < fcst_end:
+            raise ValueError(f"Bornes incohérentes : {start_year} < {end_year} < {fcst_end} attendu.")
 
-    processed_dir = os.path.join(data_dir, "processed")
     raw_dir = os.path.join(data_dir, "raw")
-    os.makedirs(processed_dir, exist_ok=True)
     os.makedirs(raw_dir, exist_ok=True)
-    os.makedirs(output_dir, exist_ok=True)
 
-    # 1. Extraction historique
+    # 1. Extraction historique, jusqu'à l'année en cours si la dernière année est à choisir
     logging.info("--- 1. Récupération des données historiques ---")
-    df_hist = fetch_all_historical_gdp(start_year=start_year, end_year=end_year)
+    df_hist = fetch_all_historical_gdp(start_year=start_year,
+                                       end_year=end_year or datetime.now().year)
+    if df_hist.empty:
+        raise RuntimeError("L'extraction historique n'a rien produit. Annulation du pipeline.")
+    derniere = end_year or latest_observed_year(df_hist)
+    if not start_year < derniere < fcst_end:
+        raise ValueError(f"Dernière année observée {derniere} hors de ]{start_year}, {fcst_end}[.")
 
-    # 2. Extraction prévisions
+    # 2. Extraction prévisions (le WEO couvre aussi les années observées)
     logging.info("--- 2. Récupération des données de prévision ---")
-    df_fcst, raw_json = fetch_all_forecasts(forecast_start_year=fcst_start,
+    df_fcst, raw_json = fetch_all_forecasts(forecast_start_year=derniere + 1,
                                             forecast_end_year=fcst_end,
                                             history_start_year=start_year)
-
-    if df_hist.empty or df_fcst.empty:
-        raise RuntimeError("Une des étapes d'extraction n'a rien produit. Annulation du pipeline.")
-
-    # 2bis. Conservation des extractions brutes de chaque source
-    hist_csv = os.path.join(processed_dir, f"gdp_historical_{start_year}_{end_year}.csv")
-    fcst_csv = os.path.join(processed_dir, f"gdp_forecast_{fcst_start}_{fcst_end}.csv")
-    df_hist.to_csv(hist_csv, index=False, encoding="utf-8-sig")
-    df_fcst.to_csv(fcst_csv, index=False, encoding="utf-8-sig")
+    if df_fcst.empty:
+        raise RuntimeError("L'extraction des prévisions n'a rien produit. Annulation du pipeline.")
 
     if raw_json:
         raw_json_path = os.path.join(raw_dir, "gdp_imf_weo_raw.json")
@@ -545,58 +701,67 @@ def run_pipeline(start_year: int = 2000, end_year: int = 2024, fcst_start: Optio
             json.dump(raw_json, f, indent=2, ensure_ascii=False)
         logging.info(f"Données brutes FMI enregistrées : {raw_json_path}")
 
-    # 3. Unification
-    logging.info("--- 3. Fusion et Unification ---")
-    df_unified = build_unified_dataset(df_hist, df_fcst)
-    df_unified = splice_forecast_levels(df_unified, base_year=end_year)
-    df_unified = extend_real_series(df_unified, base_year=end_year)
+    # 3. Rapport unique si la dernière année observée est imposée
+    if end_year is not None:
+        logging.info(f"--- 3. Rapport unique, historique jusqu'en {end_year} ---")
+        write_report(compute_report(df_hist, df_fcst, start_year, end_year, fcst_end),
+                     data_dir, output_dir, {"type": "unique"})
+        _retirer_rapport_recent(data_dir, output_dir)
+        logging.info("Pipeline terminé avec succès !")
+        return
 
-    # 4. Synthèse et Rangs
-    logging.info("--- 4. Analyse et Synthèse par Pays ---")
-    years = reference_years(start_year, end_year, fcst_end)
+    # 3. Choix du rapport de référence parmi les dernières années observées
+    candidates = range(max(start_year + 1, derniere - FENETRE_ANNEES + 1), derniere + 1)
+    logging.info(f"--- 3. Choix de la dernière année observée parmi {candidates[0]}-{derniere} ---")
+    with _journal_resume():
+        classes = {annee: ranked_countries(compute_report(df_hist, df_fcst, start_year, annee, fcst_end))
+                   for annee in candidates}
+    reference, pertes = choose_reference_year(classes, latest_levels(df_hist[df_hist["year"] <= derniere]))
+    for annee in candidates:
+        logging.info(f"-> {annee} : {len(classes[annee])} pays classés, "
+                     f"pays sans rang pesant {pertes[annee]:.3f} % du PIB")
 
-    # Une année de référence absente viderait silencieusement toute une colonne
-    manquantes = [y for y in years.values() if y not in set(df_unified["year"])]
-    if manquantes:
-        logging.warning(f"Années de référence absentes des données : {manquantes}. "
-                        "Les colonnes correspondantes resteront vides.")
+    noms = df_hist.drop_duplicates("country_code", keep="last").set_index("country_code")["country_name"]
+    choix = {
+        "annee_reference": reference,
+        "annee_plus_recente": derniere,
+        "regle": (f"année observée la plus récente, parmi les {FENETRE_ANNEES} dernières, dont les "
+                  f"pays sans rang pèsent moins de {SEUIL_PERTE_PIB_PCT} % du PIB des pays classables"),
+        "candidates": {str(a): {"pays_classes": len(classes[a]), "perte_pib_pct": round(pertes[a], 4)}
+                       for a in candidates},
+    }
 
-    df_summary = compute_country_summary(df_unified, years)
+    # 4. Rapport de référence, à l'emplacement habituel
+    logging.info(f"--- 4. Rapport de référence : historique jusqu'en {reference} ---")
+    recent = derniere != reference
+    write_report(compute_report(df_hist, df_fcst, start_year, reference, fcst_end), data_dir, output_dir,
+                 {"type": "reference", **choix, "autre_rapport": SOUS_DOSSIER_RECENT if recent else None})
 
-    # 5. Enregistrement des fichiers CSV. Le nom porte les bornes réelles du run :
-    # un fichier « 2000_2030 » contenant autre chose serait un piège.
-    unified_csv = os.path.join(processed_dir, f"gdp_unified_{start_year}_{fcst_end}.csv")
-    summary_csv = os.path.join(processed_dir, "gdp_country_summary.csv")
+    # 5. Rapport le plus récent, s'il diffère
+    if recent:
+        sans_rang = sorted(noms.get(c, c) for c in classes[reference] - classes[derniere])
+        logging.info(f"--- 5. Rapport le plus récent : historique jusqu'en {derniere} "
+                     f"(sans rang faute de donnée {derniere} : {' ; '.join(sans_rang)}) ---")
+        write_report(compute_report(df_hist, df_fcst, start_year, derniere, fcst_end),
+                     os.path.join(data_dir, SOUS_DOSSIER_RECENT),
+                     os.path.join(output_dir, SOUS_DOSSIER_RECENT),
+                     {"type": "plus_recent", **choix, "autre_rapport": "..",
+                      "pays_sans_rang_par_rapport_a_la_reference": sans_rang})
+    else:
+        _retirer_rapport_recent(data_dir, output_dir)
 
-    df_unified.to_csv(unified_csv, index=False, encoding="utf-8-sig")
-    df_summary.to_csv(summary_csv, index=False, encoding="utf-8-sig")
-
-    logging.info(f"Fichiers CSV générés : \n - {unified_csv}\n - {summary_csv}")
-
-    # 5bis. Provenance : les deux sources révisent leurs séries, il faut pouvoir dater
-    write_extraction_metadata(data_dir, years, fcst_start, df_hist, df_fcst, df_unified, df_summary)
-
-    # 6. Export Excel Structuré Multi-Onglets
-    excel_path = os.path.join(output_dir, "gdp_master_dataset.xlsx")
-    logging.info(f"Création du classeur Excel maître : {excel_path}")
-
-    with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
-        df_summary.head(30).to_excel(writer, sheet_name="Top30_Economies", index=False)
-        df_summary.to_excel(writer, sheet_name="Synthese_Pays", index=False)
-        df_unified.to_excel(writer, sheet_name=f"Series_Temporelles_{start_year}_{fcst_end}", index=False)
-        df_hist.to_excel(writer, sheet_name="Donnees_Historiques_Brutes", index=False)
-        df_fcst.to_excel(writer, sheet_name="Previsions_FMI_Brutes", index=False)
-
-    logging.info(f"Classeur Excel enregistré avec succès : {excel_path}")
     logging.info("Pipeline terminé avec succès !")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Pipeline complet de collecte et traitement du PIB.")
     parser.add_argument("--start-year", type=int, default=2000)
-    parser.add_argument("--end-year", type=int, default=2024)
+    parser.add_argument("--end-year", type=int, default=None,
+                        help="Dernière année observée. Par défaut, choisie d'après les données : "
+                             "rapport de référence, plus un rapport sur la dernière année publiée "
+                             "si elle diffère (sous-dossiers plus_recent/)")
     parser.add_argument("--fcst-start", type=int, default=None,
-                        help="Début de la prévision (par défaut, et obligatoirement : end-year + 1)")
+                        help="Début de la prévision, avec --end-year seulement (obligatoirement end-year + 1)")
     parser.add_argument("--fcst-end", type=int, default=2030)
     parser.add_argument("--data-dir", type=str, default="data", help="Dossier des données")
     parser.add_argument("--output-dir", type=str, default="outputs", help="Dossier des livrables")

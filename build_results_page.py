@@ -9,10 +9,11 @@ Rien n'est saisi en dur. Une page dont les chiffres sont recopiés se désynchro
 silencieusement des données au premier nouveau run — c'est précisément le défaut que
 le reste du pipeline s'attache à éviter.
 
-    python gdp_pipeline.py && python visualize_gdp.py && python build_results_page.py
+    python produire_rapports.py        # référence et, le cas échéant, plus récent
 """
 
 import os
+import json
 import base64
 import logging
 import argparse
@@ -66,6 +67,47 @@ def colonnes(annees: dict) -> dict:
         "rang_ppa": f"Rank_PPA_{o}",
         "ecart_rang": f"Ecart_Rang_Nominal_PPA_{o}",
     }
+
+
+def liste_pays(noms: list) -> str:
+    """Énumère des pays ; un nom qui contient une virgule (« Bahamas, The ») est guillemeté."""
+    noms = [f"« {nom} »" if "," in nom else nom for nom in noms]
+    return noms[0] if len(noms) == 1 else ", ".join(noms[:-1]) + " et " + noms[-1]
+
+
+def note_rapport(data_dir: str, annee: int) -> str:
+    """
+    Situe la page parmi les rapports produits : référence ou plus récent, et ce qui les
+    sépare. Rien pour un rapport unique (dernière année imposée).
+    """
+    try:
+        with open(os.path.join(data_dir, "extraction_metadata.json"), encoding="utf-8") as f:
+            rapport = json.load(f).get("rapport", {})
+    except FileNotFoundError:
+        return ""
+    candidates = rapport.get("candidates", {})
+    classes = {int(a): c["pays_classes"] for a, c in candidates.items()}
+    reference, recente = rapport.get("annee_reference"), rapport.get("annee_plus_recente")
+
+    if rapport.get("type") == "reference" and rapport.get("autre_rapport"):
+        texte = (f"Rapport de référence : {annee} est la dernière année observée dont le classement est "
+                 f"quasi complet ({classes.get(annee, '?')} pays classés). Les données {recente}, déjà "
+                 f"publiées pour une partie des pays, font l'objet d'un "
+                 f'<a href="{rapport["autre_rapport"]}/resultats_gdp.html">rapport plus récent</a>, '
+                 f"qui classe {classes.get(recente, '?')} pays.")
+    elif rapport.get("type") == "reference":
+        texte = (f"{annee} est la dernière année publiée par la Banque Mondiale, et son classement "
+                 f"est quasi complet ({classes.get(annee, '?')} pays classés).")
+    elif rapport.get("type") == "plus_recent":
+        sans_rang = rapport.get("pays_sans_rang_par_rapport_a_la_reference", [])
+        texte = (f"Rapport le plus récent : {annee}, dernière année publiée par la Banque Mondiale, "
+                 f"encore incomplète. Faute de donnée {annee}, {liste_pays(sans_rang) if sans_rang else 'aucun pays'} "
+                 f"sort{'ent' if len(sans_rang) > 1 else ''} du classement ({classes.get(annee, '?')} pays "
+                 f'classés contre {classes.get(reference, "?")} dans le <a href="../resultats_gdp.html">'
+                 f"rapport de référence</a>, sur {reference}).")
+    else:
+        return ""
+    return f'    <p class="lede note">{texte}</p>\n'
 
 
 def image(output_dir: str, nom: str):
@@ -484,7 +526,7 @@ def construire(data_dir: str, output_dir: str, pays_detail: str) -> str:
     <h1>PIB mondial, {d}–{f}</h1>
     <p class="lede">Historique Banque Mondiale jusqu'en {o}, prévisions FMI WEO jusqu'en {f},
     lus en prix courants, en volume et à parité de pouvoir d'achat.</p>
-  </header>
+{note_rapport(data_dir, o)}  </header>
 
   <dl class="run">
     <div class="stat"><dt>Pays classés</dt><dd>{classes}</dd></div>

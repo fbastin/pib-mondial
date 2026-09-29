@@ -1,9 +1,10 @@
 # Tout ce qui se régénère en une minute par le pipeline n'a pas à être versionné :
-#   python gdp_pipeline.py && python visualize_gdp.py && python build_results_page.py
+#   python produire_rapports.py
 
 # Données dérivées et livrables
 outputs/
 data/processed/
+data/plus_recent/
 data/raw/gdp_imf_weo_raw.json
 data/extraction_metadata.json
 

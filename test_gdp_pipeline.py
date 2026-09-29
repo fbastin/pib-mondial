@@ -15,12 +15,14 @@ les fichiers réellement produits et se sautent d'eux-mêmes s'ils sont absents.
 """
 
 import os
+import json
 
 import numpy as np
 import pandas as pd
 import pytest
 
 import http_utils
+import gdp_pipeline
 import fetch_historical_gdp
 import fetch_forecast_gdp
 from gdp_pipeline import (
@@ -32,6 +34,8 @@ from gdp_pipeline import (
     compute_country_summary,
     run_pipeline,
     unified_csv_path,
+    latest_observed_year,
+    choose_reference_year,
 )
 from visualize_gdp import detect_years
 
@@ -423,6 +427,113 @@ class TestBornesDuPipeline:
         with pytest.raises(ValueError, match="incohérentes"):
             run_pipeline(start_year=2024, end_year=2024, fcst_end=2030,
                          data_dir=str(tmp_path / "data"), output_dir=str(tmp_path / "out"))
+
+
+def _avec_pays_c(df: pd.DataFrame) -> pd.DataFrame:
+    """Ajoute Pays C, grande économie calquée sur Pays A."""
+    c = df[df.country_code == "AAA"].copy()
+    c["country_code"], c["country_name"] = "CCC", "Pays C"
+    return pd.concat([df, c], ignore_index=True)
+
+
+def _historique_jusqu_en_2025(pays_c_publie: bool) -> pd.DataFrame:
+    """
+    Extraction Banque Mondiale 2000-2025. L'année 2025 est publiée pour Pays A et B mais,
+    si `pays_c_publie` est faux, pas encore pour Pays C — le cas des Émirats arabes unis
+    (27ᵉ économie) en septembre 2026.
+    """
+    historique = _avec_pays_c(_historique())
+    derniere = historique[historique.year == 2024].copy()
+    derniere["year"] = 2025
+    if not pays_c_publie:
+        derniere = derniere[derniere.country_code != "CCC"]
+    return pd.concat([historique, derniere], ignore_index=True)
+
+
+class TestDeuxRapports:
+    """
+    La dernière année publiée arrive pays par pays. Le rapport de référence retient la plus
+    récente dont le classement est quasi complet ; la dernière année publiée, si elle est
+    plus récente, fait l'objet d'un second rapport, sans jamais remplacer le premier.
+    """
+
+    def test_derniere_annee_observee(self):
+        historique = _historique_jusqu_en_2025(pays_c_publie=False)
+        assert latest_observed_year(historique) == 2025          # 2 pays sur 3
+        precoce = historique[(historique.year < 2025) | (historique.country_code == "AAA")]
+        assert latest_observed_year(precoce) == 2024             # 1 pays sur 3 : valeur précoce
+
+    def test_seuil_en_pib_et_non_en_nombre_de_pays(self):
+        """
+        Saint-Marin, absent de 2024, ne doit pas renvoyer la référence en 2023 ; une grande
+        économie absente de 2025 doit, elle, la maintenir en 2024.
+        """
+        poids = pd.Series({"USA": 30000.0, "ARE": 550.0, "FRA": 3000.0, "SMR": 2.0})
+        classes = {2023: {"USA", "ARE", "FRA", "SMR"},
+                   2024: {"USA", "ARE", "FRA"},
+                   2025: {"USA", "FRA"}}
+        annee, pertes = choose_reference_year(classes, poids, seuil_pct=0.1)
+        assert annee == 2024
+        assert pertes[2024] < 0.1 < pertes[2025]
+
+    def test_derniere_annee_retenue_si_complete(self):
+        poids = pd.Series({"USA": 30000.0, "FRA": 3000.0})
+        annee, _ = choose_reference_year({2024: {"USA", "FRA"}, 2025: {"USA", "FRA"}}, poids)
+        assert annee == 2025
+
+    @staticmethod
+    def _run(tmp_path, monkeypatch, pays_c_publie):
+        monkeypatch.setattr(gdp_pipeline, "fetch_all_historical_gdp",
+                            lambda start_year, end_year: _historique_jusqu_en_2025(pays_c_publie))
+        monkeypatch.setattr(gdp_pipeline, "fetch_all_forecasts",
+                            lambda **kwargs: (_avec_pays_c(_fmi_avec_historique()), {}))
+        data, sorties = tmp_path / "data", tmp_path / "outputs"
+        run_pipeline(data_dir=str(data), output_dir=str(sorties))
+        return data, sorties
+
+    @staticmethod
+    def _meta(dossier):
+        return json.loads((dossier / "extraction_metadata.json").read_text(encoding="utf-8"))
+
+    def test_reference_en_place_et_plus_recent_a_part(self, tmp_path, monkeypatch):
+        data, sorties = self._run(tmp_path, monkeypatch, pays_c_publie=False)
+
+        reference, recent = self._meta(data), self._meta(data / "plus_recent")
+        assert reference["bornes"]["historique"] == [2000, 2024]
+        assert reference["rapport"]["type"] == "reference"
+        assert reference["rapport"]["autre_rapport"] == "plus_recent"
+        assert recent["bornes"]["historique"] == [2000, 2025]
+        assert recent["rapport"]["pays_sans_rang_par_rapport_a_la_reference"] == ["Pays C"]
+
+        synthese = pd.read_csv(data / "processed" / "gdp_country_summary.csv").set_index("country_code")
+        synthese_recente = pd.read_csv(unified_csv_path(str(data / "plus_recent")).replace(
+            "gdp_unified_2000_2030.csv", "gdp_country_summary.csv")).set_index("country_code")
+        assert synthese.loc["CCC", "Rank_2024"] == synthese.loc["AAA", "Rank_2024"]
+        assert pd.isna(synthese_recente.loc["CCC", "Rank_2025"])
+        assert synthese_recente["Rank_2025"].notna().sum() == 2
+
+        assert (sorties / "gdp_master_dataset.xlsx").exists()
+        assert (sorties / "plus_recent" / "gdp_master_dataset.xlsx").exists()
+
+    def test_un_seul_rapport_quand_la_derniere_annee_est_complete(self, tmp_path, monkeypatch):
+        """Un rapport plus récent périmé, laissé par un run précédent, doit disparaître."""
+        (tmp_path / "data" / "plus_recent").mkdir(parents=True)
+        (tmp_path / "outputs" / "plus_recent").mkdir(parents=True)
+        data, sorties = self._run(tmp_path, monkeypatch, pays_c_publie=True)
+
+        assert self._meta(data)["bornes"]["historique"] == [2000, 2025]
+        assert self._meta(data)["rapport"]["autre_rapport"] is None
+        assert not (data / "plus_recent").exists()
+        assert not (sorties / "plus_recent").exists()
+
+    def test_note_de_la_page_de_resultats(self, tmp_path, monkeypatch):
+        """Chaque page dit quel rapport elle présente et renvoie vers l'autre."""
+        from build_results_page import note_rapport
+        data, _ = self._run(tmp_path, monkeypatch, pays_c_publie=False)
+        note_reference = note_rapport(str(data), 2024)
+        note_recente = note_rapport(str(data / "plus_recent"), 2025)
+        assert "Rapport de référence" in note_reference and "plus_recent/resultats_gdp.html" in note_reference
+        assert "Pays C sort du classement" in note_recente and "../resultats_gdp.html" in note_recente
 
 
 class TestRecouvrementSources:

@@ -159,6 +159,7 @@ Les niveaux de prévision à parité étant obtenus par chaînage à partir du d
     \item \texttt{fetch\_forecast\_gdp.py}: Collecte des prévisions (FMI WEO).
     \item \texttt{http\_utils.py}: Requêtes HTTP communes aux deux collectes (nouvelles tentatives, échec explicite).
     \item \texttt{gdp\_pipeline.py}: Pipeline maître d'unification et d'export Excel / CSV.
+    \item \texttt{produire\_rapports.py}: Chaîne complète, pour le rapport de référence et, le cas échéant, le plus récent.
     \item \texttt{evaluate\_forecasts.py}: Évaluation des prévisions d'époque du FMI.
     \item \texttt{visualize\_gdp.py}: Génération des graphiques PNG et du Dashboard HTML.
     \item \texttt{build\_results\_page.py}: Page HTML de résultats, construite depuis les CSV et les PNG produits.
@@ -173,6 +174,17 @@ Les quatre bornes du run (\texttt{-{}-start-year}, \texttt{-{}-end-year}, \textt
 La prévision doit commencer l'année suivant la fin de l'historique (\texttt{-{}-fcst-start} vaut par défaut \texttt{-{}-end-year}$+1$): un trou laisserait une année sans donnée, qu'un chaînage franchirait; un chevauchement ferait passer une prévision pour la base observée du raccord. Des bornes incohérentes sont refusées avant toute requête.
 
 Chaque requête est retentée trois fois. Une source ou un indicateur qui reste injoignable interrompt le pipeline avec un code de sortie non nul, sans rien écrire: une colonne manquante viderait silencieusement les métriques qui en dépendent, et une liste de pays manquante laisserait les agrégats entrer dans les classements.
+
+\subsection{Deux Rapports: Référence et Plus Récent}
+La Banque Mondiale publie une nouvelle année pays par pays. En septembre 2026, 2025 est disponible pour 186 pays, mais pas pour les Émirats arabes unis (27\textsuperscript{e} économie), les Bahamas ou Aruba: retenir 2025 comme dernière année observée les priverait de rang, s'en tenir à 2024 ignorerait des données publiées.
+
+Sauf si \texttt{-{}-end-year} l'impose, la dernière année observée est donc choisie d'après les données, et deux rapports peuvent coexister:
+\begin{itemize}
+    \item le \textbf{rapport de référence}, dans \texttt{data/} et \texttt{outputs/}: parmi les cinq dernières années observées, la plus récente dont les pays privés de rang pèsent moins de $0{,}1\%$ du PIB des pays classables sur ces cinq ans --- aujourd'hui 2024, 183 pays classés;
+    \item le \textbf{rapport le plus récent}, dans les sous-dossiers \texttt{plus\_recent/}, sur la dernière année publiée --- aujourd'hui 2025, 180 pays classés. Il n'existe que s'il diffère de la référence, et il est supprimé dès que la dernière année publiée devient quasi complète.
+\end{itemize}
+
+Le seuil porte sur le PIB plutôt que sur le nombre de pays: 2023 classe un pays de plus que 2024 (Saint-Marin, $0{,}002\%$ du PIB), ce qui ne justifie pas de perdre une année, quand les trois pays absents de 2025 pèsent $0{,}49\%$. Le bloc \texttt{rapport} de chaque \texttt{extraction\_metadata.json} consigne ce choix, et la page de résultats de chaque rapport renvoie vers l'autre. La commande \texttt{produire\_rapports.py} enchaîne collecte, évaluation, graphiques et page de résultats pour chacun.
 
 \section{Évaluation des Prévisions}
 
@@ -223,7 +235,7 @@ Le champ \texttt{derniere\_mise\_a\_jour} reprend le \texttt{lastupdated} décla
 
 \section{Tests des Invariants}
 
-Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (85 tests, sans accès réseau) fixe les propriétés correspondantes:
+Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (91 tests, sans accès réseau) fixe les propriétés correspondantes:
 
 \begin{itemize}
     \item les agrégats sont absents des classements par pays;
@@ -237,7 +249,8 @@ Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur si
     \item un CAGR non calculable vaut \texttt{NaN} et non une valeur de repli;
     \item une source injoignable interrompt la collecte, et une réponse paginée est lue en entier;
     \item la série lue en aval est celle du dernier run;
-    \item la référence Banque Mondiale ne sert qu'à évaluer la croissance du PIB.
+    \item la référence Banque Mondiale ne sert qu'à évaluer la croissance du PIB;
+    \item le rapport de référence reste quasi complet, le plus récent s'y ajoute sans le remplacer, et un rapport devenu sans objet est supprimé.
 \end{itemize}
 
 Les tests marqués \texttt{donnees} portent sur les fichiers réellement produits et se sautent tant que le pipeline n'a pas été exécuté.

@@ -5,6 +5,21 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 📅 Deux Rapports : Référence et Plus Récent (29 Septembre 2026)
+
+La Banque Mondiale publie 2025 pour 186 pays, mais pas encore pour les Émirats arabes unis (27ᵉ économie), les Bahamas et Aruba. `--end-year 2025` les privait de rang ; `--end-year 2024`, défaut jusque-là, ignorait les données publiées.
+
+Sans `--end-year`, le pipeline choisit désormais la dernière année observée d'après les données et produit jusqu'à deux rapports :
+
+- **Référence** (`data/`, `outputs/`) : parmi les cinq dernières années observées, la plus récente dont les pays sans rang pèsent moins de 0,1 % du PIB des pays classables — 2024, 183 pays classés. Seuil en PIB et non en nombre de pays : un maximum strict aurait retenu 2023 pour le seul Saint-Marin (0,002 % du PIB).
+- **Plus récent** (`plus_recent/`) : la dernière année publiée — 2025, 180 pays. N'existe que s'il diffère de la référence ; supprimé dès qu'il devient sans objet, pour ne pas laisser un rapport périmé en place.
+
+Le choix est consigné dans le bloc `rapport` de chaque `extraction_metadata.json`, et chaque page de résultats renvoie vers l'autre rapport. `produire_rapports.py` enchaîne la chaîne complète pour chacun. Vérifié : le rapport de référence est identique, octet pour octet, à celui du code précédent avec `--end-year 2024`, évaluation comprise.
+
+91 tests ; six mutations du mécanisme (seuil ignoré, règle en nombre de pays, rapport périmé conservé, valeurs précoces prises pour une année, frontière de prévision non déplacée, rapports intervertis), toutes rattrapées.
+
+---
+
 ## 🔧 Correctifs du 29 Septembre 2026
 
 Une revue du dépôt, menée en exécutant le pipeline sur les données réelles, a mis au jour trois défauts du même type que ceux du 12 août — des valeurs fausses, sans aucune erreur — et plusieurs fragilités.
