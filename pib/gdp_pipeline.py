@@ -92,7 +92,7 @@ def build_unified_dataset(hist_df: pd.DataFrame, fcst_df: pd.DataFrame) -> pd.Da
 
     # Colonnes communes à conserver
     common_cols = [
-        "country_code", "country_name", "year", "data_type", "is_forecast", "is_aggregate",
+        "country_code", "country_name", "year", "data_type", "is_forecast", "is_aggregate", "income_group",
         "GDP_Nominal_Billions_USD", "GDP_Growth_Pct",
         "GDP_PPP_Billions_USD", "GDP_Per_Capita_USD",
         "GDP_Real_Billions_USD", "GDP_Real_PPP_Billions_Intl"
@@ -126,6 +126,12 @@ def build_unified_dataset(hist_df: pd.DataFrame, fcst_df: pd.DataFrame) -> pd.Da
         .set_index("country_code")["is_aggregate"]
     )
     unified["is_aggregate"] = unified["country_code"].map(canonical_flags).fillna(unified["is_aggregate"])
+
+    # Groupe de revenu : fourni par la Banque Mondiale, étendu aux années de prévision
+    if "income_group" in unified.columns:
+        groupes = (unified[~unified["is_forecast"]].dropna(subset=["income_group"])
+                   .drop_duplicates(subset=["country_code"]).set_index("country_code")["income_group"])
+        unified["income_group"] = unified["country_code"].map(groupes)
 
     # Dédoublonner au cas où l'année de jonction (ex: 2024/2025) chevauche
     unified.sort_values(by=["country_code", "year", "is_forecast"], inplace=True)
@@ -311,6 +317,8 @@ def compute_country_summary(unified_df: pd.DataFrame, years: dict) -> pd.DataFra
     ) if "GDP_Real_PPP_Billions_Intl" in df_countries.columns else pd.DataFrame()
 
     names = df_countries.drop_duplicates(subset=["country_code"]).set_index("country_code")["country_name"]
+    groupes = (df_countries.dropna(subset=["income_group"]).drop_duplicates(subset=["country_code"])
+               .set_index("country_code")["income_group"]) if "income_group" in df_countries.columns else pd.Series(dtype=object)
 
     summary_rows = []
     for _, row in pivoted.iterrows():
@@ -349,6 +357,7 @@ def compute_country_summary(unified_df: pd.DataFrame, years: dict) -> pd.DataFra
         summary_rows.append({
             "country_code": ccode,
             "country_name": cname,
+            "income_group": groupes.get(ccode),
             f"GDP_{y_start}_Billion_USD": gdp_start,
             f"GDP_{y_mid}_Billion_USD": gdp_mid,
             f"GDP_{y_end}_Billion_USD": gdp_end,

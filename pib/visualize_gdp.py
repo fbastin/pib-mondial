@@ -67,6 +67,11 @@ def detect_years(df_unified: pd.DataFrame) -> dict:
 
 
 
+def milliers(n) -> str:
+    """Nombre entier avec une espace fine insécable comme séparateur de milliers."""
+    return f"{int(n):,}".replace(",", "\u202f")
+
+
 def plot_top10_gdp_trajectories(df_unified: pd.DataFrame, df_summary: pd.DataFrame, years: dict, output_dir: str = "outputs"):
     """
     Trace l'évolution du PIB nominal des 10 plus grandes économies mondiales de 2000 à 2030.
@@ -442,17 +447,27 @@ def plot_forecast_accuracy(data_dir: str = "data", output_dir: str = "outputs"):
     par_h = ev.groupby("horizon")["erreur_vs_fmi"].agg(
         biais="mean", absolue=lambda s: s.abs().mean()).reset_index()
 
+    # Biais pondéré par le PIB de l'année visée : ce que l'erreur pèse dans l'économie mondiale
+    if "poids_pib" in ev.columns:
+        pondere = (ev.dropna(subset=["poids_pib"]).groupby("horizon")
+                   .apply(lambda g: np.average(g["erreur_vs_fmi"], weights=g["poids_pib"]), include_groups=False))
+        par_h["pondere"] = par_h["horizon"].map(pondere)
+
     x = par_h["horizon"]
     ax1.bar(x - 0.2, par_h["biais"], 0.4, color="#e67e22", label="Biais moyen")
     ax1.bar(x + 0.2, par_h["absolue"], 0.4, color="#7f8c8d", alpha=0.85,
             label="Erreur absolue moyenne")
+    if "pondere" in par_h.columns:
+        ax1.scatter(x - 0.2, par_h["pondere"], marker="D", s=40, color="#2c3e50", zorder=3,
+                    label="Biais pondéré par le PIB")
     ax1.axhline(0, color="#555555", linewidth=0.9)
     ax1.set_xticks(x)
     ax1.set_xlabel("Horizon de projection (années)", fontsize=10, fontweight="bold")
     ax1.set_ylabel("Points de croissance", fontsize=10)
     ax1.set_title("Biais et erreur absolue\npar horizon de projection",
                   fontsize=12, fontweight="bold", pad=12)
-    ax1.legend(fontsize=9, frameon=True)
+    ax1.set_ylim(top=par_h["absolue"].max() * 1.35)      # place pour la légende au-dessus des barres
+    ax1.legend(fontsize=9, frameon=True, loc="upper left")
     ax1.grid(axis="y", linestyle="--", alpha=0.5)
 
     for _, r in par_h.iterrows():
@@ -484,12 +499,89 @@ def plot_forecast_accuracy(data_dir: str = "data", output_dir: str = "outputs"):
                  f"(éditions {ev['annee_millesime'].min()}-{ev['annee_millesime'].max()})",
                  fontsize=14, fontweight="bold")
     plt.figtext(0.5, 0.015,
-                f"{len(ev):,} projections de croissance réelle, {ev['country_code'].nunique()} pays. "
+                f"{milliers(len(ev))} projections de croissance réelle, {ev['country_code'].nunique()} pays. "
                 "Erreur = projeté − ré-estimé un an après. Positif = trop optimiste.",
                 fontsize=9, fontstyle="italic", color="#555555", ha="center")
 
     plt.tight_layout(rect=[0, 0.04, 1, 0.93])
     output_png = os.path.join(output_dir, "gdp_forecast_accuracy.png")
+    plt.savefig(output_png)
+    plt.close()
+    logging.info(f"Graphique enregistré : {output_png}")
+
+
+# Libellés des groupes de revenu de la Banque Mondiale
+GROUPES_REVENU = {"HIC": "Revenu élevé", "UMC": "Revenu interm. supérieur",
+                  "LMC": "Revenu interm. inférieur", "LIC": "Faible revenu"}
+
+
+def plot_level_errors(data_dir: str = "data", output_dir: str = "outputs"):
+    """
+    PIB prévu face au PIB réalisé : erreur sur le niveau du PIB en volume, par horizon.
+
+    Alimenté par `pib.evaluate_forecasts`, qui enchaîne les croissances prévues par chaque
+    édition du WEO et les compare au réalisé. Omis si cette évaluation n'a pas été lancée.
+    """
+    processed = os.path.join(data_dir, "processed")
+    chemin = os.path.join(processed, "weo_level_bias_ngdp_rpch.csv")
+    if not os.path.exists(chemin):
+        logging.warning("Erreurs de niveau absentes : graphique omis (lancer python -m pib.evaluate_forecasts).")
+        return
+
+    logging.info("Génération du graphique des erreurs de niveau...")
+    niveau = pd.read_csv(chemin)
+    niveau = niveau[niveau["reference"].str.startswith("FMI")].sort_values("horizon")
+    if niveau.empty:
+        return
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6.5), dpi=300, gridspec_kw={"width_ratios": [1.2, 1]})
+    x = niveau["horizon"]
+    ax1.fill_between(x, niveau["p10"], niveau["p90"], color="#e67e22", alpha=0.15,
+                     label="80 % des cas (10ᵉ à 90ᵉ centile)")
+    ax1.fill_between(x, niveau["p25"], niveau["p75"], color="#e67e22", alpha=0.3,
+                     label="50 % des cas (quartiles)")
+    ax1.plot(x, niveau["mediane"], color="#b9611a", linewidth=2.4, marker="o", label="Médiane")
+    ax1.plot(x, niveau["moyenne_ponderee_pib"], color="#2c3e50", linewidth=1.6, linestyle="--",
+             marker="D", markersize=5, label="Moyenne pondérée par le PIB")
+    ax1.axhline(0, color="#555555", linewidth=0.9)
+    fin = niveau.iloc[-1]
+    ax1.annotate(f"{fin['mediane']:+.1f} %", xy=(fin["horizon"], fin["mediane"]), xytext=(8, 0),
+                 textcoords="offset points", va="center", fontsize=9, fontweight="bold", color="#b9611a")
+    ax1.set_xticks(x)
+    ax1.set_xlabel("Horizon de projection (années)", fontsize=10, fontweight="bold")
+    ax1.set_ylabel("Niveau prévu / niveau réalisé − 1 (%)", fontsize=10)
+    ax1.set_title("Erreur sur le niveau du PIB en volume\n(positif : niveau prévu trop haut)",
+                  fontsize=12, fontweight="bold", pad=12)
+    ax1.legend(fontsize=9, frameon=True, loc="upper left")
+    ax1.grid(axis="y", linestyle="--", alpha=0.5)
+
+    chemin_revenu = os.path.join(processed, "weo_level_bias_by_income_ngdp_rpch.csv")
+    if os.path.exists(chemin_revenu):
+        revenu = pd.read_csv(chemin_revenu)
+        couleurs = {"HIC": "#2980b9", "UMC": "#27ae60", "LMC": "#e67e22", "LIC": "#c0392b"}
+        for code, libelle in GROUPES_REVENU.items():
+            g = revenu[revenu["income_group"] == code].sort_values("horizon")
+            if not g.empty:
+                ax2.plot(g["horizon"], g["mediane"], marker="o", linewidth=2, color=couleurs[code], label=libelle)
+        ax2.axhline(0, color="#555555", linewidth=0.9)
+        ax2.set_xticks(x)
+        ax2.set_xlabel("Horizon de projection (années)", fontsize=10, fontweight="bold")
+        ax2.set_ylabel("Erreur médiane sur le niveau (%)", fontsize=10)
+        ax2.set_title("Erreur médiane par groupe de revenu\n(classification courante de la Banque Mondiale)",
+                      fontsize=12, fontweight="bold", pad=12)
+        ax2.legend(fontsize=9, frameon=True, loc="upper left")
+        ax2.grid(axis="y", linestyle="--", alpha=0.5)
+    else:
+        ax2.set_visible(False)
+
+    fig.suptitle("PIB prévu et PIB réalisé : les croissances projetées par le FMI, enchaînées",
+                 fontsize=14, fontweight="bold")
+    plt.figtext(0.5, 0.015,
+                f"{milliers(niveau['observations'].sum())} niveaux projetés. Réalisé : croissances ré-estimées par "
+                "le FMI un an après. Volume seulement : en dollars courants s'ajoutent change et inflation.",
+                fontsize=9, fontstyle="italic", color="#555555", ha="center")
+    plt.tight_layout(rect=[0, 0.04, 1, 0.93])
+    output_png = os.path.join(output_dir, "gdp_forecast_level_errors.png")
     plt.savefig(output_png)
     plt.close()
     logging.info(f"Graphique enregistré : {output_png}")
@@ -563,6 +655,7 @@ def main():
     plot_ppp_level_ranking(summary_df, years, output_dir)
     plot_source_discrepancy(unified_df, years, output_dir)
     plot_forecast_accuracy(args.data_dir, output_dir)
+    plot_level_errors(args.data_dir, output_dir)
     create_interactive_dashboard(unified_df, summary_df, years, output_dir)
     logging.info("Toutes les visualisations ont été générées avec succès.")
 

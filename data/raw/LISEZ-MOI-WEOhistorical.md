@@ -91,8 +91,14 @@ Produit dans `data/processed/` :
 * `weo_forecast_evaluation_<indicateur>.csv` — une ligne par projection, avec son horizon
   et son erreur face à la ré-estimation du FMI à un an et, pour la croissance du PIB
   seulement, à la série observée de la Banque Mondiale ;
-* `weo_forecast_bias_<indicateur>.csv` — biais et erreur absolue par horizon, en moyenne
-  et en médiane.
+* `weo_forecast_bias_<indicateur>.csv` — biais et erreur absolue par horizon : moyens,
+  pondérés par le PIB, médians, avec un intervalle de confiance groupé par année visée et
+  le biais hors récessions mondiales (2009, 2020) ;
+* `weo_forecast_bias_by_income_<indicateur>.csv` — biais par horizon et groupe de revenu ;
+* pour la croissance du PIB seulement : `weo_level_evaluation_ngdp_rpch.csv` et ses
+  synthèses (`weo_level_bias_*`), l'erreur sur le niveau du PIB obtenue en enchaînant les
+  croissances, et `gdp_projection_bands.csv`, la fourchette qu'elle donne autour des
+  projections du rapport.
 
 Pour l'inflation, lire les médianes : quelques projections d'hyperinflation (le Venezuela
 à 10 000 000 %) portent les moyennes à des milliers de points. Le script le signale.

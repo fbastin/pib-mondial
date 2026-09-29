@@ -68,20 +68,23 @@ def fetch_worldbank_pages(url: str, params: dict) -> tuple:
         page += 1
 
 
-def fetch_worldbank_country_codes() -> set:
+def fetch_worldbank_country_codes() -> Dict[str, str]:
     """
     Récupère la liste officielle des pays (hors agrégats) depuis l'API de métadonnées
     de la Banque Mondiale. Un agrégat se reconnaît à sa région codée "NA".
 
-    Retourne l'ensemble des codes ISO3 de vrais pays. Sans cette liste, rien ne
-    distingue *World* ou *OECD members* d'un pays : l'échec interrompt la collecte
-    plutôt que de laisser des agrégats entrer dans les classements.
+    Retourne, pour chaque code ISO3 de vrai pays, son groupe de revenu selon la
+    classification courante de la Banque Mondiale (`HIC`, `UMC`, `LMC`, `LIC`, ou `INX`
+    s'il n'est pas classé). Sans cette liste, rien ne distingue *World* ou *OECD members*
+    d'un pays : l'échec interrompt la collecte plutôt que de laisser des agrégats entrer
+    dans les classements.
     """
     logging.info("Récupération de la liste officielle des pays (métadonnées Banque Mondiale)...")
     _, items = fetch_worldbank_pages(f"{WB_API}/country", {"format": "json", "per_page": 400})
 
     countries = {
-        item["id"] for item in items
+        item["id"]: (item.get("incomeLevel") or {}).get("id") or "INX"
+        for item in items
         if item.get("region", {}).get("id") not in (None, "NA")
     }
     if not countries:
@@ -153,6 +156,9 @@ def fetch_all_historical_gdp(start_year: int = 2000, end_year: int = 2024) -> pd
         columns="indicator",
         values="value"
     ).reset_index()
+
+    # Groupe de revenu (classification courante, appliquée à toute la période)
+    pivoted_df["income_group"] = pivoted_df["country_code"].map(country_codes)
 
     pivoted_df.sort_values(by=["country_code", "year"], inplace=True)
     return pivoted_df

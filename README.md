@@ -120,7 +120,7 @@ jupyter nbconvert --to html --execute --ExecutePreprocessor.kernel_name=julia-1.
 ### Tests
 
 ```bash
-pytest                      # 102 tests, sans accès réseau
+pytest                      # 115 tests, sans accès réseau
 pytest -m "not donnees"     # sans les contrôles sur les fichiers produits
 ```
 
@@ -141,6 +141,7 @@ mkdir -p build && pdflatex -output-directory=build docs/documentation_gdp.tex \
    - séries annuelles depuis 1960, collectées par défaut depuis 2000 ;
    - prix courants : PIB nominal (USD), croissance annuelle (%), PIB par habitant, PIB à PPA ;
    - volume : PIB à prix constants 2015 (`NY.GDP.MKTP.KD`), PIB à PPA constante 2021 (`NY.GDP.MKTP.PP.KD`).
+   - métadonnées des pays : distinction pays / agrégats, groupe de revenu (classification courante).
 
 2. **FMI — World Economic Outlook, API DataMapper** (libre) :
    - estimations et projections de l'édition en cours, de 1980 à son horizon (cinq ans après l'année de l'édition) ;
@@ -250,16 +251,47 @@ Mesurer si les prévisions étaient bonnes suppose les publications **d'époque*
 
 L'horizon se déduit de l'écart entre l'année visée et l'édition qui la projette. Les valeurs d'horizon négatif sont des **ré-estimations du passé**, pas des prévisions, et sont écartées de l'évaluation. Les codes propres au classeur (`KOS` pour le Kosovo, `WBG` pour la Cisjordanie et Gaza) sont convertis vers ceux de la Banque Mondiale.
 
-**Le résultat, sur 69 345 projections et 196 pays :**
+**Le résultat, sur 69 345 projections et 196 pays** (erreur de croissance, en points) :
 
-| Horizon | Biais moyen | Erreur absolue moyenne |
-|---|---|---|
-| 0 (année en cours) | +0,18 pt | 1,70 pt |
-| 1 an | **+1,00 pt** | 2,74 pt |
-| 3 ans | +1,01 pt | 2,95 pt |
-| 5 ans | +0,93 pt | 3,04 pt |
+| Horizon | Biais moyen | Pondéré par le PIB | Médiane | IC 95 % du biais moyen | Erreur absolue moyenne |
+|---|---|---|---|---|---|
+| 0 (année en cours) | +0,18 | −0,07 | 0,00 | −0,03 à +0,39 | 1,70 |
+| 1 an | **+1,00** | **+0,58** | +0,34 | +0,38 à +1,62 | 2,74 |
+| 3 ans | +1,01 | +0,80 | +0,60 | +0,34 à +1,68 | 2,95 |
+| 5 ans | +0,93 | +0,81 | +0,62 | +0,24 à +1,62 | 3,04 |
 
-Le FMI est quasiment sans biais sur l'année en cours, puis **surestime la croissance d'environ un point dès qu'il projette au-delà** — un biais stable quel que soit l'horizon, tandis que la dispersion, elle, continue de croître. La conclusion tient avec les deux références de comparaison (ré-estimation du FMI à un an, ou série Banque Mondiale), calculées côte à côte plutôt qu'arbitrées. Par année visée, les récessions ressortent nettement : erreur médiane de **+7,3 points pour 2020**, +3,9 pour 2009 ; le rebond de 2021 est symétriquement sous-estimé. Visualisé par `gdp_forecast_accuracy.png`.
+Le FMI est quasiment sans biais sur l'année en cours, puis **surestime la croissance dès qu'il projette au-delà**. L'ampleur dépend de la lecture :
+
+- **Le biais moyen compte chaque pays pour un.** Pondéré par le PIB de l'année visée — ce que l'erreur représente pour l'économie mondiale —, il tombe de +1,0 à +0,6 point à un an ; la médiane, à +0,3. Quelques fortes surestimations tirent la moyenne.
+- **Les récessions mondiales en expliquent une part** : sans 2009 ni 2020, le biais moyen à un an serait de +0,62 point. Par année visée, l'erreur médiane atteint **+7,3 points pour 2020** et +3,9 pour 2009 ; le rebond de 2021 est symétriquement sous-estimé (`gdp_forecast_accuracy.png`).
+- **L'incertitude se mesure par année visée.** Les pays d'une même année subissent les mêmes chocs : leurs erreurs ne sont pas indépendantes. Calculée par grappes d'années, l'erreur type du biais moyen à un an est six fois celle qui les supposerait indépendantes ; l'intervalle de confiance, de +0,4 à +1,6 point, exclut zéro sans être étroit.
+- **Le biais est plus fort pour les pays pauvres** : à un an, +0,7 point pour les pays à revenu élevé, +1,0 pour les revenus intermédiaires, +1,7 pour les pays à faible revenu (classification courante de la Banque Mondiale, appliquée à toute la période).
+
+La conclusion tient avec les deux références de comparaison (ré-estimation du FMI à un an, ou série Banque Mondiale), calculées côte à côte plutôt qu'arbitrées. Le biais pondéré ne porte que sur les années visées que couvre la série du pipeline (depuis 2000).
+
+**PIB prévu et PIB réalisé.** Une erreur de croissance répétée d'année en année se cumule sur le niveau. En enchaînant les croissances projetées par chaque édition, puis les croissances réalisées, on compare le niveau prévu au niveau atteint — en volume, l'année précédant l'édition servant de base commune :
+
+| Horizon | Médiane | Pondérée par le PIB | 80 % des cas | Prévu trop haut de plus de 5 % | Trop bas de plus de 5 % |
+|---|---|---|---|---|---|
+| 1 an | +0,4 % | +0,6 % | −3,9 à +6,9 % | 15 % | 7 % |
+| 3 ans | +2,4 % | +2,4 % | −6,2 à +14,9 % | 36 % | 13 % |
+| 5 ans | **+4,6 %** | **+4,4 %** | −7,9 à +22,7 % | **49 %** | 15 % |
+
+À 5 ans, le niveau prévu dépasse le réalisé de 4 à 5 % en médiane, et les erreurs ne se compensent pas : trop haut de plus de 5 % dans près d'un cas sur deux, trop bas de plus de 5 % dans un sur sept. L'erreur médiane à 5 ans va de +3,6 % (revenu élevé) à +6,0 % (faible revenu) ; contre la série Banque Mondiale, elle est de +3,6 %. Visualisé par `gdp_forecast_level_errors.png`. La base historique du FMI ne contenant que des taux, l'erreur sur le PIB en dollars courants — qui ajoute change et inflation — n'est pas mesurable ainsi.
+
+**Les projections à l'aune des erreurs passées.** Les projections 2031 des rapports viennent de l'édition d'avril 2026, à 5 ans d'horizon. Appliquer à chacune les erreurs de niveau passées au même horizon donne une fourchette empirique : celle où seraient tombés 80 % des cas comparables (10ᵉ à 90ᵉ centile). Les erreurs retenues sont celles du pays lui-même s'il en compte sur au moins vingt années visées (169 pays), sinon celles de son groupe de revenu : à 5 ans, la France est sortie dans 80 % des cas entre +1,4 % et +9,8 % au-dessus du réalisé, quand le groupe des pays à revenu élevé va de −6,5 % à +18 %.
+
+| PIB en volume 2031 | Écart à la projection (80 % des cas passés) |
+|---|---|
+| États-Unis | −9,7 à +5,0 % |
+| Chine | −6,8 à +16,5 % |
+| Allemagne | −8,0 à +1,5 % |
+| Japon | **−14,5 à −1,4 %** |
+| Inde | −17,5 à +10,7 % |
+| France | **−8,9 à −1,4 %** |
+| Italie | **−11,3 à −2,5 %** |
+
+Pour le Japon, la France et l'Italie, la fourchette est entièrement sous la projection : leur niveau à 5 ans a été surestimé dans au moins 90 % des cas passés. Ce n'est pas une prévision corrigée, mais la marge d'erreur qu'a connue le FMI ; elle porte sur le volume, et serait plus large en dollars courants. Détail pour tous les pays : `data/processed/gdp_projection_bands.csv` et onglet `Fourchettes_2031` du classeur Excel.
 
 **Autres indicateurs : lire les médianes.** La référence Banque Mondiale n'existe que pour la croissance du PIB : pour `pcpi_pch` (inflation) et `bca_gdp_bp6` (balance courante), seule la ré-estimation du FMI sert de référence. Pour l'inflation, les moyennes ne décrivent pas l'erreur typique : quelques projections d'hyperinflation (le Venezuela à 10 000 000 %) portent le biais moyen au-delà de 1 600 points à un an, quand la médiane reste à −0,1 point. La synthèse fournit donc aussi `mediane` et `erreur_absolue_mediane`, et le script avertit dès que l'erreur absolue moyenne dépasse dix fois la médiane.
 
@@ -276,7 +308,11 @@ Pour chaque rapport (`data/` et `outputs/` ; `plus_recent/` pour le plus récent
 | `data/processed/gdp_unified_<début>_<horizon>.csv` | Série temporelle unifiée, pays et agrégats |
 | `data/processed/gdp_country_summary.csv` | Synthèse par pays : niveaux, CAGR, rangs |
 | `data/processed/weo_forecast_evaluation_<indicateur>.csv` | Une ligne par projection d'époque |
-| `data/processed/weo_forecast_bias_<indicateur>.csv` | Biais et erreurs par horizon, moyens et médians |
+| `data/processed/weo_forecast_bias_<indicateur>.csv` | Biais et erreurs par horizon : moyens, pondérés par le PIB, médians, IC 95 %, hors récessions |
+| `data/processed/weo_forecast_bias_by_income_<indicateur>.csv` | Biais par horizon et groupe de revenu |
+| `data/processed/weo_level_evaluation_ngdp_rpch.csv` | Erreur sur le niveau du PIB, par pays, édition et horizon |
+| `data/processed/weo_level_bias_ngdp_rpch.csv`, `weo_level_bias_by_income_ngdp_rpch.csv` | Erreur de niveau par horizon (quantiles, parts), et par groupe de revenu |
+| `data/processed/gdp_projection_bands.csv` | Fourchette empirique autour du PIB projeté, par pays |
 | `outputs/gdp_master_dataset.xlsx` | Classeur multi-onglets (voir ci-dessous) |
 | `outputs/resultats_gdp.html` | Page de résultats autonome, commentée |
 | `outputs/gdp_dashboard_interactive.html` | Tableau de bord interactif (Plotly) |
@@ -286,9 +322,10 @@ Pour chaque rapport (`data/` et `outputs/` ; `plus_recent/` pour le plus récent
 | `outputs/gdp_ranking_nominal_vs_ppp_<année>.png` | Classement au taux de marché et à parité |
 | `outputs/gdp_source_discrepancy_<année>.png` | Écart entre sources et marche évitée |
 | `outputs/gdp_forecast_accuracy.png` | Exactitude des prévisions du FMI depuis 1990 |
+| `outputs/gdp_forecast_level_errors.png` | PIB prévu et PIB réalisé : erreur de niveau par horizon et groupe de revenu |
 | `outputs/gdp_analysis_notebook_julia.html` | Export du notebook Julia (référence seulement) |
 
-Onglets du classeur Excel : `Top30_Economies` ; `Synthese_Pays` (PIB aux années de référence — 2000, 2010, 2024, 2031 —, CAGR historique et prévisionnel, rangs sur le panel décrit plus haut) ; `Series_Temporelles_<début>_<horizon>` ; `Donnees_Historiques_Brutes` et `Previsions_FMI_Brutes` (extractions des API).
+Onglets du classeur Excel : `Top30_Economies` ; `Synthese_Pays` (PIB aux années de référence — 2000, 2010, 2024, 2031 —, CAGR historique et prévisionnel, rangs sur le panel décrit plus haut) ; `Series_Temporelles_<début>_<horizon>` ; `Donnees_Historiques_Brutes` et `Previsions_FMI_Brutes` (extractions des API) ; `Fourchettes_<horizon>` (fourchettes empiriques, ajoutées par l'évaluation).
 
 ---
 
@@ -304,7 +341,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 
 ## ✅ Tests des invariants
 
-102 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
+115 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
 
 | Invariant | Ce qu'il empêche |
 |---|---|
@@ -323,6 +360,9 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 | Le rapport de référence reste quasi complet, le plus récent s'y ajoute sans le remplacer | Un classement privé des Émirats faute de donnée 2025, ou un rapport périmé laissé en place |
 | L'horizon suit l'édition du WEO, sans projection isolée | Une année projetée téléchargée puis écartée, ou une série prolongée par un seul pays |
 | Une édition lue dans l'API n'est nommée que si l'horizon servi le confirme ; complément cumulatif, classeur prioritaire | Des prévisions d'octobre attribuées à avril, ou une édition perdue quand l'API cesse de la servir |
+| Biais pondéré par le PIB ; intervalle groupé par année visée ; récessions exclues à part | Un biais « d'un point » valant pour le pays moyen, présenté comme mondial et précis |
+| Erreur de niveau : croissances enchaînées, interrompues au premier réalisé manquant | Un niveau « réalisé » reconstitué par-dessus une année inconnue |
+| Fourchette : historique du pays si assez long, sinon du groupe ; bornes dans le bon sens | La marge d'une petite économie volatile appliquée aux États-Unis, ou une fourchette inversée |
 
 Chaque invariant est **validé par mutation** : le défaut correspondant, réintroduit dans une copie du code, fait bien échouer la suite. Les tests marqués `donnees` contrôlent les CSV réellement produits et se sautent tant que le pipeline n'a pas tourné. Les tests tournent à chaque push (GitHub Actions).
 

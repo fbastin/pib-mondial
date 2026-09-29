@@ -5,6 +5,22 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 🎯 PIB Prévu et PIB Réalisé ; Lectures du Biais (29 Septembre 2026)
+
+Question posée : les analyses sont-elles bien fondées ? Pour l'essentiel, oui ; mais l'évaluation des prévisions surinterprétait son chiffre phare, et ne reliait pas ses résultats aux projections que les rapports présentent.
+
+**Le biais de croissance, relu.** « Le FMI surestime la croissance d'environ un point » est une moyenne qui compte chaque pays pour un. À un an, pondéré par le PIB de l'année visée, le biais vaut +0,58 point ; la médiane, +0,34 ; sans 2009 ni 2020, +0,62. Les erreurs d'une même année n'étant pas indépendantes, l'intervalle de confiance est désormais calculé par grappes d'années visées : +0,38 à +1,62 point, soit une erreur type six fois celle qui les supposerait indépendantes. Le biais va de +0,7 point (revenu élevé) à +1,7 (faible revenu). La synthèse par horizon porte ces lectures (`biais_pondere_pib`, `ic95_*`, `biais_hors_recessions_mondiales`), une synthèse par groupe de revenu s'y ajoute, et le graphique d'exactitude montre le biais pondéré.
+
+**PIB prévu et PIB réalisé.** L'analyse manquante : les croissances projetées par chaque édition, enchaînées, comparées aux croissances réalisées enchaînées de même. À 5 ans, le niveau prévu dépasse le réalisé de +4,6 % en médiane (+4,4 % pondéré par le PIB), de plus de 5 % dans 49 % des cas contre 15 % en sens inverse ; de +3,6 % (revenu élevé) à +6,0 % (faible revenu). Nouvelles sorties `weo_level_*` et graphique `gdp_forecast_level_errors.png`. Mesure en volume seulement : la base historique du FMI ne contient que des taux.
+
+**Les projections à l'aune des erreurs passées.** Les projections 2031 (édition d'avril 2026, 5 ans d'horizon) reçoivent une fourchette empirique : 10ᵉ à 90ᵉ centile des erreurs de niveau passées au même horizon, celles du pays s'il en compte sur au moins vingt années visées (169 pays), sinon de son groupe de revenu. Premier essai avec les seuls groupes : les États-Unis recevaient la marge de toutes les économies à revenu élevé (−15 à +7 %), petites économies volatiles comprises, alors que leur propre historique donne −9,7 à +5,0 %. Pour le Japon, la France et l'Italie, la fourchette est entièrement sous la projection. Sorties `gdp_projection_bands.csv` et onglet `Fourchettes_2031` du classeur.
+
+Le groupe de revenu de la Banque Mondiale (classification courante, appliquée à toute la période) est désormais collecté par le pipeline et suit chaque pays jusque dans la synthèse, pour que l'évaluation reste hors ligne. La page de résultats gagne deux sections, dont les commentaires se déduisent des chiffres.
+
+115 tests ; dix mutations des nouvelles analyses, toutes rattrapées.
+
+---
+
 ## 🗂️ Réorganisation du Dépôt (29 Septembre 2026)
 
 Les quinze fichiers de code, de notebooks, de tests et de documentation s'entassaient à la racine. Ils sont désormais rangés par nature, historique git conservé (`git mv`) :

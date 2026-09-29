@@ -67,7 +67,8 @@ def main():
             lancer("update_weo_editions", "--classeur", classeur)
         for data_dir, output_dir in rapports:
             if os.path.exists(classeur):
-                lancer("evaluate_forecasts", "--data-dir", data_dir, "--classeur", classeur)
+                lancer("evaluate_forecasts", "--data-dir", data_dir, "--output-dir", output_dir,
+                       "--classeur", classeur)
             else:
                 logging.warning(f"{classeur} absent : évaluation des prévisions omise.")
             lancer("visualize_gdp", "--data-dir", data_dir, "--output-dir", output_dir)

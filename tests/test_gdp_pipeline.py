@@ -1083,6 +1083,168 @@ class TestEditionsAPI:
         assert table.loc[("FRA", 2020, "F2021"), "valeur"] == pytest.approx(-7.9)
 
 
+class TestGroupesDeRevenu:
+    """Le groupe de revenu de la Banque Mondiale suit chaque pays jusque dans la synthèse."""
+
+    def test_groupe_lu_dans_les_metadonnees(self, monkeypatch):
+        items = [{"id": "USA", "region": {"id": "NAC"}, "incomeLevel": {"id": "HIC"}},
+                 {"id": "VEN", "region": {"id": "LCN"}, "incomeLevel": {"id": ""}},
+                 {"id": "WLD", "region": {"id": "NA"}, "incomeLevel": {"id": "NA"}}]
+        monkeypatch.setattr(fetch_historical_gdp, "fetch_worldbank_pages", lambda url, params: ({}, items))
+        assert fetch_historical_gdp.fetch_worldbank_country_codes() == {"USA": "HIC", "VEN": "INX"}
+
+    def test_groupe_propage_a_la_prevision_et_a_la_synthese(self):
+        historique = _historique()
+        historique["income_group"] = historique["country_code"].map({"AAA": "HIC", "BBB": "LMC"})
+        unifie = build_unified_dataset(historique, _prevision())
+        prevision = unifie[unifie.is_forecast.astype(bool) & (unifie.country_code == "BBB")]
+        assert set(prevision["income_group"]) == {"LMC"}
+        synthese = compute_country_summary(extend_real_series(unifie, 2024), reference_years(2000, 2024, 2030))
+        assert synthese.set_index("country_code").loc["AAA", "income_group"] == "HIC"
+
+
+class TestLecturesDuBiais:
+    """
+    Le biais moyen compte chaque pays pour un et suppose les erreurs indépendantes. La
+    synthèse le complète d'un biais pondéré par le PIB, d'un intervalle de confiance
+    groupé par année visée et d'un biais hors récessions mondiales.
+    """
+
+    def test_biais_pondere_par_le_pib(self):
+        from pib.evaluate_forecasts import synthese_par_horizon
+        evaluation = pd.DataFrame(dict(horizon=1, year=[2010, 2011], erreur_vs_fmi=[1.0, 3.0],
+                                       erreur_vs_bm=np.nan, poids_pib=[3.0, 1.0]))
+        ligne = synthese_par_horizon(evaluation).iloc[0]
+        assert ligne["biais_moyen"] == pytest.approx(2.0)
+        assert ligne["biais_pondere_pib"] == pytest.approx(1.5)
+
+    def test_intervalle_groupe_par_annee(self):
+        """
+        Cent pays, deux années : +2 points pour tous en 2010, 0 en 2011. Supposées
+        indépendantes, ces erreurs donneraient un intervalle étroit autour de +1 ; groupées
+        par année, il n'y a que deux observations, et l'intervalle inclut zéro.
+        """
+        from pib.evaluate_forecasts import synthese_par_horizon
+        evaluation = pd.DataFrame(dict(horizon=1, year=[2010] * 50 + [2011] * 50,
+                                       erreur_vs_fmi=[2.0] * 50 + [0.0] * 50, erreur_vs_bm=np.nan))
+        ligne = synthese_par_horizon(evaluation).iloc[0]
+        assert ligne["ic95_bas"] == pytest.approx(1 - 1.96, abs=1e-3)
+        assert ligne["ic95_haut"] == pytest.approx(1 + 1.96, abs=1e-3)
+        assert ligne["annees_visees"] == 2
+
+    def test_biais_hors_recessions_mondiales(self):
+        from pib.evaluate_forecasts import synthese_par_horizon
+        evaluation = pd.DataFrame(dict(horizon=1, year=[2009, 2019, 2020, 2021],
+                                       erreur_vs_fmi=[8.0, 1.0, 9.0, 0.0], erreur_vs_bm=np.nan))
+        assert synthese_par_horizon(evaluation).iloc[0]["biais_hors_recessions_mondiales"] == pytest.approx(0.5)
+
+    def test_biais_par_groupe_de_revenu(self):
+        from pib.evaluate_forecasts import synthese_par_revenu
+        evaluation = pd.DataFrame(dict(horizon=1, year=2010, erreur_vs_fmi=[0.5, 1.5, 2.0],
+                                       income_group=["HIC", "LIC", "INX"]))
+        table = synthese_par_revenu(evaluation).set_index("income_group")
+        assert set(table.index) == {"HIC", "LIC"}             # « non classé » n'est pas un groupe
+        assert table.loc["LIC", "biais_moyen"] == pytest.approx(1.5)
+
+
+class TestErreursDeNiveau:
+    """
+    PIB prévu et PIB réalisé : les croissances projetées par une édition, enchaînées,
+    comparées aux croissances réalisées enchaînées de même.
+    """
+
+    @staticmethod
+    def _evaluation(realise_h1=1.0, horizons=(0, 1, 2)):
+        lignes = [dict(country="France", country_code="FRA", income_group="HIC", vintage="S2020", saison="S",
+                       annee_millesime=2020, year=2020 + h, horizon=h, poids_pib=3000.0, valeur=2.0,
+                       realise_fmi=(realise_h1 if h == 1 else 1.0), realise_bm=1.0) for h in horizons]
+        return pd.DataFrame(lignes)
+
+    def test_croissances_enchainees(self):
+        from pib.evaluate_forecasts import erreurs_de_niveau
+        niveaux = erreurs_de_niveau(self._evaluation()).set_index("horizon")
+        assert niveaux.loc[0, "erreur_niveau_vs_fmi_pct"] == pytest.approx((1.02 / 1.01 - 1) * 100)
+        assert niveaux.loc[2, "erreur_niveau_vs_fmi_pct"] == pytest.approx((1.02 ** 3 / 1.01 ** 3 - 1) * 100)
+
+    def test_realise_manquant_interrompt_l_enchainement(self):
+        """Sans croissance réalisée à un an, les niveaux à un et deux ans restent inconnus."""
+        from pib.evaluate_forecasts import erreurs_de_niveau
+        niveaux = erreurs_de_niveau(self._evaluation(realise_h1=np.nan)).set_index("horizon")
+        assert pd.notna(niveaux.loc[0, "erreur_niveau_vs_fmi_pct"])
+        assert niveaux.loc[[1, 2], "erreur_niveau_vs_fmi_pct"].isna().all()
+        assert niveaux["erreur_niveau_vs_bm_pct"].notna().all()     # l'autre référence est complète
+
+    def test_horizon_manquant_interrompt_l_enchainement(self):
+        from pib.evaluate_forecasts import erreurs_de_niveau
+        niveaux = erreurs_de_niveau(self._evaluation(horizons=(0, 2))).set_index("horizon")
+        assert pd.isna(niveaux.loc[2, "erreur_niveau_vs_fmi_pct"])
+
+    def test_synthese_des_niveaux(self):
+        from pib.evaluate_forecasts import synthese_niveau
+        niveaux = pd.DataFrame(dict(horizon=5, year=2025, poids_pib=[1.0, 1.0, 2.0],
+                                    erreur_niveau_vs_fmi_pct=[10.0, -8.0, 2.0], erreur_niveau_vs_bm_pct=np.nan))
+        ligne = synthese_niveau(niveaux).iloc[0]
+        assert ligne["mediane"] == pytest.approx(2.0)
+        assert ligne["moyenne_ponderee_pib"] == pytest.approx(1.5)
+        assert ligne["part_trop_haut_5pct"] == pytest.approx(100 / 3, abs=1e-3)   # sorties arrondies
+        assert ligne["part_trop_bas_5pct"] == pytest.approx(100 / 3, abs=1e-3)
+
+
+class TestFourchettesDesProjections:
+    """
+    Fourchette empirique autour du PIB projeté : erreurs de niveau passées au même
+    horizon, du pays lui-même s'il a assez d'historique, sinon de son groupe de revenu.
+    """
+
+    @staticmethod
+    def _niveaux():
+        lignes = []
+        # France : 25 années visées, erreurs de +10 à +30 % (toujours trop haut)
+        for i, annee in enumerate(range(1995, 2020)):
+            lignes.append(dict(country_code="FRA", income_group="HIC", horizon=5, year=annee,
+                               erreur_niveau_vs_fmi_pct=10.0 + 20.0 * i / 24))
+        # Autres pays à revenu élevé : 25 cas, erreurs de −20 à +20 %
+        for i, annee in enumerate(range(1995, 2020)):
+            lignes.append(dict(country_code="XXX", income_group="HIC", horizon=5, year=annee,
+                               erreur_niveau_vs_fmi_pct=-20.0 + 40.0 * i / 24))
+        # Monaco : trois années seulement
+        for annee in (2015, 2016, 2017):
+            lignes.append(dict(country_code="MCO", income_group="HIC", horizon=5, year=annee,
+                               erreur_niveau_vs_fmi_pct=0.0))
+        return pd.DataFrame(lignes)
+
+    @staticmethod
+    def _synthese():
+        return pd.DataFrame(dict(country_code=["FRA", "MCO", "TWN"], country_name=["France", "Monaco", "Taïwan"],
+                                 income_group=["HIC", "HIC", None], GDP_Reel_2031_Billion_USD_2015=100.0))
+
+    def test_historique_propre_ou_groupe(self):
+        from pib.evaluate_forecasts import fourchettes_projections
+        bandes = fourchettes_projections(self._niveaux(), self._synthese(), 2031, 2026).set_index("country_code")
+        assert bandes.loc["FRA", "historique_de_reference"] == "pays"
+        assert bandes.loc["MCO", "historique_de_reference"] == "HIC"       # trop peu d'années
+        assert bandes.loc["TWN", "historique_de_reference"] == "ensemble"  # sans groupe
+        assert (bandes["horizon"] == 5).all()
+
+    def test_bornes_tirees_des_erreurs_passees(self):
+        """
+        Un niveau passé trop haut de p % ramène le réalisé à 1 / (1 + p) de la projection :
+        la France, toujours surestimée, a une fourchette entièrement sous la projection.
+        """
+        from pib.evaluate_forecasts import fourchettes_projections
+        bandes = fourchettes_projections(self._niveaux(), self._synthese(), 2031, 2026).set_index("country_code")
+        france = bandes.loc["FRA"]
+        p10, p90 = france["erreur_niveau_p10_pct"], france["erreur_niveau_p90_pct"]
+        assert france["borne_basse_pct"] == pytest.approx((1 / (1 + p90 / 100) - 1) * 100, abs=1e-2)   # sorties arrondies
+        assert france["borne_haute_pct"] == pytest.approx((1 / (1 + p10 / 100) - 1) * 100, abs=1e-2)
+        assert france["borne_haute_pct"] < 0
+        assert france["GDP_Reel_2031_Bas"] == pytest.approx(100 * (1 + france["borne_basse_pct"] / 100), abs=1e-2)
+
+    def test_horizon_sans_historique(self):
+        from pib.evaluate_forecasts import fourchettes_projections
+        assert fourchettes_projections(self._niveaux(), self._synthese(), 2033, 2026).empty
+
+
 # ------------------------------------------- fichiers réellement produits
 
 @pytest.mark.donnees

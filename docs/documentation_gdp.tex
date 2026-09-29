@@ -228,23 +228,55 @@ L'erreur est exprimée en points de croissance et non en écart relatif: rapport
 
 La synthèse par horizon donne le biais et l'erreur absolue en moyenne et en médiane. Pour l'inflation, seules les médianes décrivent l'erreur typique: quelques projections d'hyperinflation (le Venezuela à $10\,000\,000\,\%$) portent le biais moyen au-delà de $1\,600$ points à un an, quand le biais médian reste de $-0{,}1$ point. Le script le signale dès que l'erreur absolue moyenne dépasse dix fois la médiane.
 
-\subsection{Résultats}
-Sur 69\,345 projections de croissance réelle couvrant 196 pays:
+\subsection{Résultats: le Biais de Croissance et ses Lectures}
+Sur 69\,345 projections de croissance réelle couvrant 196 pays (erreurs en points de croissance):
 
-\begin{center}
-\begin{tabular}{lrr}
+\begin{center}\small
+\begin{tabular}{lrrrcr}
 \hline
-\textbf{Horizon} & \textbf{Biais moyen} & \textbf{Erreur absolue moyenne} \\
+\textbf{Horizon} & \textbf{Biais moyen} & \textbf{Pondéré PIB} & \textbf{Médiane} & \textbf{IC 95\,\%} & \textbf{Erreur abs.} \\
 \hline
-0 (année en cours) & $+0{,}18$ pt & $1{,}70$ pt \\
-1 an & $+1{,}00$ pt & $2{,}74$ pt \\
-3 ans & $+1{,}01$ pt & $2{,}95$ pt \\
-5 ans & $+0{,}93$ pt & $3{,}04$ pt \\
+0 (année en cours) & $+0{,}18$ & $-0{,}07$ & $0{,}00$ & $[-0{,}03\,;\,+0{,}39]$ & $1{,}70$ \\
+1 an & $+1{,}00$ & $+0{,}58$ & $+0{,}34$ & $[+0{,}38\,;\,+1{,}62]$ & $2{,}74$ \\
+3 ans & $+1{,}01$ & $+0{,}80$ & $+0{,}60$ & $[+0{,}34\,;\,+1{,}68]$ & $2{,}95$ \\
+5 ans & $+0{,}93$ & $+0{,}81$ & $+0{,}62$ & $[+0{,}24\,;\,+1{,}62]$ & $3{,}04$ \\
 \hline
 \end{tabular}
 \end{center}
 
-La prévision de l'année en cours est pratiquement sans biais. Au-delà, la croissance est surestimée d'environ un point, et ce biais ne s'atténue pas avec l'horizon alors que la dispersion, elle, continue de croître. Rapportée à l'année visée, l'erreur médiane atteint $+7{,}3$ points pour 2020 et $+3{,}9$ pour 2009: les récessions ne se prévoient pas, et le rebond qui les suit est symétriquement sous-estimé.
+La prévision de l'année en cours est pratiquement sans biais. Au-delà, la croissance est surestimée, et ce biais ne s'atténue pas avec l'horizon alors que la dispersion, elle, continue de croître. Son ampleur dépend toutefois de la lecture:
+\begin{itemize}
+    \item le biais moyen compte chaque pays pour un. Pondéré par le PIB de l'année visée --- ce que l'erreur représente pour l'économie mondiale ---, il tombe de $+1{,}0$ à $+0{,}6$ point à un an, et la médiane à $+0{,}3$: quelques fortes surestimations tirent la moyenne;
+    \item les récessions mondiales en expliquent une part: sans 2009 ni 2020, le biais moyen à un an serait de $+0{,}62$ point. Rapportée à l'année visée, l'erreur médiane atteint $+7{,}3$ points pour 2020 et $+3{,}9$ pour 2009, et le rebond qui suit est symétriquement sous-estimé;
+    \item les pays d'une même année subissent les mêmes chocs, et leurs erreurs ne sont pas indépendantes. L'erreur type du biais moyen est donc calculée par grappes d'années visées, avec la correction $G/(G-1)$; elle est six fois celle qui supposerait les erreurs indépendantes. L'intervalle de confiance à $95\,\%$ exclut zéro sans être étroit;
+    \item le biais est plus fort pour les pays pauvres: à un an, $+0{,}7$ point pour les pays à revenu élevé, $+1{,}7$ pour les pays à faible revenu (classification courante de la Banque Mondiale, appliquée à toute la période).
+\end{itemize}
+
+\subsection{PIB Prévu et PIB Réalisé}
+Une erreur de croissance répétée d'année en année se cumule sur le niveau du PIB. Pour une édition $v$ et un pays, le niveau prévu à l'horizon $h$, rapporté au niveau de l'année précédant l'édition, est le produit des croissances projetées; le niveau réalisé, celui des croissances ré-estimées. Leur rapport donne l'erreur de niveau:
+\begin{equation}
+e_h = \frac{\prod_{k=0}^{h}\left(1 + g^{\text{prévu}}_{v+k}/100\right)}{\prod_{k=0}^{h}\left(1 + g^{\text{réalisé}}_{v+k}/100\right)} - 1
+\end{equation}
+Le niveau de départ, commun aux deux, s'élimine. Une année sans croissance réalisée interrompt l'enchaînement.
+
+\begin{center}\small
+\begin{tabular}{lrrcrr}
+\hline
+\textbf{Horizon} & \textbf{Médiane} & \textbf{Pondérée PIB} & \textbf{80\,\% des cas} & \textbf{$>+5\,\%$} & \textbf{$<-5\,\%$} \\
+\hline
+1 an & $+0{,}4\,\%$ & $+0{,}6\,\%$ & $[-3{,}9\,;\,+6{,}9]$ & $15\,\%$ & $7\,\%$ \\
+3 ans & $+2{,}4\,\%$ & $+2{,}4\,\%$ & $[-6{,}2\,;\,+14{,}9]$ & $36\,\%$ & $13\,\%$ \\
+5 ans & $+4{,}6\,\%$ & $+4{,}4\,\%$ & $[-7{,}9\,;\,+22{,}7]$ & $49\,\%$ & $15\,\%$ \\
+\hline
+\end{tabular}
+\end{center}
+
+À cinq ans, le niveau prévu dépasse le réalisé de 4 à 5\,\% en médiane, et les erreurs ne se compensent pas: il est trop haut de plus de 5\,\% dans près d'un cas sur deux, trop bas de plus de 5\,\% dans un sur sept. L'erreur médiane va de $+3{,}6\,\%$ pour les pays à revenu élevé à $+6{,}0\,\%$ pour les pays à faible revenu; contre la série de la Banque Mondiale, elle est de $+3{,}6\,\%$. La base historique ne contenant que des taux, cette mesure porte sur le volume: en dollars courants s'ajouteraient les erreurs de change et d'inflation.
+
+\subsection{Les Projections à l'Aune des Erreurs Passées}
+Les projections de l'horizon (2031) viennent de l'édition d'avril 2026, à cinq ans d'horizon. Leur appliquer les erreurs de niveau passées au même horizon donne une fourchette empirique: le niveau réalisé valant le niveau prévu divisé par $(1 + e)$, les 10\textsuperscript{e} et 90\textsuperscript{e} centiles des erreurs passées bornent l'intervalle où seraient tombés 80\,\% des cas comparables. Les erreurs retenues sont celles du pays lui-même s'il en compte sur au moins vingt années visées (169 pays), sinon celles de son groupe de revenu: à cinq ans, la France est sortie dans 80\,\% des cas entre $+1{,}4\,\%$ et $+9{,}8\,\%$ au-dessus du réalisé, quand le groupe des pays à revenu élevé va de $-6{,}5\,\%$ à $+18\,\%$.
+
+Pour le Japon ($-14{,}5$ à $-1{,}4\,\%$), la France ($-8{,}9$ à $-1{,}4\,\%$) et l'Italie ($-11{,}3$ à $-2{,}5\,\%$), la fourchette est entièrement sous la projection: leur niveau à cinq ans a été surestimé dans au moins 90\,\% des cas passés. Ce n'est pas une prévision corrigée, mais la marge d'erreur qu'a connue le FMI; elle porte sur le volume et serait plus large en dollars courants.
 
 \section{Provenance et Reproductibilité}
 
@@ -254,7 +286,7 @@ Le champ \texttt{derniere\_mise\_a\_jour} reprend le \texttt{lastupdated} décla
 
 \section{Tests des Invariants}
 
-Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (102 tests, sans accès réseau) fixe les propriétés correspondantes:
+Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (115 tests, sans accès réseau) fixe les propriétés correspondantes:
 
 \begin{itemize}
     \item les agrégats sont absents des classements par pays;
@@ -271,7 +303,10 @@ Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur si
     \item la référence Banque Mondiale ne sert qu'à évaluer la croissance du PIB;
     \item le rapport de référence reste quasi complet, le plus récent s'y ajoute sans le remplacer, et un rapport devenu sans objet est supprimé;
     \item l'horizon de prévision suit l'édition du WEO, sans prolonger la série par des projections isolées;
-    \item une édition du WEO lue dans l'API n'est nommée que si l'horizon servi le confirme, le complément reste cumulatif et le classeur fait foi.
+    \item une édition du WEO lue dans l'API n'est nommée que si l'horizon servi le confirme, le complément reste cumulatif et le classeur fait foi;
+    \item le biais pondéré suit les poids, l'intervalle de confiance est groupé par année visée, et le biais hors récessions les exclut bien;
+    \item l'erreur de niveau enchaîne les croissances et s'interrompt au premier réalisé manquant;
+    \item la fourchette des projections s'appuie sur l'historique du pays s'il est assez long, et ses bornes sont dans le bon sens.
 \end{itemize}
 
 Les tests marqués \texttt{donnees} portent sur les fichiers réellement produits et se sautent tant que le pipeline n'a pas été exécuté.

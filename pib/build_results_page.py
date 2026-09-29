@@ -22,6 +22,7 @@ from datetime import datetime
 import pandas as pd
 
 from pib.gdp_pipeline import unified_csv_path
+from pib.evaluate_forecasts import GROUPES_REVENU, ANNEES_RECESSION_MONDIALE
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -257,14 +258,35 @@ def verdict_biais(table: pd.DataFrame) -> tuple:
     return abs(table.loc[0, "biais_moyen"]) >= SEUIL_BIAIS, signe_commun
 
 
+def pays_du_groupe(code: str) -> str:
+    """« pays à revenu élevé », « pays à faible revenu »…"""
+    return f"pays à {GROUPES_REVENU.get(code, code).lower()}"
+
+
+def extremes_par_groupe(table: pd.DataFrame, colonne: str, unite: str) -> str:
+    """Phrase situant les groupes de revenu extrêmes pour `colonne` (une ligne par groupe)."""
+    table = table[table["income_group"].isin(GROUPES_REVENU)]
+    if len(table) < 2:
+        return ""
+    haut, bas = table.loc[table[colonne].idxmax()], table.loc[table[colonne].idxmin()]
+    return (f"de {signe(bas[colonne], 1)} {unite} pour les {pays_du_groupe(bas['income_group'])} "
+            f"à {signe(haut[colonne], 1)} {unite} pour les {pays_du_groupe(haut['income_group'])}")
+
+
+def et(elements: list) -> str:
+    elements = [str(e) for e in elements]
+    return elements[0] if len(elements) == 1 else ", ".join(elements[:-1]) + " et " + elements[-1]
+
+
 def section_previsions(data_dir: str, figure_uri) -> str:
     """
-    Section « qualité des prévisions », alimentée par evaluate_forecasts.py.
+    Section « qualité des prévisions », alimentée par pib.evaluate_forecasts.
 
     Omise si l'évaluation n'a pas été lancée : mieux vaut une page plus courte qu'une
     section aux chiffres inventés.
     """
-    biais_csv = os.path.join(data_dir, "processed", "weo_forecast_bias_ngdp_rpch.csv")
+    processed = os.path.join(data_dir, "processed")
+    biais_csv = os.path.join(processed, "weo_forecast_bias_ngdp_rpch.csv")
     if not figure_uri or not os.path.exists(biais_csv):
         return ""
 
@@ -288,10 +310,32 @@ def section_previsions(data_dir: str, figure_uri) -> str:
     if (au_dela > 0).all() or (au_dela < 0).all():
         verbe = "surestime" if au_dela.iloc[0] > 0 else "sous-estime"
         horizons_suivants = (f"il {verbe} la croissance à tous les horizons suivants, "
-                             f"de {signe(au_dela.min())} à {signe(au_dela.max())} point")
+                             f"de {signe(au_dela.min())} à {signe(au_dela.max())} point en moyenne")
     else:
         horizons_suivants = (f"le signe du biais varie selon l'horizon, de {signe(au_dela.min())} "
-                             f"à {signe(au_dela.max())} point")
+                             f"à {signe(au_dela.max())} point en moyenne")
+
+    # Ce que vaut ce biais moyen : pondération, médiane, poids des récessions, incertitude
+    lectures = ""
+    if 1 in fmi.index and "biais_pondere_pib" in fmi.columns:
+        h1 = fmi.loc[1]
+        exclut_zero = h1["ic95_bas"] > 0 or h1["ic95_haut"] < 0
+        lectures = f"""
+    <p class="col">Ce biais moyen compte chaque pays pour un. À un an, pondéré par le PIB — ce que
+    l'erreur représente pour l'économie mondiale —, il vaut {signe(h1["biais_pondere_pib"])} point
+    au lieu de {signe(h1["biais_moyen"])}, et la médiane {signe(h1["mediane"])} : quelques fortes
+    surestimations tirent la moyenne. Sans les récessions mondiales de
+    {et(ANNEES_RECESSION_MONDIALE)}, il serait de {signe(h1["biais_hors_recessions_mondiales"])} point.
+    Les pays d'une même année subissant les mêmes chocs, l'incertitude se mesure par année visée :
+    l'intervalle de confiance à 95 % du biais moyen va de {signe(h1["ic95_bas"])} à
+    {signe(h1["ic95_haut"])} point, {"et exclut donc zéro" if exclut_zero else "et inclut zéro"}.</p>"""
+        revenu_csv = os.path.join(processed, "weo_forecast_bias_by_income_ngdp_rpch.csv")
+        if os.path.exists(revenu_csv):
+            revenu = pd.read_csv(revenu_csv)
+            phrase = extremes_par_groupe(revenu[revenu["horizon"] == 1], "biais_moyen", "point")
+            if phrase:
+                lectures += f"""
+    <p class="col">Selon le niveau de revenu, le biais moyen à un an va {phrase}.</p>"""
 
     bm = biais[biais["reference"].str.startswith("Banque")].set_index("horizon")
     if bm.empty:
@@ -303,12 +347,19 @@ def section_previsions(data_dir: str, figure_uri) -> str:
         robustesse = ("Le calcul mené contre la série observée de la Banque Mondiale ne conduit pas "
                       "à la même conclusion : le résultat dépend de la référence retenue.")
 
+    avec_lectures = "biais_pondere_pib" in fmi.columns
     corps = [[
         f'<td class="num">{int(h)}{" (année en cours)" if h == 0 else ""}</td>',
         f'<td class="num">{signe(r["biais_moyen"])} pt</td>',
+        *([f'<td class="num">{signe(r["biais_pondere_pib"])} pt</td>',
+           f'<td class="num">{signe(r["mediane"])} pt</td>',
+           f'<td class="num">{signe(r["ic95_bas"])} à {signe(r["ic95_haut"])}</td>'] if avec_lectures else []),
         f'<td class="num">{nb(r["erreur_absolue_moyenne"], 2)} pt</td>',
         f'<td class="num rank">{nb(r["observations"])}</td>',
     ] for h, r in fmi.iterrows()]
+    entetes = ["Horizon", "Biais moyen",
+               *(["Pondéré par le PIB", "Médiane", "IC 95 % du biais moyen"] if avec_lectures else []),
+               "Erreur absolue moyenne", "Projections"]
 
     return f"""
   <section>
@@ -320,21 +371,133 @@ def section_previsions(data_dir: str, figure_uri) -> str:
 {bloc_figure(figure_uri, "Biais et erreur des prévisions du FMI par horizon et par année visée",
              "À gauche le biais par horizon de projection ; à droite l'erreur médiane selon "
              "l'année visée, où ressortent les récessions.")}
-    <div class="scroll">
-      <table>
-        <thead><tr><th>Horizon</th><th>Biais moyen</th><th>Erreur absolue moyenne</th><th>Projections</th></tr></thead>
-        <tbody>
-{lignes(corps)}
-        </tbody>
-      </table>
-    </div>
+{bloc_table(entetes, corps)}
     <p class="col">Sur l'année en cours, {annee_en_cours}. Au-delà, {horizons_suivants} ;
     l'erreur absolue moyenne passe de {nb(h0["erreur_absolue_moyenne"], 2)} point sur l'année en
-    cours à {nb(hmax["erreur_absolue_moyenne"], 2)} à {int(fmi.index.max())} ans.</p>
+    cours à {nb(hmax["erreur_absolue_moyenne"], 2)} à {int(fmi.index.max())} ans.</p>{lectures}
     <p class="col note">L'erreur est mesurée contre la ré-estimation du FMI un an après l'année
     visée, plutôt que contre le chiffre définitif d'aujourd'hui : juger une prévision sur des
     révisions statistiques postérieures la pénaliserait pour une information hors de sa portée.
-    {robustesse}</p>
+    {robustesse} Le biais pondéré ne porte que sur les années que couvre la série du pipeline ;
+    les groupes de revenu suivent la classification actuelle de la Banque Mondiale.</p>
+  </section>
+"""
+
+
+def section_niveaux(data_dir: str, figure_uri) -> str:
+    """
+    Section « PIB prévu et PIB réalisé » : erreur sur le niveau, croissances enchaînées.
+    Omise si l'évaluation des niveaux n'a pas été lancée.
+    """
+    processed = os.path.join(data_dir, "processed")
+    niveau_csv = os.path.join(processed, "weo_level_bias_ngdp_rpch.csv")
+    if not figure_uri or not os.path.exists(niveau_csv):
+        return ""
+    niveaux = pd.read_csv(niveau_csv)
+    fmi = niveaux[niveaux["reference"].str.startswith("FMI")].set_index("horizon")
+    if fmi.empty:
+        return ""
+    horizon = int(fmi.index.max())
+    fin = fmi.loc[horizon]
+
+    trop_haut, trop_bas = fin["part_trop_haut_5pct"], fin["part_trop_bas_5pct"]
+    asymetrie = ("Les erreurs ne se compensent pas : " if trop_haut > 2 * trop_bas else "") + \
+        (f"le niveau prévu dépasse le réalisé de plus de 5 % dans {nb(trop_haut)} % des cas, "
+         f"et lui est inférieur de plus de 5 % dans {nb(trop_bas)} % des cas.")
+
+    revenu_phrase = ""
+    revenu_csv = os.path.join(processed, "weo_level_bias_by_income_ngdp_rpch.csv")
+    if os.path.exists(revenu_csv):
+        revenu = pd.read_csv(revenu_csv)
+        phrase = extremes_par_groupe(revenu[revenu["horizon"] == horizon], "mediane", "%")
+        if phrase:
+            revenu_phrase = f" Selon le niveau de revenu, l'erreur médiane à {horizon} ans va {phrase}."
+
+    bm = niveaux[niveaux["reference"].str.startswith("Banque")].set_index("horizon")
+    recoupement = (f" Contre la série observée de la Banque Mondiale, elle est de {signe(bm.loc[horizon, 'mediane'], 1)} %."
+                   if horizon in bm.index else "")
+
+    corps = [[
+        f'<td class="num">{int(h)}</td>',
+        f'<td class="num">{signe(r["mediane"], 1)} %</td>',
+        f'<td class="num">{signe(r["moyenne_ponderee_pib"], 1)} %</td>',
+        f'<td class="num">{signe(r["p10"], 1)} à {signe(r["p90"], 1)} %</td>',
+        f'<td class="num">{nb(r["part_trop_haut_5pct"])} %</td>',
+        f'<td class="num">{nb(r["part_trop_bas_5pct"])} %</td>',
+    ] for h, r in fmi.iterrows()]
+    entetes = ["Horizon", "Médiane", "Pondérée par le PIB", "80 % des cas", "Prévu trop haut de +5 %",
+               "Prévu trop bas de +5 %"]
+
+    return f"""
+  <section>
+    <div class="sec-head col"><h2>PIB prévu et PIB réalisé</h2></div>
+    <p class="col">Une erreur de croissance, répétée d'année en année, se cumule sur le niveau du
+    PIB. En enchaînant les croissances projetées par chaque édition, puis les croissances réalisées,
+    on compare le niveau prévu au niveau atteint. À {horizon} ans, le niveau prévu dépasse le
+    réalisé de {signe(fin["mediane"], 1)} % en médiane ({signe(fin["moyenne_ponderee_pib"], 1)} %
+    pondéré par le PIB). {asymetrie}{revenu_phrase}</p>
+{bloc_figure(figure_uri, "Erreur sur le niveau du PIB en volume par horizon et par groupe de revenu",
+             "À gauche la distribution de l'erreur de niveau par horizon ; à droite sa médiane "
+             "par groupe de revenu.")}
+{bloc_table(entetes, corps)}
+    <p class="col note">Erreur de niveau : niveau prévu / niveau réalisé − 1, en volume. Réalisé :
+    croissances ré-estimées par le FMI un an après.{recoupement} En dollars courants s'ajouteraient
+    les erreurs de change et d'inflation, que la base historique du FMI, limitée aux taux, ne
+    permet pas de mesurer.</p>
+  </section>
+"""
+
+
+def section_fourchettes(data_dir: str, synthese: pd.DataFrame, c: dict, f: int) -> str:
+    """
+    Section « projections à l'aune des erreurs passées » : fourchette empirique autour du
+    PIB en volume projeté, pour les dix premières économies. Omise sans fourchettes.
+    """
+    chemin = os.path.join(data_dir, "processed", "gdp_projection_bands.csv")
+    if not os.path.exists(chemin):
+        return ""
+    bandes = pd.read_csv(chemin).set_index("country_code")
+    niveau, bas, haut = (f"GDP_Reel_{f}_Billion_USD_2015", f"GDP_Reel_{f}_Bas", f"GDP_Reel_{f}_Haut")
+    if niveau not in bandes.columns:
+        return ""
+    tete = [code for code in synthese.dropna(subset=[c["rang"]]).nsmallest(10, c["rang"])["country_code"]
+            if code in bandes.index]
+    if not tete:
+        return ""
+    horizon = int(bandes["horizon"].iloc[0])
+    edition = f - horizon
+    sous_projection = [code for code in tete if bandes.loc[code, "borne_haute_pct"] < 0]
+    propre = int((bandes["historique_de_reference"] == "pays").sum())
+
+    corps = [[
+        f'<td class="name">{bandes.loc[code, "country_name"]}</td>',
+        f'<td class="num">{nb(bandes.loc[code, niveau])}</td>',
+        f'<td class="num">{nb(bandes.loc[code, bas])} – {nb(bandes.loc[code, haut])}</td>',
+        f'<td class="num">{signe(bandes.loc[code, "borne_basse_pct"], 1)} à {signe(bandes.loc[code, "borne_haute_pct"], 1)} %</td>',
+        f'<td class="name">{"historique du pays" if bandes.loc[code, "historique_de_reference"] == "pays" else pays_du_groupe(bandes.loc[code, "historique_de_reference"])}</td>',
+    ] for code in tete]
+
+    # Fourchette entièrement sous la projection : 10e centile des erreurs passées positif,
+    # donc au moins 90 % des niveaux passés surestimés
+    noms = et([bandes.loc[code, "country_name"] for code in sous_projection]) if sous_projection else ""
+    constat = (f"Pour {noms}, la fourchette se situe entièrement sous la projection du FMI : leur "
+               f"niveau à {horizon} ans a été surestimé dans au moins 90 % des cas passés."
+               if sous_projection else
+               "Pour aucune des dix premières économies la fourchette ne se situe entièrement sous la projection.")
+
+    return f"""
+  <section>
+    <div class="sec-head col"><h2>Les projections {f} à l'aune des erreurs passées</h2></div>
+    <p class="col">Les projections {f} de ce rapport viennent de l'édition {edition} du WEO, à
+    {horizon} ans d'horizon. Appliquer à chacune les erreurs de niveau commises par le passé au même
+    horizon donne une fourchette : celle où seraient tombés 80 % des cas comparables. {constat}</p>
+{bloc_table(["Pays", f"PIB {f} projeté", "Fourchette", "Écart à la projection", "Erreurs passées retenues"], corps)}
+    <p class="col note">PIB en volume, milliards de dollars constants de 2015. Fourchette : 10ᵉ à 90ᵉ
+    centile des erreurs de niveau passées à {horizon} ans, celles du pays lui-même s'il en compte sur
+    au moins vingt années visées ({propre} pays), sinon celles de son groupe de revenu. Ce n'est pas une
+    prévision corrigée, mais la marge d'erreur qu'a connue le FMI ; en dollars courants, elle serait
+    plus large. Détail pour tous les pays : <code>data/processed/gdp_projection_bands.csv</code> et
+    onglet <code>Fourchettes_{f}</code> du classeur Excel.</p>
   </section>
 """
 
@@ -494,6 +657,7 @@ def construire(data_dir: str, output_dir: str, pays_detail: str) -> str:
 
     figures = {
         "exactitude": image(output_dir, "gdp_forecast_accuracy.png"),
+        "niveaux": image(output_dir, "gdp_forecast_level_errors.png"),
         "sources": image(output_dir, f"gdp_source_discrepancy_{o}.png"),
         "traj": image(output_dir, f"gdp_top10_trajectories_{d}_{f}.png"),
         "cagr": image(output_dir, "gdp_cagr_comparison_top15.png"),
@@ -621,7 +785,7 @@ def construire(data_dir: str, output_dir: str, pays_detail: str) -> str:
     de 2021 inchangés, ce qui en élargit l'incertitude.</p>
   </section>
 
-{section_previsions(data_dir, figures["exactitude"])}
+{section_previsions(data_dir, figures["exactitude"])}{section_niveaux(data_dir, figures["niveaux"])}{section_fourchettes(data_dir, synthese, c, f)}
   <section>
     <div class="sec-head col"><h2>Détail par pays — {nom_detail}</h2></div>
     <p class="col note">Dix dernières années de la série, prévisions comprises.</p>
