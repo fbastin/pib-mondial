@@ -24,8 +24,8 @@ from typing import Optional
 import pandas as pd
 import numpy as np
 
-from fetch_historical_gdp import fetch_all_historical_gdp, WB_INDICATORS, WB_LAST_UPDATED
-from fetch_forecast_gdp import fetch_all_forecasts, IMF_INDICATORS, IMF_API_INFO, BASE_URL
+from pib.fetch_historical_gdp import fetch_all_historical_gdp, WB_INDICATORS, WB_LAST_UPDATED
+from pib.fetch_forecast_gdp import fetch_all_forecasts, IMF_INDICATORS, IMF_API_INFO, BASE_URL
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -497,7 +497,7 @@ def unified_csv_path(data_dir: str = "data") -> str:
         chemin = os.path.join(processed, f"gdp_unified_{bornes['historique'][0]}_{bornes['prevision'][1]}.csv")
         if not os.path.exists(chemin):
             raise FileNotFoundError(f"{chemin}, annoncé par {meta_path}, est introuvable. "
-                                    "Relancez : python gdp_pipeline.py")
+                                    "Relancez : python produire_rapports.py")
         return chemin
 
     candidats = sorted(glob.glob(os.path.join(processed, "gdp_unified_*.csv")))
@@ -505,9 +505,9 @@ def unified_csv_path(data_dir: str = "data") -> str:
         return candidats[0]
     if not candidats:
         raise FileNotFoundError(f"Aucune série unifiée dans {processed}. "
-                                "Lancez d'abord : python gdp_pipeline.py")
+                                "Lancez d'abord : python produire_rapports.py")
     raise FileNotFoundError(f"Plusieurs séries unifiées dans {processed} et aucun {meta_path} "
-                            "pour désigner celle du dernier run. Relancez : python gdp_pipeline.py")
+                            "pour désigner celle du dernier run. Relancez : python produire_rapports.py")
 
 
 def _last_well_covered_year(df: pd.DataFrame, column: str) -> int:

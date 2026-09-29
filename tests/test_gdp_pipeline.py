@@ -10,8 +10,8 @@ classements faux, jamais une exception. Les tests unitaires travaillent sur des
 données synthétiques (aucun appel réseau) ; les tests marqués `donnees` vérifient
 les fichiers réellement produits et se sautent d'eux-mêmes s'ils sont absents.
 
-    pytest test_gdp_pipeline.py -v
-    pytest test_gdp_pipeline.py -m "not donnees"    # sans les fichiers produits
+    pytest -v                        # depuis la racine du dépôt (voir pytest.ini)
+    pytest -m "not donnees"          # sans les fichiers produits
 """
 
 import os
@@ -22,11 +22,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import http_utils
-import gdp_pipeline
-import fetch_historical_gdp
-import fetch_forecast_gdp
-from gdp_pipeline import (
+from pib import http_utils, gdp_pipeline, fetch_historical_gdp, fetch_forecast_gdp
+from pib.gdp_pipeline import (
     calculate_cagr,
     reference_years,
     build_unified_dataset,
@@ -39,7 +36,7 @@ from gdp_pipeline import (
     latest_forecast_year,
     choose_reference_year,
 )
-from visualize_gdp import detect_years
+from pib.visualize_gdp import detect_years
 
 PROCESSED = os.path.join("data", "processed")
 
@@ -530,7 +527,7 @@ class TestDeuxRapports:
 
     def test_note_de_la_page_de_resultats(self, tmp_path, monkeypatch):
         """Chaque page dit quel rapport elle présente et renvoie vers l'autre."""
-        from build_results_page import note_rapport
+        from pib.build_results_page import note_rapport
         data, _ = self._run(tmp_path, monkeypatch, pays_c_publie=False)
         note_reference = note_rapport(str(data), 2024)
         note_recente = note_rapport(str(data / "plus_recent"), 2025)
@@ -831,20 +828,20 @@ class TestBaseHistoriqueWEO:
         return chemin
 
     def test_mise_au_format_long(self, tmp_path):
-        from evaluate_forecasts import lire_base_historique
+        from pib.evaluate_forecasts import lire_base_historique
         table = lire_base_historique(str(self._classeur(tmp_path)))
         assert {"country_code", "year", "vintage", "horizon", "valeur"} <= set(table.columns)
         assert set(table["vintage"]) == {"S2018", "F2018", "F2020", "F2021"}
 
     def test_valeurs_manquantes_ecartees(self, tmp_path):
         """Le classeur note les trous « . » : ils ne doivent pas devenir des zéros."""
-        from evaluate_forecasts import lire_base_historique
+        from pib.evaluate_forecasts import lire_base_historique
         table = lire_base_historique(str(self._classeur(tmp_path)))
         japon = table[(table.country_code == "JPN") & (table.vintage == "F2018")]
         assert japon.empty
 
     def test_horizon_compte_depuis_l_edition(self, tmp_path):
-        from evaluate_forecasts import lire_base_historique
+        from pib.evaluate_forecasts import lire_base_historique
         table = lire_base_historique(str(self._classeur(tmp_path))).set_index(
             ["country_code", "year", "vintage"])
         assert table.loc[("FRA", 2019, "S2018"), "horizon"] == 1     # projetée un an avant
@@ -852,19 +849,19 @@ class TestBaseHistoriqueWEO:
         assert table.loc[("FRA", 2019, "F2020"), "horizon"] == -1    # ré-estimation
 
     def test_reestimations_ne_sont_pas_des_previsions(self, tmp_path):
-        from evaluate_forecasts import lire_base_historique
+        from pib.evaluate_forecasts import lire_base_historique
         table = lire_base_historique(str(self._classeur(tmp_path)))
         assert not table.loc[table.horizon < 0, "est_projection"].any()
         assert table.loc[table.horizon >= 0, "est_projection"].all()
 
     def test_saison_extraite(self, tmp_path):
-        from evaluate_forecasts import lire_base_historique
+        from pib.evaluate_forecasts import lire_base_historique
         table = lire_base_historique(str(self._classeur(tmp_path)))
         assert set(table["saison"]) == {"S", "F"}
 
     def test_agregats_ecartes_sans_liste_de_pays(self, tmp_path):
         """Sans série unifiée sous la main, le préfixe des codes d'agrégats sert de repli."""
-        from evaluate_forecasts import lire_base_historique, exclure_agregats
+        from pib.evaluate_forecasts import lire_base_historique, exclure_agregats
         table = lire_base_historique(str(self._classeur(tmp_path)))
         pays = exclure_agregats(table, data_dir=str(tmp_path / "absent"))
         assert "G001" not in set(pays["country_code"])
@@ -878,7 +875,7 @@ class TestBaseHistoriqueWEO:
         retenir la seconde jugerait la prévision sur des révisions statistiques
         postérieures, hors de portée du prévisionniste.
         """
-        from evaluate_forecasts import lire_base_historique, realise_selon_fmi
+        from pib.evaluate_forecasts import lire_base_historique, realise_selon_fmi
         table = lire_base_historique(str(self._classeur(tmp_path)))
         reference = realise_selon_fmi(table).set_index(["country_code", "year"])
         assert reference.loc[("FRA", 2019), "realise_fmi"] == pytest.approx(1.8)
@@ -886,7 +883,7 @@ class TestBaseHistoriqueWEO:
         assert reference.loc[("FRA", 2020), "realise_fmi"] == pytest.approx(-7.9)
 
     def test_erreur_de_prevision(self, tmp_path):
-        from evaluate_forecasts import lire_base_historique, evaluer
+        from pib.evaluate_forecasts import lire_base_historique, evaluer
         table = lire_base_historique(str(self._classeur(tmp_path)))
         evaluation = evaluer(table, data_dir=str(tmp_path / "absent"))
 
@@ -896,14 +893,14 @@ class TestBaseHistoriqueWEO:
         assert ligne["erreur_vs_fmi"] == pytest.approx(9.6, abs=1e-9)
 
     def test_seules_les_projections_sont_evaluees(self, tmp_path):
-        from evaluate_forecasts import lire_base_historique, evaluer
+        from pib.evaluate_forecasts import lire_base_historique, evaluer
         table = lire_base_historique(str(self._classeur(tmp_path)))
         evaluation = evaluer(table, data_dir=str(tmp_path / "absent"))
         assert (evaluation["horizon"] >= 0).all()
 
     def test_code_kosovo_converti(self, tmp_path):
         """Régression : `KOS` était inconnu de la série du pipeline, le Kosovo était écarté."""
-        from evaluate_forecasts import lire_base_historique
+        from pib.evaluate_forecasts import lire_base_historique
         table = lire_base_historique(str(self._classeur(tmp_path)))
         assert "XKX" in set(table.country_code)
         assert "KOS" not in set(table.country_code)
@@ -920,7 +917,7 @@ class TestBaseHistoriqueWEO:
         return str(dossier)
 
     def test_reference_banque_mondiale_pour_la_croissance(self, tmp_path):
-        from evaluate_forecasts import lire_base_historique, evaluer
+        from pib.evaluate_forecasts import lire_base_historique, evaluer
         table = lire_base_historique(str(self._classeur(tmp_path)))
         evaluation = evaluer(table, data_dir=self._pipeline(tmp_path / "data"))
         ligne = evaluation[(evaluation.country_code == "FRA") & (evaluation.year == 2020)
@@ -933,7 +930,7 @@ class TestBaseHistoriqueWEO:
         y compris pour `--indicateur pcpi_pch` — l'inflation projetée était comparée
         à la croissance observée.
         """
-        from evaluate_forecasts import lire_base_historique, evaluer, synthese_par_horizon
+        from pib.evaluate_forecasts import lire_base_historique, evaluer, synthese_par_horizon
         table = lire_base_historique(str(self._classeur(tmp_path, onglet="pcpi_pch")),
                                      indicateur="pcpi_pch")
         evaluation = evaluer(table, data_dir=self._pipeline(tmp_path / "data"),
@@ -946,7 +943,7 @@ class TestBaseHistoriqueWEO:
         Une projection d'hyperinflation (le Venezuela à 10 000 000 %) porte la moyenne
         à des milliers de points : la synthèse doit fournir des médianes et le signaler.
         """
-        from evaluate_forecasts import synthese_par_horizon, moyennes_dominees
+        from pib.evaluate_forecasts import synthese_par_horizon, moyennes_dominees
         erreurs = [0.5, -0.3, 0.8, -1.1, 0.2, 1e7]
         evaluation = pd.DataFrame(dict(horizon=1, erreur_vs_fmi=erreurs, erreur_vs_bm=np.nan))
         synthese = synthese_par_horizon(evaluation)
@@ -955,17 +952,17 @@ class TestBaseHistoriqueWEO:
         assert not moyennes_dominees(synthese_par_horizon(evaluation.iloc[:-1]))
 
     def test_classeur_absent_signale_clairement(self, tmp_path):
-        from evaluate_forecasts import lire_base_historique
+        from pib.evaluate_forecasts import lire_base_historique
         with pytest.raises(FileNotFoundError, match="LISEZ-MOI"):
             lire_base_historique(str(tmp_path / "inexistant.xlsx"))
 
     def test_indicateur_inconnu_rejete(self, tmp_path):
-        from evaluate_forecasts import lire_base_historique
+        from pib.evaluate_forecasts import lire_base_historique
         with pytest.raises(ValueError, match="Indicateur inconnu"):
             lire_base_historique(str(self._classeur(tmp_path)), indicateur="pib_magique")
 
     def test_synthese_couvre_les_deux_references(self, tmp_path):
-        from evaluate_forecasts import lire_base_historique, evaluer, synthese_par_horizon
+        from pib.evaluate_forecasts import lire_base_historique, evaluer, synthese_par_horizon
         table = lire_base_historique(str(self._classeur(tmp_path)))
         synthese = synthese_par_horizon(evaluer(table, data_dir=str(tmp_path / "absent")))
         assert not synthese.empty
@@ -980,28 +977,28 @@ class TestEditionsAPI:
     """
 
     def test_edition_courante_apres_un_automne(self):
-        from update_weo_editions import nommer_editions
+        from pib.update_weo_editions import nommer_editions
         assert nommer_editions(["WEO", "WEO_2025_OCT_VINTAGE"], horizon_courant=2031) == {
             "WEO": "S2026", "WEO_2025_OCT_VINTAGE": "F2025"}
 
     def test_edition_courante_apres_un_printemps(self):
-        from update_weo_editions import nommer_editions
+        from pib.update_weo_editions import nommer_editions
         noms = nommer_editions(["WEO", "WEO_2025_OCT_VINTAGE", "WEO_2026_APR_VINTAGE"], horizon_courant=2031)
         assert noms["WEO"] == "F2026" and noms["WEO_2026_APR_VINTAGE"] == "S2026"
 
     def test_horizon_incoherent_refuse(self):
-        from update_weo_editions import nommer_editions
+        from pib.update_weo_editions import nommer_editions
         with pytest.raises(RuntimeError, match="incohérente"):
             nommer_editions(["WEO", "WEO_2025_OCT_VINTAGE"], horizon_courant=2030)
 
     def test_sans_archive_rien_n_est_devine(self):
-        from update_weo_editions import nommer_editions
+        from pib.update_weo_editions import nommer_editions
         with pytest.raises(RuntimeError, match="archivée"):
             nommer_editions(["WEO"], horizon_courant=2031)
 
     def test_lecture_de_la_reponse_sdmx(self, monkeypatch):
         """Années non ordonnées et valeurs textuelles, comme dans les réponses réelles."""
-        import update_weo_editions
+        from pib import update_weo_editions
         reponse = {
             "structure": {"dimensions": {
                 "series": [{"id": "COUNTRY", "values": [{"id": "FRA", "name": "France"},
@@ -1032,7 +1029,7 @@ class TestEditionsAPI:
 
     @staticmethod
     def _api(monkeypatch):
-        import update_weo_editions
+        from pib import update_weo_editions
         monkeypatch.setattr(update_weo_editions, "lister_flux", lambda: ["WEO", "WEO_2025_OCT_VINTAGE"])
         horizons = {"WEO": 2031, "WEO_2025_OCT_VINTAGE": 2030}
         monkeypatch.setattr(update_weo_editions, "lire_flux", lambda flux, ind: pd.DataFrame(
@@ -1072,7 +1069,7 @@ class TestEditionsAPI:
 
     def test_lecture_du_classeur_completee(self, tmp_path):
         """Le complément ajoute ses éditions ; pour une édition commune, le classeur fait foi."""
-        from evaluate_forecasts import lire_base_historique
+        from pib.evaluate_forecasts import lire_base_historique
         classeur = TestBaseHistoriqueWEO._classeur(tmp_path)
         pd.DataFrame([
             dict(indicateur="ngdp_rpch", vintage="F2022", flux="WEO_2022_OCT_VINTAGE", country="France",
@@ -1101,9 +1098,9 @@ class TestFichiersProduits:
         try:
             serie = unified_csv_path("data")
         except FileNotFoundError:
-            pytest.skip("Aucune donnée produite : lancez `python gdp_pipeline.py`")
+            pytest.skip("Aucune donnée produite : lancez `python produire_rapports.py`")
         if not os.path.exists(synthese):
-            pytest.skip("Aucune donnée produite : lancez `python gdp_pipeline.py`")
+            pytest.skip("Aucune donnée produite : lancez `python produire_rapports.py`")
         return pd.read_csv(serie), pd.read_csv(synthese)
 
     def test_un_seul_libelle_par_code(self, fichiers):

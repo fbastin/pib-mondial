@@ -16,7 +16,7 @@ Le fichier est cumulatif : une édition que l'API ne sert plus y reste, puisque 
 garde que les éditions récentes. Une édition présente dans le classeur n'y figure pas :
 le classeur fait foi.
 
-    python update_weo_editions.py
+    python -m pib.update_weo_editions
 """
 
 import os
@@ -28,7 +28,7 @@ from datetime import date
 
 import pandas as pd
 
-from http_utils import get_json
+from pib.http_utils import get_json
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 

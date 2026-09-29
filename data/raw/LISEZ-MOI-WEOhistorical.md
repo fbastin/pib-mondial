@@ -30,7 +30,7 @@ Une ligne par (pays, année visée) ; une colonne par édition, nommée `S2019ng
 les laisserait passer, et un `fillna(0)` en ferait des croissances nulles.
 
 Les codes pays sont ceux de la colonne `ISOAlpha_3Code`, à deux exceptions près que
-`evaluate_forecasts.py` convertit vers les codes de la Banque Mondiale : `KOS` (Kosovo,
+`pib/evaluate_forecasts.py` convertit vers les codes de la Banque Mondiale : `KOS` (Kosovo,
 `XKX`) et `WBG` (Cisjordanie et Gaza, `PSE`).
 
 L'horizon de projection se déduit de l'écart entre l'année visée et l'année de l'édition :
@@ -62,7 +62,7 @@ L'API SDMX du FMI (`api.imf.org`), qui accepte les scripts, sert l'édition cour
 celles du classeur — vérifié sur `S2026` et `F2025`, écart ≤ 0,0005 point — avec les mêmes
 codes pays (`KOS`, `WBG`) et agrégats (`G001`…).
 
-`python update_weo_editions.py` (lancé aussi par `produire_rapports.py`) ajoute dans
+`python -m pib.update_weo_editions` (lancé aussi par `produire_rapports.py`) ajoute dans
 `weo_editions_api.csv` les éditions servies par l'API et absentes du classeur, pour les
 trois onglets, sur les horizons −2 à +5. Correspondance des indicateurs :
 
@@ -82,8 +82,8 @@ trois onglets, sur les horizons −2 à +5. Correspondance des indicateurs :
 ## Utilisation
 
 ```bash
-python evaluate_forecasts.py                        # croissance du PIB réel
-python evaluate_forecasts.py --indicateur pcpi_pch  # inflation
+python -m pib.evaluate_forecasts                        # croissance du PIB réel
+python -m pib.evaluate_forecasts --indicateur pcpi_pch  # inflation
 ```
 
 Produit dans `data/processed/` :
@@ -97,4 +97,5 @@ Produit dans `data/processed/` :
 Pour l'inflation, lire les médianes : quelques projections d'hyperinflation (le Venezuela
 à 10 000 000 %) portent les moyennes à des milliers de points. Le script le signale.
 
-Le graphique `outputs/gdp_forecast_accuracy.png` est ensuite produit par `visualize_gdp.py`.
+Le graphique `outputs/gdp_forecast_accuracy.png` est ensuite produit par `python -m pib.visualize_gdp`.
+`python produire_rapports.py` enchaîne ces étapes, pour chaque rapport.

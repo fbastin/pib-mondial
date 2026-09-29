@@ -56,6 +56,8 @@ La Banque Mondiale fournit une API REST libre d'accès sans clé d'API.
         \item \texttt{NY.GDP.MKTP.KD.ZG}: Taux de croissance annuel du PIB (\%).
         \item \texttt{NY.GDP.PCAP.CD}: PIB par habitant en USD courants.
         \item \texttt{NY.GDP.MKTP.PP.CD}: PIB en Parité de Pouvoir d'Achat (PPA) en USD internationaux.
+        \item \texttt{NY.GDP.MKTP.KD}: PIB à prix constants de 2015, en USD.
+        \item \texttt{NY.GDP.MKTP.PP.KD}: PIB à PPA, en dollars internationaux constants de 2021.
     \end{enumerate}
 \end{itemize}
 
@@ -71,6 +73,8 @@ Le FMI met à disposition l'API \textit{DataMapper} (World Economic Outlook - WE
         \item \texttt{NGDPDPC}: PIB par habitant en USD.
     \end{enumerate}
 \end{itemize}
+
+Pour l'évaluation des prévisions, le FMI fournit en outre les éditions passées du WEO: la \textit{WEO Historical Forecasts Database}, téléchargée à la main, et, pour les éditions les plus récentes, son API SDMX (\url{https://api.imf.org}); voir la section~\ref{sec:evaluation}.
 
 \section{Méthodologie et Traitement des Données}
 
@@ -152,21 +156,28 @@ Tous les rangs portent sur un même panel: les pays renseignés à la dernière 
 \subsection{Portée du Classement à Parité}
 Les niveaux de prévision à parité étant obtenus par chaînage à partir du dernier point observé, le classement \texttt{Rank\_PPA} projeté suppose les facteurs de conversion de 2021 inchangés sur tout l'horizon. Or ces facteurs évoluent avec les niveaux de prix relatifs. Le classement projeté à parité doit donc se lire comme l'extrapolation d'une structure de prix figée, et non comme une prévision du pouvoir d'achat relatif à l'horizon: son incertitude excède celle des prévisions de croissance dont il dérive.
 
-\section{Architecture des Scripts Python}
+\section{Organisation du Dépôt}
 
 \begin{itemize}
-    \item \texttt{fetch\_historical\_gdp.py}: Collecte des données historiques (Banque Mondiale).
-    \item \texttt{fetch\_forecast\_gdp.py}: Collecte des prévisions (FMI WEO).
-    \item \texttt{http\_utils.py}: Requêtes HTTP communes aux deux collectes (nouvelles tentatives, échec explicite).
-    \item \texttt{gdp\_pipeline.py}: Pipeline maître d'unification et d'export Excel / CSV.
-    \item \texttt{produire\_rapports.py}: Chaîne complète, pour le rapport de référence et, le cas échéant, le plus récent.
-    \item \texttt{update\_weo\_editions.py}: Éditions récentes du WEO, depuis l'API SDMX du FMI.
-    \item \texttt{evaluate\_forecasts.py}: Évaluation des prévisions d'époque du FMI.
-    \item \texttt{visualize\_gdp.py}: Génération des graphiques PNG et du Dashboard HTML.
-    \item \texttt{build\_results\_page.py}: Page HTML de résultats, construite depuis les CSV et les PNG produits.
-    \item \texttt{test\_gdp\_pipeline.py}: Tests des invariants du pipeline.
-    \item \texttt{gdp\_analysis\_notebook.ipynb}: Notebook Jupyter d'analyse interactive (Python).
-    \item \texttt{gdp\_analysis\_notebook\_julia.ipynb}: Même analyse en Julia (CSV.jl, DataFrames.jl, Plots.jl).
+    \item \texttt{produire\_rapports.py}, à la racine: point d'entrée unique, qui enchaîne la chaîne complète pour le rapport de référence et, le cas échéant, le plus récent.
+    \item \texttt{pib/}: le code, en paquet Python (détail ci-dessous).
+    \item \texttt{notebooks/}: les deux notebooks d'analyse (Python et Julia) et leurs générateurs.
+    \item \texttt{tests/}: les tests des invariants (pytest).
+    \item \texttt{docs/}: la présente documentation, source \LaTeX{} et PDF.
+    \item \texttt{data/raw/}: les sources versionnées --- classeur WEO historique, complément lu dans l'API du FMI, et leur notice.
+    \item \texttt{data/processed/}, \texttt{data/plus\_recent/}, \texttt{outputs/}: les données et livrables produits, régénérés à chaque exécution et non versionnés.
+\end{itemize}
+
+\noindent Modules du paquet \texttt{pib}, chacun exécutable depuis la racine du dépôt par \texttt{python -m pib.<module>}:
+\begin{itemize}
+    \item \texttt{http\_utils}: requêtes HTTP communes aux collectes (nouvelles tentatives, échec explicite).
+    \item \texttt{fetch\_historical\_gdp}: collecte des données historiques (Banque Mondiale).
+    \item \texttt{fetch\_forecast\_gdp}: collecte des prévisions (FMI, API DataMapper).
+    \item \texttt{gdp\_pipeline}: unification, raccord, volumes, synthèse, choix des rapports et export Excel / CSV.
+    \item \texttt{update\_weo\_editions}: éditions récentes du WEO, depuis l'API SDMX du FMI.
+    \item \texttt{evaluate\_forecasts}: évaluation des prévisions d'époque du FMI.
+    \item \texttt{visualize\_gdp}: graphiques PNG et tableau de bord HTML.
+    \item \texttt{build\_results\_page}: page HTML de résultats, construite depuis les CSV et les PNG produits.
 \end{itemize}
 
 \subsection{Bornes Paramétrables}
@@ -189,7 +200,7 @@ Sauf si \texttt{-{}-end-year} l'impose, la dernière année observée est donc c
 
 Le seuil porte sur le PIB plutôt que sur le nombre de pays: 2023 classe un pays de plus que 2024 (Saint-Marin, $0{,}002\%$ du PIB), ce qui ne justifie pas de perdre une année, quand les trois pays absents de 2025 pèsent $0{,}49\%$. Le bloc \texttt{rapport} de chaque \texttt{extraction\_metadata.json} consigne ce choix, et la page de résultats de chaque rapport renvoie vers l'autre. La commande \texttt{produire\_rapports.py} enchaîne collecte, évaluation, graphiques et page de résultats pour chacun.
 
-\section{Évaluation des Prévisions}
+\section{Évaluation des Prévisions}\label{sec:evaluation}
 
 Confronter une prévision à ce qui s'est produit suppose de disposer de la prévision \emph{telle qu'elle fut publiée}. L'API DataMapper ne le permet pas: elle ne sert que le millésime courant, dont les valeurs passées sont les estimations d'aujourd'hui. Le FMI consolide en revanche l'ensemble de ses éditions depuis 1990 dans la \textit{WEO Historical Forecasts Database} (\texttt{data/raw/WEOhistorical.xlsx}): 73 éditions, 201 entités, années visées de 1988 à 2031.
 
@@ -267,15 +278,23 @@ Les tests marqués \texttt{donnees} portent sur les fichiers réellement produit
 
 La suite a été validée par mutation: chaque défaut correspondant a été réintroduit dans une copie du code afin de vérifier qu'elle échoue effectivement. Tous sont détectés --- un test qui ne tombe jamais ne garantit rien.
 
-\section{Guide du Notebook Jupyter}
+\section{Guide des Notebooks}
 
-Le notebook \texttt{gdp\_analysis\_notebook.ipynb} permet d'explorer les données de manière interactive:
+Deux notebooks, dans le dossier \texttt{notebooks/}, explorent le rapport de référence de manière interactive:
+\begin{itemize}
+    \item \texttt{gdp\_analysis\_notebook.ipynb}, en Python (pandas, matplotlib, Plotly);
+    \item \texttt{gdp\_analysis\_notebook\_julia.ipynb}, en Julia (CSV.jl, DataFrames.jl, Plots.jl).
+\end{itemize}
+Ils couvrent les mêmes sections:
 \begin{enumerate}
     \item \textbf{Chargement \& Inspection} des données unifiées.
-    \item \textbf{Visualisation temporelle Plotly} avec séparation historique / prévision.
+    \item \textbf{Visualisation temporelle interactive} avec séparation historique / prévision.
     \item \textbf{Comparaison des CAGR} historique vs prévisionnel (Top 15).
     \item \textbf{Carte de chaleur (Heatmap)} des taux de croissance, des dix dernières années observées à l'horizon.
+    \item \textbf{Nominal ou volume}, et classement à parité de pouvoir d'achat.
     \item \textbf{Fonction de recherche interactive} par pays (\texttt{analyze\_country}).
 \end{enumerate}
+
+Lancés depuis Jupyter, ils s'exécutent dans \texttt{notebooks/} et retrouvent seuls la racine du dépôt, où sont les données: le notebook Python remonte jusqu'au dossier qui contient le paquet \texttt{pib}, le notebook Julia s'appuie sur l'environnement activé par son noyau (\texttt{-{}-project=@.}), celui du \texttt{Project.toml} de la racine. Leurs titres et libellés suivent les bornes du run. Ils se régénèrent par \texttt{notebooks/create\_notebook.py} et \texttt{notebooks/create\_notebook\_julia.py}.
 
 \end{document}

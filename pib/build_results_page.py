@@ -21,7 +21,7 @@ from datetime import datetime
 
 import pandas as pd
 
-from gdp_pipeline import unified_csv_path
+from pib.gdp_pipeline import unified_csv_path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -36,7 +36,7 @@ def charger(data_dir: str):
     synthese_csv = os.path.join(data_dir, "processed", "gdp_country_summary.csv")
     if not os.path.exists(synthese_csv):
         raise FileNotFoundError(
-            "Données absentes. Lancez d'abord : python gdp_pipeline.py")
+            "Données absentes. Lancez d'abord : python produire_rapports.py")
 
     unifie = pd.read_csv(unified_csv_path(data_dir))
     synthese = pd.read_csv(synthese_csv)

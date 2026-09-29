@@ -22,7 +22,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from gdp_pipeline import unified_csv_path
+from pib.gdp_pipeline import unified_csv_path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -47,7 +47,7 @@ def load_data(data_dir: str = "data"):
         logging.error(str(e))
         return None, None
     if not os.path.exists(summary_csv):
-        logging.error("Synthèse introuvable. Veuillez exécuter gdp_pipeline.py au préalable.")
+        logging.error("Synthèse introuvable. Lancez d'abord : python produire_rapports.py")
         return None, None
 
     return pd.read_csv(unified_csv), pd.read_csv(summary_csv)
@@ -427,7 +427,7 @@ def plot_forecast_accuracy(data_dir: str = "data", output_dir: str = "outputs"):
     chemin = os.path.join(data_dir, "processed", "weo_forecast_evaluation_ngdp_rpch.csv")
     if not os.path.exists(chemin):
         logging.warning("Évaluation des prévisions absente : graphique omis "
-                        "(lancer python evaluate_forecasts.py).")
+                        "(lancer python -m pib.evaluate_forecasts).")
         return
 
     logging.info("Génération du graphique d'exactitude des prévisions...")

@@ -20,7 +20,7 @@ import argparse
 import pandas as pd
 from typing import Dict, Any, Optional, Tuple
 
-from http_utils import get_json
+from pib.http_utils import get_json
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 

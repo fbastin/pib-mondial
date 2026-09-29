@@ -2,7 +2,9 @@
 """
 create_notebook.py
 ------------------
-Génère le notebook Jupyter gdp_analysis_notebook.ipynb prêt à l'emploi.
+Génère le notebook Jupyter gdp_analysis_notebook.ipynb, à côté de ce script.
+
+    python notebooks/create_notebook.py
 """
 
 import json
@@ -35,6 +37,8 @@ notebook_content = {
    "outputs": [],
    "source": [
     "import os\n",
+    "import sys\n",
+    "from pathlib import Path\n",
     "import pandas as pd\n",
     "import numpy as np\n",
     "import matplotlib.pyplot as plt\n",
@@ -62,11 +66,17 @@ notebook_content = {
    "metadata": {},
    "outputs": [],
    "source": [
+    "# Jupyter lance le noyau dans notebooks/ : la racine du dépôt est le premier dossier,\n",
+    "# en remontant, qui contient le paquet pib. Les données sont lues depuis là.\n",
+    "RACINE = next(d for d in [Path.cwd(), *Path.cwd().parents] if (d / 'pib').is_dir())\n",
+    "sys.path.insert(0, str(RACINE))\n",
+    "DATA = RACINE / 'data'\n",
+    "\n",
     "# Le nom du fichier unifié porte les bornes du run, et plusieurs peuvent coexister :\n",
     "# on retient celui du dernier run, désigné par data/extraction_metadata.json\n",
-    "from gdp_pipeline import unified_csv_path\n",
-    "unified_csv = unified_csv_path('data')\n",
-    "summary_csv = os.path.join('data', 'processed', 'gdp_country_summary.csv')\n",
+    "from pib.gdp_pipeline import unified_csv_path\n",
+    "unified_csv = unified_csv_path(str(DATA))\n",
+    "summary_csv = DATA / 'processed' / 'gdp_country_summary.csv'\n",
     "\n",
     "# Chargement des DataFrames\n",
     "df_unified = pd.read_csv(unified_csv)\n",
@@ -366,7 +376,7 @@ notebook_content = {
  "nbformat_minor": 2
 }
 
-output_path = os.path.join("gdp_analysis_notebook.ipynb")
+output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gdp_analysis_notebook.ipynb")
 with open(output_path, "w", encoding="utf-8") as f:
     json.dump(notebook_content, f, indent=1, ensure_ascii=False)
 

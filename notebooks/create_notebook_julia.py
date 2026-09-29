@@ -49,14 +49,14 @@ produits par `gdp_pipeline.py` à partir des API de la **Banque Mondiale** (hist
 et du **FMI WEO** (prévisions). Les bornes dépendent du run du pipeline : elles sont
 affichées au chargement (section 2) et reprises dans chaque titre.
 
-> **Avant de commencer.** Depuis le dossier du projet :
+> **Avant de commencer.** Depuis la racine du dépôt :
 > ```julia
 > using Pkg
 > Pkg.activate(".")   # environnement décrit par Project.toml
 > Pkg.instantiate()   # installe CSV, DataFrames, JSON, Plots, PlotlyBase
 > Pkg.add("IJulia")   # noyau Jupyter, si absent
 > ```
-> Les données doivent avoir été générées au préalable : `python gdp_pipeline.py`.
+> Les données doivent avoir été générées au préalable : `python produire_rapports.py`.
 
 Les classements ne portent que sur de vrais pays : les agrégats (*World*, *OECD members*,
 zone euro…) sont marqués `is_aggregate` et déjà écartés de `gdp_country_summary.csv`.
@@ -83,15 +83,20 @@ println("[OK] Bibliothèques chargées. Backend courant : ", backend())
 
     md("## 2. Chargement des Jeux de Données"),
     code("""
+# Jupyter lance le noyau dans notebooks/. Le noyau IJulia active l'environnement trouvé
+# en remontant (--project=@.) : le Project.toml de la racine, où sont aussi les données.
+RACINE = dirname(Base.active_project())
+DATA   = joinpath(RACINE, "data")
+
 # Le nom du fichier unifié porte les bornes du run, et plusieurs peuvent coexister :
 # on retient celui du dernier run, désigné par data/extraction_metadata.json
-meta_json = joinpath("data", "extraction_metadata.json")
-isfile(meta_json) || error("$meta_json absent. Lancez d'abord : python gdp_pipeline.py")
+meta_json = joinpath(DATA, "extraction_metadata.json")
+isfile(meta_json) || error("$meta_json absent. Lancez d'abord : python produire_rapports.py")
 bornes = JSON.parsefile(meta_json)["bornes"]
 
-unified_csv = joinpath("data", "processed",
+unified_csv = joinpath(DATA, "processed",
                        "gdp_unified_$(bornes["historique"][1])_$(bornes["prevision"][2]).csv")
-summary_csv = joinpath("data", "processed", "gdp_country_summary.csv")
+summary_csv = joinpath(DATA, "processed", "gdp_country_summary.csv")
 
 df_unified = CSV.read(unified_csv, DataFrame)
 df_summary = CSV.read(summary_csv, DataFrame)
@@ -423,7 +428,7 @@ notebook_content = {
     "nbformat_minor": 4,
 }
 
-output_path = os.path.join("gdp_analysis_notebook_julia.ipynb")
+output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gdp_analysis_notebook_julia.ipynb")
 with open(output_path, "w", encoding="utf-8") as f:
     json.dump(notebook_content, f, indent=1, ensure_ascii=False)
 

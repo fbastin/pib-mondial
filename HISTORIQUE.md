@@ -5,6 +5,23 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 🗂️ Réorganisation du Dépôt (29 Septembre 2026)
+
+Les quinze fichiers de code, de notebooks, de tests et de documentation s'entassaient à la racine. Ils sont désormais rangés par nature, historique git conservé (`git mv`) :
+
+| Avant (racine) | Après |
+|---|---|
+| `http_utils.py`, `fetch_*.py`, `gdp_pipeline.py`, `update_weo_editions.py`, `evaluate_forecasts.py`, `visualize_gdp.py`, `build_results_page.py` | `pib/` — paquet Python, modules lancés par `python -m pib.<module>` |
+| `gdp_analysis_notebook*.ipynb`, `create_notebook*.py` | `notebooks/` |
+| `test_gdp_pipeline.py` | `tests/` (`pytest.ini` : `testpaths`, `pythonpath`) |
+| `documentation_gdp.tex`, `.pdf` | `docs/` |
+
+`produire_rapports.py` reste à la racine, seul point d'entrée ; il lance les étapes comme modules du paquet, qui reste importable quel que soit le répertoire courant. Les notebooks, que Jupyter exécute désormais dans `notebooks/`, retrouvent seuls la racine du dépôt : le notebook Python remonte jusqu'au dossier qui contient `pib/`, le notebook Julia part de l'environnement activé par son noyau (`Project.toml` de la racine). Les messages d'erreur renvoient à `python produire_rapports.py` plutôt qu'à des scripts qui n'existent plus à la racine.
+
+Le README est réordonné — démarrage rapide, organisation du dépôt, utilisation, sources, méthode, livrables, provenance, tests — et corrigé au passage (sources Banque Mondiale « de 1960 à 2024 », venv « hors du dossier Nextcloud »). La documentation LaTeX gagne une section *Organisation du Dépôt*, les deux indicateurs en volume de la Banque Mondiale, qui manquaient à la liste des sources, et un guide couvrant les deux notebooks. Les entrées plus anciennes de ce journal gardent les chemins de leur époque.
+
+---
+
 ## 📥 Éditions du WEO depuis l'API SDMX du FMI (29 Septembre 2026)
 
 `WEOhistorical.xlsx` ne se télécharge qu'à la main (403 pour les scripts, y compris sur le lien d'un autre dépôt consulté, `thompalec/Forecasting-IMF-World-Economic-Outlook-using-nowcasts`, qui procède lui aussi manuellement). L'API SDMX du FMI (`api.imf.org`) accepte en revanche les scripts : elle sert l'édition courante (`WEO`) et des archives (`WEO_2025_OCT_VINTAGE`), identiques au classeur (écart nul sur `S2026`, ≤ 0,0005 sur `F2025`), mêmes codes pays.

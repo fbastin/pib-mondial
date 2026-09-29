@@ -2,15 +2,16 @@
 """
 produire_rapports.py
 --------------------
-Chaîne complète en une commande : collecte et calcul (`gdp_pipeline.py`), ajout des
-éditions récentes du WEO servies par l'API du FMI (`update_weo_editions.py`), puis, pour
+Chaîne complète en une commande : collecte et calcul (`pib.gdp_pipeline`), ajout des
+éditions récentes du WEO servies par l'API du FMI (`pib.update_weo_editions`), puis, pour
 chaque rapport produit — la référence, et le cas échéant le plus récent, dans
 `plus_recent/` —, évaluation des prévisions, graphiques et page de résultats.
 
     python produire_rapports.py
 
-Les arguments de bornes sont transmis à `gdp_pipeline.py`. S'arrête, avec un code de
-sortie non nul, à la première étape en échec.
+Les arguments de bornes sont transmis à `pib.gdp_pipeline`. Les chemins relatifs
+(`data/`, `outputs/`) partent du répertoire courant : lancer depuis la racine du dépôt.
+S'arrête, avec un code de sortie non nul, à la première étape en échec.
 """
 
 import os
@@ -19,17 +20,19 @@ import logging
 import argparse
 import subprocess
 
-from gdp_pipeline import SOUS_DOSSIER_RECENT
+from pib.gdp_pipeline import SOUS_DOSSIER_RECENT
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 DOSSIER = os.path.dirname(os.path.abspath(__file__))
 
 
-def lancer(script: str, *arguments: str) -> None:
-    commande = [sys.executable, os.path.join(DOSSIER, script), *arguments]
-    logging.info(f"$ {script} {' '.join(arguments)}")
-    subprocess.run(commande, check=True)
+def lancer(module: str, *arguments: str) -> None:
+    """Lance `python -m pib.<module>`, le paquet restant importable hors de la racine."""
+    chemin = os.pathsep.join(filter(None, [DOSSIER, os.environ.get("PYTHONPATH")]))
+    logging.info(f"$ python -m pib.{module} {' '.join(arguments)}")
+    subprocess.run([sys.executable, "-m", f"pib.{module}", *arguments], check=True,
+                   env={**os.environ, "PYTHONPATH": chemin})
 
 
 def main():
@@ -50,7 +53,7 @@ def main():
               if valeur is not None for argument in (nom, str(valeur))]
 
     try:
-        lancer("gdp_pipeline.py", *bornes, "--data-dir", args.data_dir, "--output-dir", args.output_dir)
+        lancer("gdp_pipeline", *bornes, "--data-dir", args.data_dir, "--output-dir", args.output_dir)
 
         rapports = [(args.data_dir, args.output_dir)]
         recent = (os.path.join(args.data_dir, SOUS_DOSSIER_RECENT),
@@ -61,16 +64,16 @@ def main():
         # Le classeur des prévisions d'époque, et son complément, sont communs aux deux rapports
         classeur = os.path.join(args.data_dir, "raw", "WEOhistorical.xlsx")
         if not args.sans_editions_api:
-            lancer("update_weo_editions.py", "--classeur", classeur)
+            lancer("update_weo_editions", "--classeur", classeur)
         for data_dir, output_dir in rapports:
             if os.path.exists(classeur):
-                lancer("evaluate_forecasts.py", "--data-dir", data_dir, "--classeur", classeur)
+                lancer("evaluate_forecasts", "--data-dir", data_dir, "--classeur", classeur)
             else:
                 logging.warning(f"{classeur} absent : évaluation des prévisions omise.")
-            lancer("visualize_gdp.py", "--data-dir", data_dir, "--output-dir", output_dir)
-            lancer("build_results_page.py", "--data-dir", data_dir, "--output-dir", output_dir)
+            lancer("visualize_gdp", "--data-dir", data_dir, "--output-dir", output_dir)
+            lancer("build_results_page", "--data-dir", data_dir, "--output-dir", output_dir)
     except subprocess.CalledProcessError as e:
-        logging.error(f"Étape en échec : {os.path.basename(e.cmd[1])}. Chaîne interrompue.")
+        logging.error(f"Étape en échec : {e.cmd[2]}. Chaîne interrompue.")
         sys.exit(1)
 
     logging.info("Rapports produits : " + " ; ".join(sortie for _, sortie in rapports))

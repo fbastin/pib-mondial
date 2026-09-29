@@ -1,0 +1,22 @@
+"""
+pib — collecte, unification, évaluation et livrables du PIB mondial.
+
+Collecte
+    http_utils             requêtes HTTP communes : nouvelles tentatives, échec explicite
+    fetch_historical_gdp   historique Banque Mondiale (API WDI)
+    fetch_forecast_gdp     prévisions FMI (API DataMapper)
+
+Calcul
+    gdp_pipeline           unification, raccord, volumes, synthèse, rapports
+
+Évaluation des prévisions
+    update_weo_editions    éditions récentes du WEO (API SDMX du FMI)
+    evaluate_forecasts     prévisions d'époque confrontées au réalisé
+
+Livrables
+    visualize_gdp          graphiques et tableau de bord
+    build_results_page     page de résultats HTML
+
+Chaque module se lance depuis la racine du dépôt (`python -m pib.gdp_pipeline`) ;
+`produire_rapports.py` enchaîne le tout.
+"""

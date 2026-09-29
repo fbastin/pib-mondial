@@ -24,8 +24,8 @@ nommée `S2019ngdp_rpch` (printemps) ou `F2019ngdp_rpch` (automne). L'horizon de
 projection se déduit de l'écart entre l'année visée et l'année de l'édition : positif
 pour une prévision, nul pour l'année en cours, négatif pour une ré-estimation du passé.
 
-    python evaluate_forecasts.py
-    python evaluate_forecasts.py --indicateur pcpi_pch     # inflation
+    python -m pib.evaluate_forecasts
+    python -m pib.evaluate_forecasts --indicateur pcpi_pch     # inflation
 """
 
 import os
@@ -36,7 +36,7 @@ from typing import Optional
 
 import pandas as pd
 
-from gdp_pipeline import unified_csv_path
+from pib.gdp_pipeline import unified_csv_path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
