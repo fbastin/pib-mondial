@@ -1,6 +1,6 @@
 # Traitement et Analyse des Données de PIB (GDP) - Historique & Prévisions
 
-[![Tests](https://github.com/fbastin/gdp/actions/workflows/tests.yml/badge.svg)](https://github.com/fbastin/gdp/actions/workflows/tests.yml)
+[![Tests](https://github.com/fbastin/pib-mondial/actions/workflows/tests.yml/badge.svg)](https://github.com/fbastin/pib-mondial/actions/workflows/tests.yml)
 
 Ce projet permet de collecter, traiter, analyser et visualiser automatiquement les données historiques du PIB (GDP) par pays sur une période de **25 ans (2000–2024)** ainsi que les **prévisions de PIB jusqu'en 2030**.
 
@@ -22,18 +22,20 @@ Ce projet permet de collecter, traiter, analyser et visualiser automatiquement l
 ## 📁 Architecture du Projet
 
 ```
-GDP/
+pib-mondial/
 ├── data/                               # Données brutes et transformées
-│   ├── extraction_metadata.json        # Provenance : date d'extraction, millésimes, volumes
+│   ├── extraction_metadata.json        # Provenance du dernier run : date, bornes, millésimes, volumes
 │   ├── raw/
 │   │   ├── gdp_imf_weo_raw.json        # Données brutes FMI WEO JSON
-│   │   ├── WEOhistorical.xlsx          # Prévisions d'époque, toutes éditions depuis 1990
+│   │   ├── WEOhistorical.xlsx          # Prévisions d'époque, toutes éditions depuis 1990 (versionné)
 │   │   └── LISEZ-MOI-WEOhistorical.md  # Provenance et structure de ce classeur
 │   └── processed/
 │       ├── gdp_historical_2000_2024.csv # Données historiques Banque Mondiale
 │       ├── gdp_forecast_2025_2030.csv   # Prévisions FMI 2025-2030
 │       ├── gdp_unified_2000_2030.csv    # Série temporelle unifiée (2000-2030)
-│       └── gdp_country_summary.csv      # Synthèse par pays, CAGR & classements
+│       ├── gdp_country_summary.csv      # Synthèse par pays, CAGR & classements
+│       ├── weo_forecast_evaluation_<indicateur>.csv # Une ligne par projection d'époque
+│       └── weo_forecast_bias_<indicateur>.csv       # Biais et erreurs par horizon
 ├── outputs/                            # Livrables Excel & Visualisations
 │   ├── gdp_master_dataset.xlsx         # Classeur Excel multi-onglets complet
 │   ├── gdp_top10_trajectories_2000_2030.png # Graphique HD trajectoires Top 10
@@ -43,16 +45,23 @@ GDP/
 │   ├── gdp_ranking_nominal_vs_ppp_2024.png  # Classement mondial : marché vs PPA
 │   ├── gdp_source_discrepancy_2024.png # Écart entre sources et marche évitée
 │   ├── gdp_forecast_accuracy.png       # Exactitude des prévisions FMI depuis 1990
-│   └── gdp_dashboard_interactive.html  # Tableau de bord interactif HTML (Plotly)
+│   ├── gdp_dashboard_interactive.html  # Tableau de bord interactif HTML (Plotly)
+│   └── resultats_gdp.html              # Page de résultats autonome
+├── fetch_historical_gdp.py             # Collecte historique (Banque Mondiale)
+├── fetch_forecast_gdp.py               # Collecte des prévisions (FMI)
+├── http_utils.py                       # Requêtes HTTP communes : nouvelles tentatives, échec explicite
+├── gdp_pipeline.py                     # Pipeline maître d'unification et d'analyse
+├── evaluate_forecasts.py               # Évaluation des prévisions d'époque
+├── visualize_gdp.py                    # Générateur de graphiques et dashboard
+├── build_results_page.py               # Page de résultats pilotée par les données
 ├── gdp_analysis_notebook.ipynb         # Notebook Jupyter d'analyse (Python)
 ├── gdp_analysis_notebook_julia.ipynb   # Notebook Jupyter d'analyse (Julia)
-├── Project.toml                        # Environnement Julia (CSV, DataFrames, Plots, PlotlyBase)
-├── evaluate_forecasts.py               # Évaluation des prévisions d'époque
-├── test_gdp_pipeline.py                # Tests des invariants
-├── fetch_historical_gdp.py             # Script de collecte historique (World Bank)
-├── fetch_forecast_gdp.py               # Script de collecte des prévisions (FMI)
-├── gdp_pipeline.py                     # Pipeline maître d'unification et d'analyse
-├── visualize_gdp.py                    # Générateur de graphiques et dashboard
+├── create_notebook.py                  # Générateurs des deux notebooks
+├── create_notebook_julia.py
+├── Project.toml / Manifest.toml        # Environnement Julia (CSV, DataFrames, JSON, Plots, PlotlyBase)
+├── test_gdp_pipeline.py                # Tests des invariants (pytest.ini, CI GitHub Actions)
+├── documentation_gdp.tex / .pdf        # Documentation technique
+├── HISTORIQUE.md                       # Journal des défauts corrigés et des choix de méthode
 ├── requirements.txt                    # Dépendances Python
 └── README.md                           # Documentation complète
 ```
@@ -81,7 +90,7 @@ python gdp_pipeline.py
 Arguments personnalisables :
 - `--start-year` : Année de début historique (par défaut: `2000`)
 - `--end-year` : Année de fin historique (par défaut: `2024`)
-- `--fcst-start` : Année de début prévision (par défaut: `2025`)
+- `--fcst-start` : Année de début prévision (par défaut, et obligatoirement : `--end-year` + 1)
 - `--fcst-end` : Année de fin prévision (par défaut: `2030`)
 - `--data-dir` / `--output-dir` : Dossiers de sortie (par défaut: `data` et `outputs`)
 
@@ -90,7 +99,9 @@ Arguments personnalisables :
 python gdp_pipeline.py --start-year 1995
 ```
 
-**Les bornes se propagent partout.** Le nom du fichier unifié (`gdp_unified_1995_2030.csv`), les colonnes de synthèse (`CAGR_Historique_1995_2024_Pct`), la frontière historique/prévision des graphiques et les titres suivent les années demandées. `visualize_gdp.py` et les deux notebooks retrouvent ces noms depuis les données ; aucun n'a d'année codée en dur.
+**Les bornes se propagent partout.** Le nom du fichier unifié (`gdp_unified_1995_2030.csv`), les colonnes de synthèse (`CAGR_Historique_1995_2024_Pct`), l'onglet Excel des séries, la frontière historique/prévision des graphiques et les titres suivent les années demandées. Les scripts en aval et les deux notebooks lisent la série du dernier run d'après `data/extraction_metadata.json` (voir *Provenance*) ; aucun n'a d'année codée en dur.
+
+**Un échec interrompt tout.** Chaque requête est retentée trois fois. Si une source ou un indicateur reste injoignable, ou si les bornes sont incohérentes (prévision qui ne suit pas immédiatement l'historique), le script s'arrête avec un code de sortie non nul, sans rien écrire : `gdp_pipeline.py && visualize_gdp.py` n'enchaîne jamais sur des données partielles ou sur celles d'un run précédent.
 
 ### 3. Exécution Individuelle des Scripts
 
@@ -151,8 +162,10 @@ Le WEO du FMI couvre **1980 à l'horizon de projection**, pas seulement les ann�
 | Colonne | Contenu |
 |---|---|
 | `GDP_Nominal_FMI_Billions_USD` | Niveau FMI brut, sur toute la période qu'il couvre |
-| `Ecart_Sources_Pct` | (FMI − Banque Mondiale) / Banque Mondiale, années observées seulement |
-| `Facteur_Raccord` | Rapport appliqué aux niveaux projetés (constant par pays) |
+| `GDP_PPP_FMI_Billions_USD`, `GDP_Per_Capita_FMI_USD` | Idem pour la PPA courante et le PIB par habitant |
+| `Ecart_Sources_Pct` | (FMI − Banque Mondiale) / Banque Mondiale sur le nominal, années observées seulement |
+| `Facteur_Raccord` | Rapport appliqué aux niveaux nominaux projetés (constant par pays) |
+| `Facteur_Raccord_PPA`, `Facteur_Raccord_Par_Habitant` | Rapports propres à la PPA courante et au PIB par habitant |
 
 **La Banque Mondiale reste la référence sur les années observées** : les valeurs FMI servent de point de comparaison, jamais de substitution.
 
@@ -166,7 +179,9 @@ Les deux institutions concordent au centième de pourcent pour la plupart des pa
 | Turkménistan 2025 | +74,9 % | +12,7 % |
 | Soudan 2025 | **−20,0 %** | **+36,2 %** |
 
-Le raccord conserve la dynamique du FMI et le niveau de la Banque Mondiale — `niveau[y] = observé[base] × FMI[y] / FMI[base]` — soit la même logique que le chaînage déjà appliqué aux volumes. Après raccord, la croissance livrée à la jonction reproduit exactement celle projetée par le FMI, pour les 188 pays comparables.
+Le raccord conserve la dynamique du FMI et le niveau de la Banque Mondiale — `niveau[y] = observé[base] × FMI[y] / FMI[base]` — soit la même logique que le chaînage déjà appliqué aux volumes. Après raccord, la croissance livrée à la jonction reproduit exactement celle projetée par le FMI, pour les 189 pays comparables.
+
+**Un facteur par série.** Les deux institutions ne divergent pas du même rapport sur chaque mesure : écart médian de 0,03 % sur le nominal, 0,3 % sur la PPA courante, 1,2 % sur le PIB par habitant. Chacune reçoit donc son propre facteur. Appliquer à la PPA celui du nominal recréait la marche que le raccord supprime (Burundi −46 % en 2025 au lieu des +6,9 % projetés par le FMI, Soudan +95 % au lieu de +6,2 %).
 
 Visualisé par `gdp_source_discrepancy_2024.png`.
 
@@ -185,18 +200,26 @@ python evaluate_forecasts.py --indicateur pcpi_pch  # inflation
 
 L'horizon se déduit de l'écart entre l'année visée et l'édition qui la projette. Les valeurs d'horizon négatif sont des **ré-estimations du passé**, pas des prévisions, et sont écartées de l'évaluation.
 
-### Le résultat, sur 69 169 projections et 194 pays
+### Le résultat, sur 69 345 projections et 196 pays
 
 | Horizon | Biais moyen | Erreur absolue moyenne |
 |---|---|---|
 | 0 (année en cours) | +0,18 pt | 1,70 pt |
-| 1 an | **+0,99 pt** | 2,74 pt |
+| 1 an | **+1,00 pt** | 2,74 pt |
 | 3 ans | +1,01 pt | 2,95 pt |
 | 5 ans | +0,93 pt | 3,04 pt |
 
 Le FMI est quasiment sans biais sur l'année en cours, puis **surestime la croissance d'environ un point dès qu'il projette au-delà** — un biais stable quel que soit l'horizon, tandis que la dispersion, elle, continue de croître. La conclusion tient avec les deux références de comparaison (ré-estimation du FMI à un an, ou série Banque Mondiale), ce que le script calcule côte à côte plutôt que d'arbitrer.
 
-Par année visée, les récessions ressortent nettement : erreur médiane de **+7,3 points pour 2020**, +3,8 pour 2009. Le rebond de 2021 est symétriquement sous-estimé. Visualisé par `gdp_forecast_accuracy.png`.
+Par année visée, les récessions ressortent nettement : erreur médiane de **+7,3 points pour 2020**, +3,9 pour 2009. Le rebond de 2021 est symétriquement sous-estimé. Visualisé par `gdp_forecast_accuracy.png`.
+
+Les codes propres au classeur (`KOS` pour le Kosovo, `WBG` pour la Cisjordanie et Gaza) sont convertis vers ceux de la Banque Mondiale, faute de quoi ces territoires seraient écartés comme inconnus.
+
+### Autres indicateurs : lire les médianes
+
+La référence Banque Mondiale n'existe que pour la croissance du PIB : pour `pcpi_pch` et `bca_gdp_bp6`, seule la ré-estimation du FMI sert de référence.
+
+Pour l'inflation, les moyennes ne décrivent pas l'erreur typique. Quelques projections d'hyperinflation (le Venezuela à 10 000 000 %) portent le biais moyen au-delà de 1 600 points à un an, quand la médiane reste à −0,1 point. La synthèse fournit donc aussi `mediane` et `erreur_absolue_mediane`, et le script avertit dès que l'erreur absolue moyenne dépasse dix fois la médiane.
 
 ---
 
@@ -243,7 +266,17 @@ Les deux API diffusent les agrégats (`WLD` World, `OED` OECD members, `EUU` Eur
 
 Sans ce filtre, le « Top 10 mondial » se compose d'agrégats et les États-Unis n'apparaissent qu'en 12ᵉ position.
 
-La jointure historique/prévision se fait sur le **code ISO seul**, les deux sources nommant différemment un même pays (`Korea, Rep.` vs `Korea`).
+La jointure historique/prévision se fait sur le **code ISO seul**, les deux sources nommant différemment un même pays (`Korea, Rep.` vs `Korea`). Les rares codes propres au FMI sont convertis au préalable (`UVK` → `XKX` pour le Kosovo, `WBG` → `PSE` pour la Cisjordanie et Gaza) : sans cela, le Kosovo formait deux entités classées séparément.
+
+---
+
+## 🏅 Classements : un même panel de pays
+
+Tous les rangs (`Rank_2024`, `Rank_2030_Forecast`, `Rank_PPA_*`) portent sur les mêmes pays : ceux renseignés aux deux dates, au taux de marché comme à parité — 183 pays. Un écart de rang (`Rank_Change`, `Ecart_Rang_Nominal_PPA_2024`) traduit alors un mouvement, et non l'entrée ou la sortie d'un pays du classement.
+
+Classer chaque colonne sur les pays qu'elle couvre faussait 140 écarts de rang sur 183 : Taïwan, absent de la Banque Mondiale, entrait 22ᵉ au classement 2030 ; le Pakistan, sans projection FMI au-delà de 2025, en sortait. La Belgique affichait −4 rangs au lieu de −3, l'Iran −16 au lieu de −15.
+
+Les pays hors panel gardent leurs niveaux de PIB dans la synthèse, sans rang. Le pipeline en donne la liste à chaque run (Pakistan, Venezuela, Sri Lanka, Bolivie, Liban, Afghanistan…).
 
 ---
 
@@ -254,19 +287,24 @@ pytest test_gdp_pipeline.py -v
 pytest test_gdp_pipeline.py -m "not donnees"   # sans les fichiers produits
 ```
 
-38 tests, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
+85 tests, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
 
 | Invariant | Ce qu'il empêche |
 |---|---|
 | Les agrégats sont absents des classements | *World* et *OECD members* en tête du Top 30 |
-| Un seul libellé par code ISO | Un pays scindé en deux séries, PIB 2030 et rangs vides |
+| Un seul libellé et un seul code par pays | Un pays scindé en deux séries, PIB 2030 et rangs vides ; le Kosovo classé deux fois |
 | Croissance implicite des volumes chaînés = taux FMI | Une dérive silencieuse du chaînage |
 | Une année de croissance absente interrompt le chaînage | Des valeurs extrapolées passées pour des projections |
-| Les colonnes suivent les bornes du run | Une synthèse entièrement vide sur `--end-year 2023` |
+| Chaque série de niveau a son propre facteur de raccord | Une PPA du Burundi en chute de 46 % à la jonction |
+| Tous les rangs portent sur un même panel | Des écarts de rang dus à l'entrée de Taïwan ou à la sortie du Pakistan |
+| Les colonnes suivent les bornes du run ; des bornes incohérentes sont refusées | Une synthèse entièrement vide sur `--end-year 2023` |
 | Les rangs sont cohérents avec leurs niveaux | Un classement PPA calculé sur le mauvais indicateur |
 | Le CAGR vaut `NaN` s'il n'est pas calculable | Un taux inventé sur un PIB nul ou manquant |
+| Une source injoignable interrompt la collecte | Une colonne vide, ou des agrégats classés comme pays |
+| La série lue est celle du dernier run | Un graphique ou une évaluation bâtis sur un autre run |
+| La référence Banque Mondiale ne sert qu'à la croissance | Une inflation projetée comparée à la croissance observée |
 
-Les tests marqués `donnees` contrôlent les CSV réellement produits et se sautent tant que le pipeline n'a pas tourné.
+Chaque invariant est **validé par mutation** : le défaut correspondant, réintroduit dans une copie du code, fait bien échouer la suite. Les tests marqués `donnees` contrôlent les CSV réellement produits et se sautent tant que le pipeline n'a pas tourné.
 
 ---
 
@@ -276,14 +314,16 @@ Chaque exécution écrit `data/extraction_metadata.json` : date d'extraction, bo
 
 Le champ `derniere_mise_a_jour` reprend le `lastupdated` déclaré par l'API de la Banque Mondiale — le millésime réel des séries historiques, qui sont révisées. L'API DataMapper du FMI n'expose pas le millésime de son WEO (publié en avril et octobre) : seule la date d'extraction permet de le situer.
 
+Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<début>_<fin>.csv` peuvent coexister après des runs sur d'autres bornes : `visualize_gdp.py`, `evaluate_forecasts.py`, `build_results_page.py`, les notebooks et les tests lisent celle que désignent ses bornes — jamais la plus récemment modifiée, qu'une copie ou une synchronisation suffit à changer.
+
 ---
 
 ## 📈 Fichiers Produits et Métriques
 
 1. **`outputs/gdp_master_dataset.xlsx`** :
    - `Top30_Economies` : Vue rapide des 30 premières puissances économiques mondiales.
-   - `Synthese_Pays` : Indicateurs clés (PIB 2000, 2010, 2024, 2030), CAGR historique (2000-2024), CAGR prévisionnel (2024-2030), et évolution des rangs mondiaux.
-   - `Series_Temporelles_2000_2030` : Données continues fusionnées pour tous les pays.
+   - `Synthese_Pays` : Indicateurs clés (PIB 2000, 2010, 2024, 2030), CAGR historique (2000-2024), CAGR prévisionnel (2024-2030), et évolution des rangs mondiaux (sur le panel décrit plus haut).
+   - `Series_Temporelles_<début>_<fin>` : Données continues fusionnées pour tous les pays.
    - `Donnees_Historiques_Brutes` / `Previsions_FMI_Brutes` : Extractions directes des API.
 
 2. **`outputs/gdp_dashboard_interactive.html`** :

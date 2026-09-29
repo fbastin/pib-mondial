@@ -27,12 +27,14 @@ pour une prévision, nul pour l'année en cours, négatif pour une ré-estimatio
 """
 
 import os
-import glob
+import sys
 import logging
 import argparse
+from typing import Optional
 
-import numpy as np
 import pandas as pd
+
+from gdp_pipeline import unified_csv_path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -45,7 +47,23 @@ INDICATEURS = {
     "bca_gdp_bp6": "Balance courante (% du PIB)",
 }
 
+# Seul indicateur dont la Banque Mondiale fournit l'équivalent dans la série du pipeline
+# (croissance du PIB réel). Confronter une prévision d'inflation à la croissance du PIB
+# produirait une erreur dénuée de sens.
+INDICATEUR_BANQUE_MONDIALE = "ngdp_rpch"
+
 IDENTIFIANTS = ["country", "WEO_Country_Code", "ISOAlpha_3Code", "year"]
+
+# Codes du classeur qui ne sont pas ceux de la Banque Mondiale pour le même territoire.
+# Sans conversion, ces pays seraient écartés comme inconnus de la série du pipeline.
+WEO_VERS_ISO3 = {
+    "KOS": "XKX",   # Kosovo
+    "WBG": "PSE",   # Cisjordanie et Gaza
+}
+
+# Au-delà de ce rapport entre erreur absolue moyenne et médiane, la moyenne ne décrit
+# plus l'erreur typique mais quelques valeurs extrêmes (hyperinflations).
+SEUIL_VALEURS_EXTREMES = 10.0
 
 # Le FMI publie ses agrégats dans le même onglet, sous des codes en G suivis de chiffres
 PREFIXE_AGREGAT = "G"
@@ -95,6 +113,7 @@ def lire_base_historique(chemin: str = CLASSEUR, indicateur: str = "ngdp_rpch") 
     long["est_projection"] = long["horizon"] >= 0
 
     long = long.rename(columns={"ISOAlpha_3Code": "country_code"})
+    long["country_code"] = long["country_code"].replace(WEO_VERS_ISO3)
     long = long[["country", "country_code", "year", "vintage", "saison",
                  "annee_millesime", "horizon", "valeur", "est_projection"]]
 
@@ -104,6 +123,16 @@ def lire_base_historique(chemin: str = CLASSEUR, indicateur: str = "ngdp_rpch") 
     return long
 
 
+def serie_unifiee(data_dir: str, **options) -> Optional[pd.DataFrame]:
+    """Série unifiée du dernier run du pipeline, ou None si elle n'est pas disponible."""
+    try:
+        chemin = unified_csv_path(data_dir)
+    except FileNotFoundError as e:
+        logging.warning(f"Série unifiée indisponible : {e}")
+        return None
+    return pd.read_csv(chemin, **options)
+
+
 def exclure_agregats(df: pd.DataFrame, data_dir: str = "data") -> pd.DataFrame:
     """
     Écarte les agrégats du FMI (World, zones monétaires...), publiés dans le même onglet.
@@ -111,14 +140,12 @@ def exclure_agregats(df: pd.DataFrame, data_dir: str = "data") -> pd.DataFrame:
     La liste des vrais pays vient du pipeline, qui la tient des métadonnées de la Banque
     Mondiale ; à défaut, on se rabat sur le préfixe `G` des codes d'agrégats du WEO.
     """
-    series = sorted(glob.glob(os.path.join(data_dir, "processed", "gdp_unified_*.csv")))
-    if series:
-        unifie = pd.read_csv(max(series, key=os.path.getmtime),
-                             usecols=["country_code", "is_aggregate"])
+    unifie = serie_unifiee(data_dir, usecols=["country_code", "is_aggregate"])
+    if unifie is not None:
         pays = set(unifie.loc[~unifie["is_aggregate"].astype(bool), "country_code"])
         garde = df[df["country_code"].isin(pays)]
     else:
-        logging.warning("Série unifiée absente : repli sur le préfixe des codes d'agrégats.")
+        logging.warning("Repli sur le préfixe des codes d'agrégats.")
         garde = df[~df["country_code"].astype(str).str.match(rf"{PREFIXE_AGREGAT}\d")]
 
     logging.info(f"-> {df['country_code'].nunique() - garde['country_code'].nunique()} "
@@ -144,21 +171,32 @@ def realise_selon_fmi(df: pd.DataFrame) -> pd.DataFrame:
             .rename(columns={"valeur": "realise_fmi"}))
 
 
-def realise_selon_banque_mondiale(data_dir: str = "data") -> pd.DataFrame:
-    """Croissance réelle finalement constatée par la Banque Mondiale, série du pipeline."""
-    series = sorted(glob.glob(os.path.join(data_dir, "processed", "gdp_unified_*.csv")))
-    if not series:
-        logging.warning("Série unifiée absente : référence Banque Mondiale indisponible.")
-        return pd.DataFrame(columns=["country_code", "year", "realise_bm"])
+def realise_selon_banque_mondiale(data_dir: str = "data",
+                                  indicateur: str = "ngdp_rpch") -> pd.DataFrame:
+    """
+    Croissance réelle finalement constatée par la Banque Mondiale, série du pipeline.
 
-    unifie = pd.read_csv(max(series, key=os.path.getmtime))
+    Cette référence n'existe que pour la croissance du PIB : pour un autre indicateur, la
+    table retournée est vide et seule la référence FMI est calculée.
+    """
+    vide = pd.DataFrame(columns=["country_code", "year", "realise_bm"])
+    if indicateur != INDICATEUR_BANQUE_MONDIALE:
+        logging.info(f"Pas de série Banque Mondiale équivalente à « {indicateur} » : "
+                     "seule la référence FMI est calculée.")
+        return vide
+
+    unifie = serie_unifiee(data_dir)
+    if unifie is None:
+        logging.warning("Référence Banque Mondiale indisponible.")
+        return vide
+
     observe = unifie[~unifie["is_forecast"].astype(bool)]
     return (observe[["country_code", "year", "GDP_Growth_Pct"]]
             .rename(columns={"GDP_Growth_Pct": "realise_bm"})
             .dropna(subset=["realise_bm"]))
 
 
-def evaluer(df: pd.DataFrame, data_dir: str = "data") -> pd.DataFrame:
+def evaluer(df: pd.DataFrame, data_dir: str = "data", indicateur: str = "ngdp_rpch") -> pd.DataFrame:
     """
     Rapproche chaque projection des deux références disponibles.
 
@@ -171,7 +209,7 @@ def evaluer(df: pd.DataFrame, data_dir: str = "data") -> pd.DataFrame:
 
     evaluation = (projections
                   .merge(realise_selon_fmi(df), on=["country_code", "year"], how="left")
-                  .merge(realise_selon_banque_mondiale(data_dir),
+                  .merge(realise_selon_banque_mondiale(data_dir, indicateur),
                          on=["country_code", "year"], how="left"))
 
     evaluation["erreur_vs_fmi"] = evaluation["valeur"] - evaluation["realise_fmi"]
@@ -191,6 +229,10 @@ def synthese_par_horizon(evaluation: pd.DataFrame) -> pd.DataFrame:
     optimiste) ; l'erreur absolue moyenne dit de combien il se trompe, quel que soit
     le sens. Les deux sont nécessaires : un biais nul peut cacher de fortes erreurs
     qui se compensent.
+
+    Leurs équivalents médians (`mediane`, `erreur_absolue_mediane`) résistent aux
+    valeurs extrêmes : pour l'inflation, une seule projection d'hyperinflation (le
+    Venezuela à 10 000 000 %) suffit à porter la moyenne à des milliers de points.
     """
     lignes = []
     for reference, colonne in (("FMI (ré-estimation à 1 an)", "erreur_vs_fmi"),
@@ -200,12 +242,24 @@ def synthese_par_horizon(evaluation: pd.DataFrame) -> pd.DataFrame:
             continue
         agrege = (valides.groupby("horizon")[colonne]
                   .agg(observations="size", biais_moyen="mean",
-                       erreur_absolue_moyenne=lambda s: s.abs().mean(), mediane="median")
+                       erreur_absolue_moyenne=lambda s: s.abs().mean(), mediane="median",
+                       erreur_absolue_mediane=lambda s: s.abs().median())
                   .reset_index())
         agrege.insert(0, "reference", reference)
         lignes.append(agrege)
 
     return pd.concat(lignes, ignore_index=True).round(3) if lignes else pd.DataFrame()
+
+
+def moyennes_dominees(synthese: pd.DataFrame, seuil: float = SEUIL_VALEURS_EXTREMES) -> bool:
+    """
+    Vrai si, à un horizon au moins, l'erreur absolue moyenne dépasse `seuil` fois la
+    médiane : les moyennes décrivent alors quelques cas extrêmes, pas l'erreur typique.
+    """
+    if synthese.empty:
+        return False
+    rapport = synthese["erreur_absolue_moyenne"] / synthese["erreur_absolue_mediane"]
+    return bool((rapport > seuil).any())
 
 
 def main():
@@ -224,17 +278,17 @@ def main():
 
     try:
         base = lire_base_historique(chemin, args.indicateur)
-    except FileNotFoundError as e:
+    except (FileNotFoundError, ValueError) as e:
         logging.error(str(e))
-        return
+        sys.exit(1)
 
     if not args.garder_agregats:
         base = exclure_agregats(base, args.data_dir)
 
-    evaluation = evaluer(base, args.data_dir)
+    evaluation = evaluer(base, args.data_dir, args.indicateur)
     if evaluation.empty:
         logging.error("Aucune projection exploitable.")
-        return
+        sys.exit(1)
 
     processed = os.path.join(args.data_dir, "processed")
     os.makedirs(processed, exist_ok=True)
@@ -249,6 +303,10 @@ def main():
 
     logging.info(f"{INDICATEURS[args.indicateur]} — biais par horizon :\n"
                  + synthese.to_string(index=False))
+
+    if moyennes_dominees(synthese):
+        logging.warning("Les moyennes sont dominées par quelques valeurs extrêmes : l'erreur "
+                        "typique se lit dans les colonnes `mediane` et `erreur_absolue_mediane`.")
 
 
 if __name__ == "__main__":

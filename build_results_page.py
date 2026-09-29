@@ -13,13 +13,14 @@ le reste du pipeline s'attache à éviter.
 """
 
 import os
-import glob
 import base64
 import logging
 import argparse
 from datetime import datetime
 
 import pandas as pd
+
+from gdp_pipeline import unified_csv_path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -31,15 +32,12 @@ MOINS = "−"  # signe moins typographique
 
 def charger(data_dir: str):
     """Charge la synthèse et la série unifiée, et en déduit les années du run."""
-    processed = os.path.join(data_dir, "processed")
-    series = sorted(glob.glob(os.path.join(processed, "gdp_unified_*.csv")))
-    synthese_csv = os.path.join(processed, "gdp_country_summary.csv")
-
-    if not series or not os.path.exists(synthese_csv):
+    synthese_csv = os.path.join(data_dir, "processed", "gdp_country_summary.csv")
+    if not os.path.exists(synthese_csv):
         raise FileNotFoundError(
             "Données absentes. Lancez d'abord : python gdp_pipeline.py")
 
-    unifie = pd.read_csv(max(series, key=os.path.getmtime))
+    unifie = pd.read_csv(unified_csv_path(data_dir))
     synthese = pd.read_csv(synthese_csv)
 
     annees = {
@@ -70,13 +68,18 @@ def colonnes(annees: dict) -> dict:
     }
 
 
-def image(output_dir: str, motif: str):
-    """Inline un PNG en data URI. Retourne None si le graphique n'a pas été produit."""
-    trouves = sorted(glob.glob(os.path.join(output_dir, motif)))
-    if not trouves:
-        logging.warning(f"Graphique absent, section omise : {motif}")
+def image(output_dir: str, nom: str):
+    """
+    Inline un PNG en data URI. Retourne None si le graphique n'a pas été produit.
+
+    Le nom exact porte les années du run : un motif générique pourrait retenir le
+    graphique d'un run précédent, sur d'autres bornes.
+    """
+    chemin = os.path.join(output_dir, nom)
+    if not os.path.exists(chemin):
+        logging.warning(f"Graphique absent, section omise : {nom}")
         return None
-    with open(trouves[-1], "rb") as f:
+    with open(chemin, "rb") as f:
         return "data:image/png;base64," + base64.b64encode(f.read()).decode()
 
 
@@ -193,6 +196,25 @@ def bloc_table(entetes, corps) -> str:
             f'        <tbody>\n{lignes(corps)}\n        </tbody>\n      </table>\n    </div>')
 
 
+# En deçà d'un demi-point, un biais moyen se confond avec l'erreur d'échantillonnage
+SEUIL_BIAIS = 0.5
+
+
+def sens_biais(valeur) -> str:
+    return "trop optimiste" if valeur > 0 else "trop pessimiste"
+
+
+def verdict_biais(table: pd.DataFrame) -> tuple:
+    """
+    Résumé qualitatif d'une synthèse par horizon : biais notable ou non sur l'année en
+    cours, et signe commun du biais au-delà (0 s'il change de signe). Deux références qui
+    donnent le même verdict mènent à la même conclusion.
+    """
+    au_dela = table.loc[table.index >= 1, "biais_moyen"]
+    signe_commun = 1 if (au_dela > 0).all() else -1 if (au_dela < 0).all() else 0
+    return abs(table.loc[0, "biais_moyen"]) >= SEUIL_BIAIS, signe_commun
+
+
 def section_previsions(data_dir: str, figure_uri) -> str:
     """
     Section « qualité des prévisions », alimentée par evaluate_forecasts.py.
@@ -210,8 +232,34 @@ def section_previsions(data_dir: str, figure_uri) -> str:
         return ""
 
     total = int(fmi["observations"].sum())
-    h0, h1 = fmi.loc[0], fmi.loc[1]
+    h0 = fmi.loc[0]
     hmax = fmi.loc[fmi.index.max()]
+    au_dela = fmi.loc[fmi.index >= 1, "biais_moyen"]
+
+    # Le commentaire se déduit du tableau qu'il accompagne : écrit d'avance, il
+    # affirmerait une conclusion que la prochaine édition du WEO pourrait démentir.
+    if abs(h0["biais_moyen"]) < SEUIL_BIAIS:
+        annee_en_cours = f"le FMI est quasiment sans biais ({signe(h0['biais_moyen'])} point)"
+    else:
+        annee_en_cours = (f"le FMI est déjà biaisé ({signe(h0['biais_moyen'])} point, "
+                          f"{sens_biais(h0['biais_moyen'])})")
+    if (au_dela > 0).all() or (au_dela < 0).all():
+        verbe = "surestime" if au_dela.iloc[0] > 0 else "sous-estime"
+        horizons_suivants = (f"il {verbe} la croissance à tous les horizons suivants, "
+                             f"de {signe(au_dela.min())} à {signe(au_dela.max())} point")
+    else:
+        horizons_suivants = (f"le signe du biais varie selon l'horizon, de {signe(au_dela.min())} "
+                             f"à {signe(au_dela.max())} point")
+
+    bm = biais[biais["reference"].str.startswith("Banque")].set_index("horizon")
+    if bm.empty:
+        robustesse = "La série observée de la Banque Mondiale n'était pas disponible pour recouper ce résultat."
+    elif verdict_biais(bm) == verdict_biais(fmi):
+        robustesse = ("Le calcul est aussi mené contre la série observée de la Banque Mondiale, "
+                      "et la conclusion ne change pas.")
+    else:
+        robustesse = ("Le calcul mené contre la série observée de la Banque Mondiale ne conduit pas "
+                      "à la même conclusion : le résultat dépend de la référence retenue.")
 
     corps = [[
         f'<td class="num">{int(h)}{" (année en cours)" if h == 0 else ""}</td>',
@@ -238,16 +286,13 @@ def section_previsions(data_dir: str, figure_uri) -> str:
         </tbody>
       </table>
     </div>
-    <p class="col">Sur l'année en cours, le FMI est quasiment sans biais ({signe(h0["biais_moyen"])} point).
-    Dès qu'il projette au-delà, il surestime la croissance d'environ un point
-    ({signe(h1["biais_moyen"])} à un an, {signe(hmax["biais_moyen"])} à {int(fmi.index.max())} ans) —
-    un biais qui ne s'atténue pas avec l'horizon, alors que la dispersion, elle, continue de croître
-    de {nb(h0["erreur_absolue_moyenne"], 2)} à {nb(hmax["erreur_absolue_moyenne"], 2)} points.</p>
+    <p class="col">Sur l'année en cours, {annee_en_cours}. Au-delà, {horizons_suivants} ;
+    l'erreur absolue moyenne passe de {nb(h0["erreur_absolue_moyenne"], 2)} point sur l'année en
+    cours à {nb(hmax["erreur_absolue_moyenne"], 2)} à {int(fmi.index.max())} ans.</p>
     <p class="col note">L'erreur est mesurée contre la ré-estimation du FMI un an après l'année
     visée, plutôt que contre le chiffre définitif d'aujourd'hui : juger une prévision sur des
     révisions statistiques postérieures la pénaliserait pour une information hors de sa portée.
-    Le calcul est aussi mené contre la série observée de la Banque Mondiale, et la conclusion ne
-    change pas.</p>
+    {robustesse}</p>
   </section>
 """
 
@@ -400,18 +445,19 @@ def construire(data_dir: str, output_dir: str, pays_detail: str) -> str:
     # Repères d'exécution, tous lus dans les données
     agregats = int(unifie.loc[unifie.is_aggregate.astype(bool), "country_code"].nunique())
     couverture_ppa = int(synthese[c["ppa_obs"]].notna().sum())
+    classes = int(synthese[c["rang"]].notna().sum())
 
     detail = unifie[unifie.country_code == pays_detail]
     nom_detail = detail["country_name"].iloc[0] if not detail.empty else pays_detail
 
     figures = {
         "exactitude": image(output_dir, "gdp_forecast_accuracy.png"),
-        "sources": image(output_dir, "gdp_source_discrepancy_*.png"),
-        "traj": image(output_dir, "gdp_top10_trajectories_*.png"),
+        "sources": image(output_dir, f"gdp_source_discrepancy_{o}.png"),
+        "traj": image(output_dir, f"gdp_top10_trajectories_{d}_{f}.png"),
         "cagr": image(output_dir, "gdp_cagr_comparison_top15.png"),
         "reel": image(output_dir, "gdp_nominal_vs_real_cagr_top15.png"),
         "panneaux": image(output_dir, "gdp_nominal_vs_real_trajectories.png"),
-        "ppa": image(output_dir, "gdp_ranking_nominal_vs_ppp_*.png"),
+        "ppa": image(output_dir, f"gdp_ranking_nominal_vs_ppp_{o}.png"),
     }
 
     # Faits saillants recalculés, jamais recopiés — et tirés des lignes affichées,
@@ -441,7 +487,7 @@ def construire(data_dir: str, output_dir: str, pays_detail: str) -> str:
   </header>
 
   <dl class="run">
-    <div class="stat"><dt>Pays classés</dt><dd>{len(synthese)}</dd></div>
+    <div class="stat"><dt>Pays classés</dt><dd>{classes}</dd></div>
     <div class="stat"><dt>Lignes de série</dt><dd>{nb(len(unifie))}</dd></div>
     <div class="stat"><dt>Agrégats écartés</dt><dd>{agregats}</dd></div>
     <div class="stat"><dt>Couverture PPA</dt><dd>{couverture_ppa}</dd></div>
@@ -451,7 +497,9 @@ def construire(data_dir: str, output_dir: str, pays_detail: str) -> str:
     <div class="sec-head col"><h2>Les dix premières économies en {o}</h2></div>
     <p class="col note">Rangs calculés sur les seuls pays : les agrégats (<em>World</em>,
     <em>OECD members</em>, zone euro…) restent dans les séries mais sortent des classements.
-    PIB en milliards de dollars courants, CAGR en pourcentage annuel.</p>
+    Tous les rangs portent sur les mêmes {classes} pays, renseignés en {o} et en {f} au taux de
+    marché comme à parité, pour qu'un écart de rang traduise un mouvement et non l'entrée ou la
+    sortie d'un pays du classement. PIB en milliards de dollars courants, CAGR en pourcentage annuel.</p>
 {bloc_table(*table_top(synthese, c, annees))}
   </section>"""]
 

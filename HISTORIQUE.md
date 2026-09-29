@@ -1,7 +1,29 @@
-# État de la Session - Projet GDP
+# Historique du Projet PIB mondial
 
-**Date d'enregistrement** : 12 Août 2026
-**Statut du Projet** : Terminé & Fonctionnel
+Journal des défauts corrigés et des choix de méthode, du plus récent au plus ancien.
+L'usage courant est décrit dans le `README.md`, la méthode dans `documentation_gdp.pdf`.
+
+---
+
+## 🔧 Correctifs du 29 Septembre 2026
+
+Une revue du dépôt, menée en exécutant le pipeline sur les données réelles, a mis au jour trois défauts du même type que ceux du 12 août — des valeurs fausses, sans aucune erreur — et plusieurs fragilités.
+
+1. **Écarts de rang calculés sur des ensembles différents.** Chaque rang était calculé sur les pays renseignés dans sa propre colonne. Taïwan, absent de la Banque Mondiale, entrait 22ᵉ au classement 2030 ; le Pakistan, sans projection FMI au-delà de 2025, en sortait. `Rank_Change` était faussé pour 140 pays sur 183 (Belgique −4 au lieu de −3, Iran −16 au lieu de −15), `Ecart_Rang_Nominal_PPA` pour 130 sur 195. Tous les rangs portent désormais sur un même panel : les 183 pays renseignés aux deux dates et sur les deux bases.
+
+2. **Kosovo compté deux fois.** Le FMI code le Kosovo `UVK` (API) ou `KOS` (base historique), la Banque Mondiale `XKX` ; de même `WBG` / `PSE` pour la Cisjordanie et Gaza. La jointure sur le code produisait deux entités. Ces codes sont convertis à la lecture.
+
+3. **Raccord incomplet.** Le facteur du nominal était appliqué à la PPA courante, et le PIB par habitant n'était pas raccordé. D'où des marches à la jonction : PPA du Burundi −46 % en 2025 (le FMI projette +6,9 %), PIB par habitant +121 %. Chaque série a désormais son propre facteur (`Facteur_Raccord_PPA`, `Facteur_Raccord_Par_Habitant`) et ses valeurs FMI en regard.
+
+4. **Évaluation hors croissance du PIB.** La référence Banque Mondiale était toujours la croissance du PIB, y compris pour `--indicateur pcpi_pch` : l'inflation projetée était comparée à la croissance observée. Elle est réservée à `ngdp_rpch`. Pour l'inflation, les moyennes (biais de 900 à 1 900 points, à cause des projections d'hyperinflation du Venezuela) sont doublées de médianes, et le script avertit quand les moyennes sont dominées par des valeurs extrêmes.
+
+5. **Échecs silencieux.** Un indicateur injoignable était signalé puis ignoré, une liste de pays manquante laissait les agrégats (Banque Mondiale : liste de repli incomplète ; FMI : aucun repli) entrer dans les classements, et les scripts sortaient avec le code 0 en cas d'échec. Les requêtes passent par `http_utils.get_json` (trois tentatives), un échec final interrompt le traitement avec un code non nul, et les réponses paginées de la Banque Mondiale sont lues en entier.
+
+6. **Bornes et fichiers.** Une prévision ne commençant pas l'année suivant l'historique laissait le chaînage franchir une année absente : ces bornes sont refusées, et le chaînage s'interrompt sur tout trou. Les scripts en aval choisissaient la série unifiée la plus récemment modifiée (ou la dernière par ordre alphabétique pour les notebooks et les tests) : ils lisent désormais celle que désigne `extraction_metadata.json` (d'où `JSON` dans `Project.toml`). L'onglet Excel des séries et le titre du graphique d'exactitude suivent les données ; les conclusions de la page de résultats sont déduites des chiffres au lieu d'être rédigées d'avance.
+
+7. **Ménage.** Le dossier `forecasts/` (ancien script d'extraction, redondant avec `evaluate_forecasts.py`) est supprimé ; ce journal remplace `SESSION_STATE.md`, dont les sections d'arborescence et de reprise, périmées, doublaient le README. Badge du README pointé vers `fbastin/pib-mondial`.
+
+85 tests (76 unitaires, 9 sur les fichiers produits). Treize mutations, une par défaut corrigé, sont toutes rattrapées. Résultats de l'évaluation quasi inchangés (69 345 projections, 196 pays avec le Kosovo et la Cisjordanie et Gaza).
 
 ---
 
@@ -30,7 +52,7 @@ Source apportée par l'utilisateur : la **WEO Historical Forecasts Database** du
 
 Nouveau visuel `gdp_forecast_accuracy.png`, section dédiée dans la page de résultats, provenance dans `data/raw/LISEZ-MOI-WEOhistorical.md`. 61 tests, dont 12 sur cette base ; les cinq mutations correspondantes sont rattrapées — dont une qui ne l'était pas au premier essai (le choix de la référence à un an n'était pas distinguable faute de ré-estimation à deux ans dans l'échantillon ; la fixture a été complétée).
 
-**Note** : `forecasts/` contient encore le script d'extraction d'origine, son CSV intermédiaire et un venv. Le classeur source en a été déplacé vers `data/raw/` ; le reste est superflu et peut être supprimé — je ne l'ai pas fait, le venv étant votre environnement de travail.
+**Note** : `forecasts/` contient encore le script d'extraction d'origine, son CSV intermédiaire et un venv. Le classeur source en a été déplacé vers `data/raw/` ; le reste est superflu et peut être supprimé — je ne l'ai pas fait, le venv étant votre environnement de travail. *(Dossier supprimé le 29 septembre 2026.)*
 
 ---
 
@@ -42,7 +64,7 @@ Les deux jeux couvraient des périodes disjointes par construction : `fetch_fore
 
 2. **Raccord** (`splice_forecast_levels`) : les deux sources concordent au centième de pourcent pour la plupart des pays (écart médian 0,03 % en 2024) mais divergent pour une quinzaine. Juxtaposer l'observation de l'une et la projection de l'autre fabriquait une croissance inexistante — **16 pays sautaient de plus de 5 points**, le Soudan changeant de signe (−20 % affiché au lieu de +36 % projeté), le Burundi affichant +128 % au lieu de +43 %. Les niveaux projetés sont rebasés sur le dernier niveau observé, ce qui conserve la dynamique du FMI. Après raccord, la croissance livrée à la jonction reproduit exactement celle du FMI pour les 188 pays comparables (écart maximal 0,000000 point).
 
-3. **Évaluation des prévisions** (`evaluate_forecasts.py`) : l'API ne servant que le millésime courant, la qualité des prévisions ne peut s'apprécier qu'avec les éditions d'époque. Le site du FMI répond 403 aux scripts ; les fichiers se déposent à la main dans `data/raw/vintages/` (voir le `LISEZ-MOI.md`). Le lecteur s'appuie sur `Estimates Start After`, seule colonne distinguant projection et estimation, et refuse tout fichier qui en manque.
+3. **Évaluation des prévisions** (`evaluate_forecasts.py`) — *approche remplacée le jour même par la WEO Historical Forecasts Database (voir plus haut) ; `data/raw/vintages/` n'existe plus* : l'API ne servant que le millésime courant, la qualité des prévisions ne peut s'apprécier qu'avec les éditions d'époque. Le site du FMI répond 403 aux scripts ; les fichiers se déposent à la main dans `data/raw/vintages/` (voir le `LISEZ-MOI.md`). Le lecteur s'appuie sur `Estimates Start After`, seule colonne distinguant projection et estimation, et refuse tout fichier qui en manque.
 
 Nouveau visuel : `gdp_source_discrepancy_2024.png` (écart de mesure et marche évitée). 57 tests désormais, dont 11 sur le recouvrement, le raccord et la lecture des millésimes ; les cinq mutations correspondantes sont toutes rattrapées.
 
@@ -121,68 +143,3 @@ Aucune base n'est « la bonne » : le taux de marché mesure le poids financier 
 Autres points d'adaptation : les `missing` sont convertis en `NaN` (helper `tonum`) car Plots ne les accepte pas ; la heatmap est construite comme une matrice pays × années avec annotations posées une à une, `sns.heatmap` n'ayant pas d'équivalent direct.
 
 **Piège Plots à connaître** : avec `orientation = :h`, Plots déduit les bornes de l'axe vertical des **valeurs** des barres, pas de leurs positions. Tant que les deux grandeurs ont le même ordre (CAGR 0–12 contre positions 1–15) le graphique paraît correct par coïncidence ; dès qu'elles divergent (PIB en milliers de milliards contre positions 1–12), l'axe s'écrase et toutes les barres se superposent sur une ligne — sans qu'aucune erreur ne soit levée. Les deux graphiques à barres horizontales fixent donc `ylims = (0.4, nrow + 0.6)` explicitement.
-
----
-
-## 📌 Récapitulatif des Travaux Réalisés
-
-1. **Scripts de Collecte de Données** :
-   - `fetch_historical_gdp.py` : Extraction de 25 ans de données historiques (2000-2024) depuis l'API Banque Mondiale.
-   - `fetch_forecast_gdp.py` : Extraction des prévisions FMI WEO (2025-2030).
-   - `gdp_pipeline.py` : Pipeline maître d'unification (2000-2030), calcul du CAGR et génération du classeur Excel.
-
-2. **Visualisation & Reporting** :
-   - `visualize_gdp.py` : Génération des graphiques PNG et du Dashboard HTML interactif (`outputs/gdp_dashboard_interactive.html`).
-   - `outputs/gdp_master_dataset.xlsx` : Classeur Excel multi-onglets (Top 30, Synthèse, Séries Temporelles, Historique, Prévisions).
-
-3. **Documentation & Notebook** :
-   - `documentation_gdp.tex` & `documentation_gdp.pdf` : Documentation complète rédigée en LaTeX et compilée au format PDF.
-   - `gdp_analysis_notebook.ipynb` : Notebook Jupyter d'analyse interactive avec fonctions de recherche par pays.
-   - `README.md` & `requirements.txt` : Documentation d'utilisation et liste des dépendances Python.
-
----
-
-## 📁 Arborescence des Fichiers
-
-```
-GDP/
-├── data/
-│   ├── raw/
-│   │   └── gdp_imf_weo_raw.json
-│   └── processed/
-│       ├── gdp_historical_2000_2024.csv
-│       ├── gdp_forecast_2025_2030.csv
-│       ├── gdp_unified_2000_2030.csv
-│       └── gdp_country_summary.csv
-├── outputs/
-│   ├── gdp_master_dataset.xlsx
-│   ├── gdp_top10_trajectories_2000_2030.png
-│   ├── gdp_cagr_comparison_top15.png
-│   └── gdp_dashboard_interactive.html
-├── fetch_historical_gdp.py
-├── fetch_forecast_gdp.py
-├── gdp_pipeline.py
-├── visualize_gdp.py
-├── create_notebook.py
-├── gdp_analysis_notebook.ipynb
-├── documentation_gdp.tex
-├── documentation_gdp.pdf
-├── requirements.txt
-├── README.md
-└── SESSION_STATE.md
-```
-
----
-
-## 🚀 Reprise Rapide de la Session
-
-```bash
-# Relancer le traitement des données
-python gdp_pipeline.py
-
-# Relancer la génération des visuels
-python visualize_gdp.py
-
-# Ouvrir le notebook Jupyter
-jupyter notebook gdp_analysis_notebook.ipynb
-```

@@ -29,6 +29,10 @@ Une ligne par (pays, année visée) ; une colonne par édition, nommée `S2019ng
 `F2019ngdp_rpch`. Les valeurs manquantes sont notées `.` et non vides — un `dropna` naïf
 les laisserait passer, et un `fillna(0)` en ferait des croissances nulles.
 
+Les codes pays sont ceux de la colonne `ISOAlpha_3Code`, à deux exceptions près que
+`evaluate_forecasts.py` convertit vers les codes de la Banque Mondiale : `KOS` (Kosovo,
+`XKX`) et `WBG` (Cisjordanie et Gaza, `PSE`).
+
 L'horizon de projection se déduit de l'écart entre l'année visée et l'année de l'édition :
 positif pour une prévision, nul pour l'année en cours, **négatif pour une ré-estimation
 d'une année déjà écoulée**. Cette distinction est le cœur de l'exercice : compter les
@@ -60,7 +64,12 @@ python evaluate_forecasts.py --indicateur pcpi_pch  # inflation
 Produit dans `data/processed/` :
 
 * `weo_forecast_evaluation_<indicateur>.csv` — une ligne par projection, avec son horizon
-  et son erreur face à deux références (ré-estimation du FMI à un an, série Banque Mondiale) ;
-* `weo_forecast_bias_<indicateur>.csv` — biais et erreur absolue moyenne par horizon.
+  et son erreur face à la ré-estimation du FMI à un an et, pour la croissance du PIB
+  seulement, à la série observée de la Banque Mondiale ;
+* `weo_forecast_bias_<indicateur>.csv` — biais et erreur absolue par horizon, en moyenne
+  et en médiane.
+
+Pour l'inflation, lire les médianes : quelques projections d'hyperinflation (le Venezuela
+à 10 000 000 %) portent les moyennes à des milliers de points. Le script le signale.
 
 Le graphique `outputs/gdp_forecast_accuracy.png` est ensuite produit par `visualize_gdp.py`.

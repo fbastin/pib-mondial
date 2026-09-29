@@ -15,12 +15,14 @@ les fichiers réellement produits et se sautent d'eux-mêmes s'ils sont absents.
 """
 
 import os
-import glob
 
 import numpy as np
 import pandas as pd
 import pytest
 
+import http_utils
+import fetch_historical_gdp
+import fetch_forecast_gdp
 from gdp_pipeline import (
     calculate_cagr,
     reference_years,
@@ -28,6 +30,8 @@ from gdp_pipeline import (
     splice_forecast_levels,
     extend_real_series,
     compute_country_summary,
+    run_pipeline,
+    unified_csv_path,
 )
 from visualize_gdp import detect_years
 
@@ -90,7 +94,8 @@ def _prevision() -> pd.DataFrame:
     return pd.DataFrame(lignes)
 
 
-def _fmi_avec_historique(desaccord: float = 1.60) -> pd.DataFrame:
+def _fmi_avec_historique(desaccord: float = 1.60, desaccord_ppa: float = 0.50,
+                         desaccord_hab: float = 2.0) -> pd.DataFrame:
     """
     Extraction FMI incluant ses propres estimations des années observées.
 
@@ -98,6 +103,11 @@ def _fmi_avec_historique(desaccord: float = 1.60) -> pd.DataFrame:
     Pays B, appliqué à **toute** sa série : le FMI mesure ce pays plus haut sans pour
     autant lui prêter une autre dynamique. C'est la configuration qui produit une marche
     à la jonction lorsque les deux séries sont juxtaposées. Pays A est mesuré à l'identique.
+
+    La PPA courante (`desaccord_ppa`) et le PIB par habitant (`desaccord_hab`) divergent
+    de rapports différents, comme sur données réelles : un facteur unique, calé sur le
+    nominal, ne peut pas les raccorder. Le PIB par habitant de Pays B, stable sur
+    l'historique, progresse de 4 %/an en projection.
     """
     lignes = []
     for annee in range(2000, 2031):
@@ -106,10 +116,12 @@ def _fmi_avec_historique(desaccord: float = 1.60) -> pd.DataFrame:
         lignes += [
             dict(country_code="AAA", country_name="AAA", year=annee, is_forecast=prevision,
                  is_aggregate=False, GDP_Nominal_Billions_USD=1000 * (1.03 ** n),
-                 GDP_Growth_Pct=2.0, GDP_PPP_Billions_USD=1200.0, GDP_Per_Capita_USD=30000.0),
+                 GDP_Growth_Pct=2.0, GDP_PPP_Billions_USD=1200 * (1.03 ** n),
+                 GDP_Per_Capita_USD=30000.0),
             dict(country_code="BBB", country_name="BBB", year=annee, is_forecast=prevision,
                  is_aggregate=False, GDP_Nominal_Billions_USD=500 * desaccord * (1.05 ** n),
-                 GDP_Growth_Pct=4.0, GDP_PPP_Billions_USD=1400.0, GDP_Per_Capita_USD=8000.0),
+                 GDP_Growth_Pct=4.0, GDP_PPP_Billions_USD=1400 * desaccord_ppa * (1.05 ** n),
+                 GDP_Per_Capita_USD=8000 * desaccord_hab * (1.04 ** max(annee - 2024, 0))),
             dict(country_code="WLD", country_name="WLD", year=annee, is_forecast=prevision,
                  is_aggregate=True, GDP_Nominal_Billions_USD=90000 * (1.03 ** n),
                  GDP_Growth_Pct=3.0, GDP_PPP_Billions_USD=100000.0, GDP_Per_Capita_USD=12000.0),
@@ -245,6 +257,21 @@ class TestChainageVolume:
         assert serie.loc[2026] == pytest.approx(1000.0 * (1.02 ** 24) * 1.02 ** 2)
         assert serie.loc[[2027, 2028, 2029, 2030]].isna().all()
 
+    def test_annee_absente_interrompt_le_chainage(self):
+        """
+        Régression : une année sans ligne (prévision démarrant deux ans après la fin de
+        l'historique) était franchie, le taux de 2026 s'appliquant au niveau de 2024.
+        """
+        prevision = _prevision()
+        prevision = prevision[prevision.year != 2025]
+
+        unifie = extend_real_series(
+            build_unified_dataset(_historique(), prevision), base_year=2024)
+        serie = unifie[unifie.country_code == "AAA"].set_index("year")["GDP_Real_Billions_USD"]
+
+        assert 2025 not in serie.index
+        assert serie.loc[[2026, 2027, 2028, 2029, 2030]].isna().all()
+
 
 # ------------------------------------------------------- synthèse et rangs
 
@@ -304,6 +331,51 @@ class TestSynthese:
                             "Ecart_Rang_Nominal_PPA_2024"].iloc[0] > 0
 
 
+class TestPanelClassement:
+    """
+    Régression : chaque colonne de rang était calculée sur les pays qu'elle couvrait.
+    Taïwan, absent de la Banque Mondiale, entrait 22ᵉ au classement 2030 ; le Pakistan,
+    sans projection FMI, en sortait. Les écarts de rang de 140 pays sur 183 mêlaient ainsi
+    leur mouvement propre à ces entrées et sorties.
+    """
+
+    @pytest.fixture
+    def synthese_mouvante(self):
+        # Entre Pays A et Pays B : présent en 2024 seulement (type Pakistan)...
+        historique = _historique()
+        seulement_2024 = historique[historique.country_code == "BBB"].copy()
+        seulement_2024["country_code"], seulement_2024["country_name"] = "HHH", "Historique seul"
+        seulement_2024["GDP_Nominal_USD"] = 1.8e12
+        # ... et présent en 2030 seulement (type Taïwan)
+        prevision = _prevision()
+        seulement_2030 = prevision[prevision.country_code == "BBB"].copy()
+        seulement_2030["country_code"], seulement_2030["country_name"] = "FFF", "Prévision seule"
+        seulement_2030["GDP_Nominal_Billions_USD"] = 2300.0
+
+        unifie = extend_real_series(build_unified_dataset(
+            pd.concat([historique, seulement_2024]), pd.concat([prevision, seulement_2030])),
+            base_year=2024)
+        return compute_country_summary(unifie, reference_years(2000, 2024, 2030)).set_index("country_code")
+
+    def test_entrees_et_sorties_sans_effet_sur_les_rangs(self, synthese_mouvante):
+        """Pays B est deuxième aux deux dates : il ne doit afficher aucun mouvement."""
+        b = synthese_mouvante.loc["BBB"]
+        assert (b["Rank_2024"], b["Rank_2030_Forecast"], b["Rank_Change"]) == (2, 2, 0)
+
+    def test_pays_hors_panel_gardent_leurs_niveaux_sans_rang(self, synthese_mouvante):
+        for code, niveau in (("HHH", "GDP_2024_Billion_USD"), ("FFF", "GDP_2030_Forecast_Billion_USD")):
+            ligne = synthese_mouvante.loc[code]
+            assert pd.notna(ligne[niveau])
+            assert ligne[["Rank_2024", "Rank_2030_Forecast", "Rank_PPA_2024"]].isna().all()
+
+    def test_ecarts_de_rang_egaux_a_la_difference_affichee(self, synthese_mouvante):
+        classes = synthese_mouvante.dropna(subset=["Rank_2024"])
+        assert (classes["Rank_Change"]
+                == classes["Rank_2024"] - classes["Rank_2030_Forecast"]).all()
+        assert (classes["Ecart_Rang_Nominal_PPA_2024"]
+                == classes["Rank_2024"] - classes["Rank_PPA_2024"]).all()
+
+
 class TestBornesPersonnalisees:
     """
     Régression : les années de référence étaient figées à 2000/2010/2024/2030.
@@ -335,6 +407,22 @@ class TestBornesPersonnalisees:
         """24 ans d'historique quelles que soient les bornes : le taux reste 3 %."""
         ligne = synthese_1995[synthese_1995.country_code == "AAA"].iloc[0]
         assert ligne["CAGR_Historique_1995_2019_Pct"] == pytest.approx(3.0, abs=1e-6)
+
+
+class TestBornesDuPipeline:
+    """Des bornes incohérentes sont refusées avant toute requête réseau."""
+
+    @pytest.mark.parametrize("fcst_start", [2024, 2026])
+    def test_prevision_contigue_a_l_historique(self, fcst_start, tmp_path):
+        with pytest.raises(ValueError, match="2025"):
+            run_pipeline(end_year=2024, fcst_start=fcst_start,
+                         data_dir=str(tmp_path / "data"), output_dir=str(tmp_path / "out"))
+        assert not (tmp_path / "data").exists()
+
+    def test_bornes_ordonnees(self, tmp_path):
+        with pytest.raises(ValueError, match="incohérentes"):
+            run_pipeline(start_year=2024, end_year=2024, fcst_end=2030,
+                         data_dir=str(tmp_path / "data"), output_dir=str(tmp_path / "out"))
 
 
 class TestRecouvrementSources:
@@ -414,12 +502,136 @@ class TestRaccord:
             ["country_code", "year"])["GDP_Nominal_Billions_USD"].values
         assert avant == pytest.approx(apres)
 
+    def test_ppa_raccordee_sur_son_propre_ecart(self, unifie_recouvrement):
+        """
+        Régression : le facteur du nominal était appliqué à la PPA courante. Sur données
+        réelles, le Burundi y chutait de 46 % en 2025, le Soudan y bondissait de 95 %,
+        quand le FMI leur projetait +7 % et +6 %.
+        """
+        serie = unifie_recouvrement[unifie_recouvrement.country_code == "BBB"].set_index("year")
+        croissance = serie.loc[2025, "GDP_PPP_Billions_USD"] / serie.loc[2024, "GDP_PPP_Billions_USD"]
+        assert croissance == pytest.approx(1.05, rel=1e-9)
+        assert serie["Facteur_Raccord_PPA"].iloc[0] == pytest.approx(1 / 0.50)
+        assert serie["Facteur_Raccord"].iloc[0] == pytest.approx(1 / 1.60)
+
+    def test_pib_par_habitant_raccorde(self, unifie_recouvrement):
+        """
+        Régression : le PIB par habitant n'était pas raccordé du tout. La marche que le
+        raccord supprime sur le nominal y subsistait : +121 % pour le Burundi en 2025.
+        """
+        serie = unifie_recouvrement[unifie_recouvrement.country_code == "BBB"].set_index("year")
+        assert serie.loc[2025, "GDP_Per_Capita_USD"] == pytest.approx(8000 * 1.04, rel=1e-9)
+        assert serie.loc[2030, "GDP_Per_Capita_USD"] == pytest.approx(8000 * 1.04 ** 6, rel=1e-9)
+
+    def test_valeurs_fmi_brutes_conservees_en_regard(self, unifie_recouvrement):
+        """Le niveau FMI d'origine reste lisible à côté de la série raccordée."""
+        ligne = unifie_recouvrement[(unifie_recouvrement.country_code == "BBB")
+                                    & (unifie_recouvrement.year == 2025)].iloc[0]
+        assert ligne["GDP_PPP_FMI_Billions_USD"] == pytest.approx(1400 * 0.50 * 1.05 ** 25)
+        assert ligne["GDP_Per_Capita_FMI_USD"] == pytest.approx(8000 * 2.0 * 1.04)
+
     def test_absence_de_valeurs_fmi_laisse_la_serie_intacte(self):
         """Sans recouvrement, le raccord doit se contenter d'un avertissement."""
         unifie = build_unified_dataset(_historique(), _prevision())
         assert "GDP_Nominal_FMI_Billions_USD" not in unifie.columns
         inchange = splice_forecast_levels(unifie, base_year=2024)
         assert inchange["GDP_Nominal_Billions_USD"].equals(unifie["GDP_Nominal_Billions_USD"])
+
+
+class TestCollecte:
+    """
+    Une source injoignable doit interrompre la collecte : un indicateur manquant vidait
+    silencieusement les colonnes qui en dépendent, une liste de pays manquante laissait
+    les agrégats entrer dans les classements.
+    """
+
+    def test_nouvelles_tentatives_puis_echec_explicite(self, monkeypatch):
+        appels = []
+
+        def en_panne(*args, **kwargs):
+            appels.append(args)
+            raise http_utils.requests.ConnectionError("réseau coupé")
+
+        monkeypatch.setattr(http_utils.requests, "get", en_panne)
+        monkeypatch.setattr(http_utils.time, "sleep", lambda s: None)
+        with pytest.raises(RuntimeError, match="3 tentatives"):
+            http_utils.get_json("https://exemple.invalid", tentatives=3)
+        assert len(appels) == 3
+
+    def test_liste_des_pays_fmi_indispensable(self, monkeypatch):
+        def injoignable(url, **kwargs):
+            raise RuntimeError(f"{url} injoignable")
+
+        monkeypatch.setattr(fetch_forecast_gdp, "get_json", injoignable)
+        with pytest.raises(RuntimeError):
+            fetch_forecast_gdp.fetch_imf_countries()
+
+    def test_toutes_les_pages_banque_mondiale_lues(self, monkeypatch):
+        """Une réponse sur plusieurs pages ne doit pas être tronquée à la première."""
+        def page(numero):
+            return [{"page": numero, "pages": 2, "lastupdated": "2026-07-13"},
+                    [{"countryiso3code": code, "country": {"value": code}, "date": "2024",
+                      "value": 1.0} for code in (("AAA",) if numero == 1 else ("BBB", "WLD"))]]
+
+        monkeypatch.setattr(fetch_historical_gdp, "get_json",
+                            lambda url, params=None: page(params["page"]))
+        df = fetch_historical_gdp.fetch_worldbank_indicator(
+            "NY.GDP.MKTP.CD", 2024, 2024, country_codes={"AAA", "BBB"})
+        assert set(df.country_code) == {"AAA", "BBB", "WLD"}
+        assert df.set_index("country_code").loc["WLD", "is_aggregate"]
+
+    def test_indicateur_vide_refuse(self, monkeypatch):
+        monkeypatch.setattr(fetch_historical_gdp, "get_json",
+                            lambda url, params=None: [{"page": 1, "pages": 1}, None])
+        with pytest.raises(RuntimeError, match="Aucune donnée"):
+            fetch_historical_gdp.fetch_worldbank_indicator("NY.GDP.MKTP.CD", 2024, 2024, {"AAA"})
+
+    def test_codes_fmi_convertis_vers_la_banque_mondiale(self):
+        """
+        Régression : le Kosovo (`UVK` au FMI, `XKX` à la Banque Mondiale) formait deux
+        entités classées séparément, l'une sans prévision, l'autre sans historique.
+        """
+        brut = {"values": {"NGDPD": {"UVK": {"2024": 11.0, "2030": 18.0},
+                                     "WBG": {"2024": 16.0}}}}
+        df = fetch_forecast_gdp.parse_imf_data(
+            brut, "NGDPD", countries={"UVK": "Kosovo", "WBG": "West Bank and Gaza"})
+        assert set(df.country_code) == {"XKX", "PSE"}
+        assert not df.is_aggregate.any()
+
+
+class TestSerieDuDernierRun:
+    """
+    Plusieurs séries unifiées peuvent coexister (runs sur d'autres bornes). Celle retenue
+    doit être celle du dernier run, désignée par ses métadonnées — ni la dernière par
+    ordre alphabétique, ni la plus récemment modifiée.
+    """
+
+    @staticmethod
+    def _run(dossier, debut, fin):
+        processed = dossier / "processed"
+        processed.mkdir(parents=True, exist_ok=True)
+        (processed / f"gdp_unified_{debut}_{fin}.csv").write_text("country_code\n")
+        (dossier / "extraction_metadata.json").write_text(
+            f'{{"bornes": {{"historique": [{debut}, 2024], "prevision": [2025, {fin}]}}}}')
+
+    def test_metadonnees_designent_la_serie(self, tmp_path):
+        self._run(tmp_path, 2000, 2030)
+        self._run(tmp_path, 1995, 2028)                      # dernier run
+        plus_recente = tmp_path / "processed" / "gdp_unified_2000_2030.csv"
+        os.utime(plus_recente)                               # retouchée après coup
+        assert unified_csv_path(str(tmp_path)).endswith("gdp_unified_1995_2028.csv")
+
+    def test_ambiguite_sans_metadonnees_refusee(self, tmp_path):
+        self._run(tmp_path, 2000, 2030)
+        self._run(tmp_path, 1995, 2028)
+        (tmp_path / "extraction_metadata.json").unlink()
+        with pytest.raises(FileNotFoundError, match="Plusieurs"):
+            unified_csv_path(str(tmp_path))
+
+    def test_serie_unique_sans_metadonnees_acceptee(self, tmp_path):
+        self._run(tmp_path, 2000, 2030)
+        (tmp_path / "extraction_metadata.json").unlink()
+        assert unified_csv_path(str(tmp_path)).endswith("gdp_unified_2000_2030.csv")
 
 
 class TestDetectionAnnees:
@@ -455,6 +667,9 @@ class TestBaseHistoriqueWEO:
                  **{f"S2018{onglet}": 1.7, f"F2018{onglet}": 1.6, f"F2021{onglet}": -7.9}),
             dict(country="Japan", WEO_Country_Code=158, ISOAlpha_3Code="JPN", year=2020,
                  **{f"S2018{onglet}": 0.8, f"F2018{onglet}": ".", f"F2021{onglet}": -4.5}),
+            # Le classeur code le Kosovo `KOS`, la Banque Mondiale `XKX`
+            dict(country="Kosovo", WEO_Country_Code=967, ISOAlpha_3Code="KOS", year=2019,
+                 **{f"S2018{onglet}": 4.0, f"F2020{onglet}": 4.8}),
         ])
         chemin = dossier / "WEOhistorical.xlsx"
         lignes.to_excel(chemin, sheet_name=onglet, index=False)
@@ -531,6 +746,59 @@ class TestBaseHistoriqueWEO:
         evaluation = evaluer(table, data_dir=str(tmp_path / "absent"))
         assert (evaluation["horizon"] >= 0).all()
 
+    def test_code_kosovo_converti(self, tmp_path):
+        """Régression : `KOS` était inconnu de la série du pipeline, le Kosovo était écarté."""
+        from evaluate_forecasts import lire_base_historique
+        table = lire_base_historique(str(self._classeur(tmp_path)))
+        assert "XKX" in set(table.country_code)
+        assert "KOS" not in set(table.country_code)
+
+    @staticmethod
+    def _pipeline(dossier):
+        """Série unifiée minimale : la croissance observée par la Banque Mondiale."""
+        (dossier / "processed").mkdir(parents=True)
+        pd.DataFrame([
+            dict(country_code="FRA", year=2019, is_forecast=False, is_aggregate=False, GDP_Growth_Pct=1.9),
+            dict(country_code="FRA", year=2020, is_forecast=False, is_aggregate=False, GDP_Growth_Pct=-7.5),
+            dict(country_code="JPN", year=2020, is_forecast=False, is_aggregate=False, GDP_Growth_Pct=-4.2),
+        ]).to_csv(dossier / "processed" / "gdp_unified_2000_2030.csv", index=False)
+        return str(dossier)
+
+    def test_reference_banque_mondiale_pour_la_croissance(self, tmp_path):
+        from evaluate_forecasts import lire_base_historique, evaluer
+        table = lire_base_historique(str(self._classeur(tmp_path)))
+        evaluation = evaluer(table, data_dir=self._pipeline(tmp_path / "data"))
+        ligne = evaluation[(evaluation.country_code == "FRA") & (evaluation.year == 2020)
+                           & (evaluation.vintage == "S2018")].iloc[0]
+        assert ligne["erreur_vs_bm"] == pytest.approx(1.7 - (-7.5))
+
+    def test_pas_de_reference_banque_mondiale_hors_croissance(self, tmp_path):
+        """
+        Régression : la référence Banque Mondiale était toujours la croissance du PIB,
+        y compris pour `--indicateur pcpi_pch` — l'inflation projetée était comparée
+        à la croissance observée.
+        """
+        from evaluate_forecasts import lire_base_historique, evaluer, synthese_par_horizon
+        table = lire_base_historique(str(self._classeur(tmp_path, onglet="pcpi_pch")),
+                                     indicateur="pcpi_pch")
+        evaluation = evaluer(table, data_dir=self._pipeline(tmp_path / "data"),
+                             indicateur="pcpi_pch")
+        assert evaluation["erreur_vs_bm"].isna().all()
+        assert not synthese_par_horizon(evaluation)["reference"].str.startswith("Banque").any()
+
+    def test_valeurs_extremes_signalees(self):
+        """
+        Une projection d'hyperinflation (le Venezuela à 10 000 000 %) porte la moyenne
+        à des milliers de points : la synthèse doit fournir des médianes et le signaler.
+        """
+        from evaluate_forecasts import synthese_par_horizon, moyennes_dominees
+        erreurs = [0.5, -0.3, 0.8, -1.1, 0.2, 1e7]
+        evaluation = pd.DataFrame(dict(horizon=1, erreur_vs_fmi=erreurs, erreur_vs_bm=np.nan))
+        synthese = synthese_par_horizon(evaluation)
+        assert synthese.loc[0, "erreur_absolue_mediane"] == pytest.approx(0.65)
+        assert moyennes_dominees(synthese)
+        assert not moyennes_dominees(synthese_par_horizon(evaluation.iloc[:-1]))
+
     def test_classeur_absent_signale_clairement(self, tmp_path):
         from evaluate_forecasts import lire_base_historique
         with pytest.raises(FileNotFoundError, match="LISEZ-MOI"):
@@ -560,11 +828,14 @@ class TestFichiersProduits:
     @staticmethod
     @pytest.fixture(scope="class")
     def fichiers():
-        series = sorted(glob.glob(os.path.join(PROCESSED, "gdp_unified_*.csv")))
         synthese = os.path.join(PROCESSED, "gdp_country_summary.csv")
-        if not series or not os.path.exists(synthese):
+        try:
+            serie = unified_csv_path("data")
+        except FileNotFoundError:
             pytest.skip("Aucune donnée produite : lancez `python gdp_pipeline.py`")
-        return pd.read_csv(series[-1]), pd.read_csv(synthese)
+        if not os.path.exists(synthese):
+            pytest.skip("Aucune donnée produite : lancez `python gdp_pipeline.py`")
+        return pd.read_csv(serie), pd.read_csv(synthese)
 
     def test_un_seul_libelle_par_code(self, fichiers):
         unifie, _ = fichiers
@@ -611,6 +882,18 @@ class TestFichiersProduits:
                 continue
             ordonnee = synthese.dropna(subset=[niveau, rang]).sort_values(niveau, ascending=False)
             assert list(ordonnee[rang]) == sorted(ordonnee[rang]), f"{rang} incohérent"
+
+    def test_ecarts_de_rang_sur_un_meme_panel(self, fichiers):
+        _, synthese = fichiers
+        if "Rank_2024" not in synthese.columns:
+            pytest.skip("run sur d'autres bornes")
+        classes = synthese.dropna(subset=["Rank_2024"])
+        assert (classes["Rank_Change"] == classes["Rank_2024"] - classes["Rank_2030_Forecast"]).all()
+        assert classes[["Rank_2030_Forecast", "Rank_PPA_2024", "Rank_PPA_2030"]].notna().all().all()
+
+    def test_codes_propres_au_fmi_convertis(self, fichiers):
+        unifie, _ = fichiers
+        assert not {"UVK", "WBG"} & set(unifie.country_code)
 
     def test_premieres_economies_plausibles(self, fichiers):
         """Garde-fou de bon sens : le Top 3 nominal ne change pas d'un run à l'autre."""

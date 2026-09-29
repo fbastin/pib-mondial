@@ -52,7 +52,7 @@ et du **FMI WEO** (2025-2030).
 > ```julia
 > using Pkg
 > Pkg.activate(".")   # environnement décrit par Project.toml
-> Pkg.instantiate()   # installe CSV, DataFrames, Plots, PlotlyBase
+> Pkg.instantiate()   # installe CSV, DataFrames, JSON, Plots, PlotlyBase
 > Pkg.add("IJulia")   # noyau Jupyter, si absent
 > ```
 > Les données doivent avoir été générées au préalable : `python gdp_pipeline.py`.
@@ -67,6 +67,7 @@ zone euro…) sont marqués `is_aggregate` et déjà écartés de `gdp_country_s
     code("""
 using CSV
 using DataFrames
+using JSON
 using Statistics
 using Printf
 using Plots
@@ -81,12 +82,14 @@ println("[OK] Bibliothèques chargées. Backend courant : ", backend())
 
     md("## 2. Chargement des Jeux de Données"),
     code("""
-# Le nom du fichier unifié porte les bornes du run : on le retrouve par motif
-series = filter(f -> startswith(f, "gdp_unified_") && endswith(f, ".csv"),
-                readdir(joinpath("data", "processed")))
-isempty(series) && error("Aucune série unifiée dans data/processed/. Lancez d'abord : python gdp_pipeline.py")
+# Le nom du fichier unifié porte les bornes du run, et plusieurs peuvent coexister :
+# on retient celui du dernier run, désigné par data/extraction_metadata.json
+meta_json = joinpath("data", "extraction_metadata.json")
+isfile(meta_json) || error("$meta_json absent. Lancez d'abord : python gdp_pipeline.py")
+bornes = JSON.parsefile(meta_json)["bornes"]
 
-unified_csv = joinpath("data", "processed", last(sort(series)))
+unified_csv = joinpath("data", "processed",
+                       "gdp_unified_$(bornes["historique"][1])_$(bornes["prevision"][2]).csv")
 summary_csv = joinpath("data", "processed", "gdp_country_summary.csv")
 
 df_unified = CSV.read(unified_csv, DataFrame)

@@ -11,6 +11,9 @@
 \usepackage{booktabs}
 \usepackage{xcolor}
 
+% Chemins et noms de colonnes en police fixe ne se coupent pas : marge de secours
+\emergencystretch=2em
+
 \hypersetup{
     colorlinks=true,
     linkcolor=blue,
@@ -21,7 +24,7 @@
 \title{\textbf{DOCUMENTATION TECHNIQUE ET FONCTIONNELLE}\\[0.5em]
 \Large Traitement, Analyse et Prévisions du PIB Mondial (2000 -- 2030)}
 \author{}
-\date{Août 2026}
+\date{Septembre 2026}
 
 \begin{document}
 
@@ -104,6 +107,22 @@ où $g_{y}$ est la croissance réelle projetée. Une année de croissance manqua
 
 L'écart entre CAGR nominal et CAGR réel, exprimé en points de pourcentage, isole la contribution conjointe de l'inflation et du change. Le Japon en fournit le cas limite: $-0{,}77\%$ de croissance nominale en dollars sur 2000--2024 contre $+0{,}65\%$ en volume, soit un écart de $-1{,}4$ point imputable à la dépréciation du yen. À l'inverse, la Russie affiche $9{,}3\%$ en nominal pour $3{,}1\%$ en volume.
 
+\subsection{Recouvrement des Sources et Raccord des Niveaux}
+Le WEO couvre aussi les années observées. Le pipeline conserve ces estimations du FMI en regard des valeurs de la Banque Mondiale, qui restent la référence: elles mesurent l'écart entre institutions (\texttt{Ecart\_Sources\_Pct}) sans jamais se substituer à l'observation.
+
+Les deux institutions concordent au centième de pourcent pour la plupart des pays (écart médian de $0{,}03\%$ sur le PIB nominal de 2024) mais divergent nettement pour une quinzaine. Juxtaposer l'observation de l'une et la projection de l'autre fabriquerait alors une croissance inexistante à la jonction. Les niveaux projetés sont donc raccordés au dernier niveau observé, ce qui conserve la dynamique du FMI et le niveau de la Banque Mondiale:
+\begin{equation}
+\text{PIB}_{y} = \text{PIB}^{\text{BM}}_{b} \times \frac{\text{PIB}^{\text{FMI}}_{y}}{\text{PIB}^{\text{FMI}}_{b}}
+\end{equation}
+où $b$ est la dernière année observée. Chaque série de niveau --- nominal, PPA courante, PIB par habitant --- reçoit son propre facteur, les deux institutions n'y divergeant pas du même rapport. Appliquer à la PPA le facteur du nominal recréait la marche que le raccord doit supprimer: le Burundi y chutait de $46\%$ en 2025, quand le FMI lui projetait $+6{,}9\%$.
+
+Les facteurs appliqués sont conservés dans les colonnes:
+\begin{itemize}
+    \item \texttt{Facteur\_Raccord} (nominal);
+    \item \texttt{Facteur\_Raccord\_PPA} (PPA courante);
+    \item \texttt{Facteur\_Raccord\_Par\_Habitant} (PIB par habitant).
+\end{itemize}
+
 \subsection{Comparaison de Niveaux: la Parité de Pouvoir d'Achat}
 Neutraliser le change sur la \emph{croissance} ne suffit pas à comparer des \emph{niveaux}: la série en volume reste convertie en dollars au taux de l'année de base. Or le taux de change de marché est déterminé par les flux financiers et les biens échangeables, non par ce qu'une unité de production permet d'acheter localement.
 
@@ -122,8 +141,13 @@ Le pipeline interroge à cet effet les points d'entrée de métadonnées de chaq
 
 Chaque enregistrement porte le drapeau \texttt{is\_aggregate} qui en résulte. Les agrégats sont \textbf{conservés dans les séries temporelles} (l'évolution du PIB mondial reste une information utile) mais \textbf{exclus des classements}, du calcul des rangs et des visualisations comparatives, où ils écraseraient les pays. La classification de la Banque Mondiale prévaut en cas de désaccord entre les deux sources, afin d'éviter qu'un territoire dont le code entre en collision avec un groupe FMI (ainsi \texttt{MAF}, Saint-Martin) ne soit écarté à tort.
 
-\subsection{Réconciliation des Libellés}
+\subsection{Réconciliation des Libellés et des Codes}
 Un même code ISO reçoit un libellé différent selon la source (\textit{Korea, Rep.} à la Banque Mondiale, \textit{Korea} au FMI), et les payloads d'indicateurs du FMI ne transportent pas les libellés. La jointure historique/prévision s'effectue donc sur le \textbf{seul code pays}, le nom de la Banque Mondiale étant retenu comme forme canonique. Sans cette réconciliation, chaque pays se scinde en deux séries — l'une sans prévision, l'autre sans historique — ce qui vide le PIB 2030, le CAGR prévisionnel et le rang projeté.
+
+La jointure sur le code suppose que les deux sources désignent un territoire par le même code. Deux exceptions sont converties vers les codes de la Banque Mondiale: le Kosovo (\texttt{UVK} dans l'API du FMI, \texttt{KOS} dans sa base historique, \texttt{XKX} à la Banque Mondiale) et la Cisjordanie et Gaza (\texttt{WBG}, \texttt{PSE}).
+
+\subsection{Panel de Classement}
+Tous les rangs portent sur un même panel: les pays renseignés à la dernière année observée et à l'horizon de prévision, au taux de marché comme à parité (183 pays). Un écart de rang (\texttt{Rank\_Change}, \texttt{Ecart\_Rang\_Nominal\_PPA\_2024}) traduit alors un mouvement, et non l'entrée ou la sortie d'un pays du classement. Classer chaque colonne sur les pays qu'elle couvre faussait 140 écarts de rang sur 183: Taïwan, absent de la Banque Mondiale, entrait 22\textsuperscript{e} au classement 2030; le Pakistan, sans projection du FMI au-delà de 2025, en sortait. Les pays hors panel conservent leurs niveaux de PIB dans la synthèse, sans rang.
 
 \subsection{Portée du Classement à Parité}
 Les niveaux de prévision à parité étant obtenus par chaînage à partir du dernier point observé, le classement \texttt{Rank\_PPA} projeté suppose les facteurs de conversion de 2021 inchangés sur tout l'horizon. Or ces facteurs évoluent avec les niveaux de prix relatifs. Le classement projeté à parité doit donc se lire comme l'extrapolation d'une structure de prix figée, et non comme une prévision du pouvoir d'achat relatif en 2030: son incertitude excède celle des prévisions de croissance dont il dérive.
@@ -133,7 +157,9 @@ Les niveaux de prévision à parité étant obtenus par chaînage à partir du d
 \begin{itemize}
     \item \texttt{fetch\_historical\_gdp.py}: Collecte des données historiques (Banque Mondiale).
     \item \texttt{fetch\_forecast\_gdp.py}: Collecte des prévisions (FMI WEO).
+    \item \texttt{http\_utils.py}: Requêtes HTTP communes aux deux collectes (nouvelles tentatives, échec explicite).
     \item \texttt{gdp\_pipeline.py}: Pipeline maître d'unification et d'export Excel / CSV.
+    \item \texttt{evaluate\_forecasts.py}: Évaluation des prévisions d'époque du FMI.
     \item \texttt{visualize\_gdp.py}: Génération des graphiques PNG et du Dashboard HTML.
     \item \texttt{build\_results\_page.py}: Page HTML de résultats, construite depuis les CSV et les PNG produits.
     \item \texttt{test\_gdp\_pipeline.py}: Tests des invariants du pipeline.
@@ -142,7 +168,11 @@ Les niveaux de prévision à parité étant obtenus par chaînage à partir du d
 \end{itemize}
 
 \subsection{Bornes Paramétrables}
-Les quatre bornes du run (\texttt{--start-year}, \texttt{--end-year}, \texttt{--fcst-start}, \texttt{--fcst-end}) se propagent à l'ensemble de la chaîne: nom du fichier unifié, années de référence de la synthèse, intitulés de colonnes (\texttt{CAGR\_Historique\_1995\_2023\_Pct} pour un run 1995--2023), frontière historique/prévision et bornes d'axe des graphiques. Ni \texttt{visualize\_gdp.py} ni les notebooks ne codent d'année en dur: les premiers redétectent les bornes dans les données, les seconds reconstruisent les noms de colonnes au chargement.
+Les quatre bornes du run (\texttt{-{}-start-year}, \texttt{-{}-end-year}, \texttt{-{}-fcst-start}, \texttt{-{}-fcst-end}) se propagent à l'ensemble de la chaîne: nom du fichier unifié, onglet Excel des séries, années de référence de la synthèse, intitulés de colonnes (\texttt{CAGR\_Historique\_1995\_2023\_Pct} pour un run 1995--2023), frontière historique/prévision et bornes d'axe des graphiques. Ni \texttt{visualize\_gdp.py} ni les notebooks ne codent d'année en dur: les premiers redétectent les bornes dans les données, les seconds reconstruisent les noms de colonnes au chargement.
+
+La prévision doit commencer l'année suivant la fin de l'historique (\texttt{-{}-fcst-start} vaut par défaut \texttt{-{}-end-year}$+1$): un trou laisserait une année sans donnée, qu'un chaînage franchirait; un chevauchement ferait passer une prévision pour la base observée du raccord. Des bornes incohérentes sont refusées avant toute requête.
+
+Chaque requête est retentée trois fois. Une source ou un indicateur qui reste injoignable interrompt le pipeline avec un code de sortie non nul, sans rien écrire: une colonne manquante viderait silencieusement les métriques qui en dépendent, et une liste de pays manquante laisserait les agrégats entrer dans les classements.
 
 \section{Évaluation des Prévisions}
 
@@ -153,8 +183,6 @@ Ce fichier n'est pas récupérable par script: le serveur du FMI répond \texttt
 
 Le FMI réorganisant régulièrement ses serveurs et publiant deux éditions par an, tout lien direct est appelé à devenir caduc; la page de recherche reste le point d'entrée stable. Le lien direct en vigueur, la structure détaillée du classeur et la marche à suivre complète figurent dans \texttt{data/raw/LISEZ-MOI-WEOhistorical.md}.
 
-Le dossier \texttt{forecasts/} contient par ailleurs un script indépendant du pipeline, qui se limite à extraire les prévisions de ce même classeur sans les confronter au réalisé, pour qui n'aurait besoin que de cette extraction. Il cherche le fichier dans son propre dossier puis dans \texttt{data/raw/}: une seule copie suffit, quel que soit son emplacement.
-
 \subsection{Horizon de Projection}
 Chaque édition couvre huit années relatives, de $-2$ à $+5$ par rapport à sa date de publication. L'horizon se déduit de l'écart entre l'année visée $y$ et l'année de l'édition $v$:
 \begin{equation}
@@ -163,12 +191,14 @@ h = y - v
 Un horizon négatif désigne une \emph{ré-estimation} d'une année déjà écoulée, non une prévision: les inclure reviendrait à mesurer la capacité de l'institution à se souvenir du passé. Seules les valeurs telles que $h \geq 0$ sont évaluées.
 
 \subsection{Choix de la Valeur de Référence}
-Comparer une projection au chiffre définitif d'aujourd'hui la pénalise pour des révisions statistiques intervenues des années après coup, hors de portée du prévisionniste. La référence retenue est donc la ré-estimation publiée par le FMI un an après l'année visée ($h = -1$, édition d'automne). Le calcul est mené en parallèle contre la série observée de la Banque Mondiale, les deux résultats étant conservés: une conclusion qui ne tiendrait qu'à une seule référence ne serait pas robuste.
+Comparer une projection au chiffre définitif d'aujourd'hui la pénalise pour des révisions statistiques intervenues des années après coup, hors de portée du prévisionniste. La référence retenue est donc la ré-estimation publiée par le FMI un an après l'année visée ($h = -1$, édition d'automne). Pour la croissance du PIB, le calcul est mené en parallèle contre la série observée de la Banque Mondiale, les deux résultats étant conservés: une conclusion qui ne tiendrait qu'à une seule référence ne serait pas robuste. Pour l'inflation et la balance courante, la série du pipeline n'offre pas d'équivalent: seule la référence FMI est calculée.
 
 L'erreur est exprimée en points de croissance et non en écart relatif: rapporter l'erreur d'un taux à sa propre valeur produit des rapports arbitrairement grands dès que ce taux approche de zéro.
 
+La synthèse par horizon donne le biais et l'erreur absolue en moyenne et en médiane. Pour l'inflation, seules les médianes décrivent l'erreur typique: quelques projections d'hyperinflation (le Venezuela à $10\,000\,000\,\%$) portent le biais moyen au-delà de $1\,600$ points à un an, quand le biais médian reste de $-0{,}1$ point. Le script le signale dès que l'erreur absolue moyenne dépasse dix fois la médiane.
+
 \subsection{Résultats}
-Sur 69\,169 projections de croissance réelle couvrant 194 pays:
+Sur 69\,345 projections de croissance réelle couvrant 196 pays:
 
 \begin{center}
 \begin{tabular}{lrr}
@@ -176,38 +206,43 @@ Sur 69\,169 projections de croissance réelle couvrant 194 pays:
 \textbf{Horizon} & \textbf{Biais moyen} & \textbf{Erreur absolue moyenne} \\
 \hline
 0 (année en cours) & $+0{,}18$ pt & $1{,}70$ pt \\
-1 an & $+0{,}99$ pt & $2{,}74$ pt \\
+1 an & $+1{,}00$ pt & $2{,}74$ pt \\
 3 ans & $+1{,}01$ pt & $2{,}95$ pt \\
 5 ans & $+0{,}93$ pt & $3{,}04$ pt \\
 \hline
 \end{tabular}
 \end{center}
 
-La prévision de l'année en cours est pratiquement sans biais. Au-delà, la croissance est surestimée d'environ un point, et ce biais ne s'atténue pas avec l'horizon alors que la dispersion, elle, continue de croître. Rapportée à l'année visée, l'erreur médiane atteint $+7{,}3$ points pour 2020 et $+3{,}8$ pour 2009: les récessions ne se prévoient pas, et le rebond qui les suit est symétriquement sous-estimé.
+La prévision de l'année en cours est pratiquement sans biais. Au-delà, la croissance est surestimée d'environ un point, et ce biais ne s'atténue pas avec l'horizon alors que la dispersion, elle, continue de croître. Rapportée à l'année visée, l'erreur médiane atteint $+7{,}3$ points pour 2020 et $+3{,}9$ pour 2009: les récessions ne se prévoient pas, et le rebond qui les suit est symétriquement sous-estimé.
 
 \section{Provenance et Reproductibilité}
 
-Chaque exécution écrit \texttt{data/extraction\_metadata.json}: horodatage de l'extraction, bornes du run, indicateurs interrogés, volumes obtenus et couverture par colonne.
+Chaque exécution écrit \texttt{data/extraction\_metadata.json}: horodatage de l'extraction, bornes du run, indicateurs interrogés, volumes obtenus et couverture par colonne. Ses bornes désignent aussi la série unifiée du dernier run: plusieurs fichiers \texttt{gdp\_unified\_<début>\_<fin>.csv} pouvant coexister, les scripts en aval, les notebooks et les tests lisent celui-là, jamais le plus récemment modifié.
 
 Le champ \texttt{derniere\_mise\_a\_jour} reprend le \texttt{lastupdated} déclaré par l'API de la Banque Mondiale, qui donne le millésime réel des séries historiques --- celles-ci étant révisées, deux extractions à quelques mois d'intervalle ne sont pas interchangeables. L'API DataMapper du FMI n'expose pas le millésime de son \textit{World Economic Outlook}, publié en avril et en octobre: seule la date d'extraction permet de le situer, ce que le fichier indique explicitement plutôt que de laisser la lacune passer pour une absence de révision.
 
 \section{Tests des Invariants}
 
-Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (38 tests, sans accès réseau) fixe les propriétés correspondantes:
+Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (85 tests, sans accès réseau) fixe les propriétés correspondantes:
 
 \begin{itemize}
     \item les agrégats sont absents des classements par pays;
-    \item un code ISO ne porte qu'un seul libellé sur toute sa série;
+    \item un pays ne porte qu'un seul libellé et un seul code sur toute sa série;
     \item la croissance implicite des volumes chaînés égale le taux publié par le FMI;
-    \item une année de croissance manquante interrompt le chaînage au lieu d'être franchie;
-    \item les intitulés de colonnes suivent les bornes du run;
+    \item une année de croissance manquante, ou une année absente, interrompt le chaînage au lieu d'être franchie;
+    \item chaque série de niveau est raccordée selon son propre facteur;
+    \item tous les rangs portent sur un même panel, et chaque écart de rang égale la différence des rangs affichés;
+    \item les intitulés de colonnes suivent les bornes du run, et des bornes incohérentes sont refusées;
     \item chaque rang est cohérent avec le niveau dont il dérive;
-    \item un CAGR non calculable vaut \texttt{NaN} et non une valeur de repli.
+    \item un CAGR non calculable vaut \texttt{NaN} et non une valeur de repli;
+    \item une source injoignable interrompt la collecte, et une réponse paginée est lue en entier;
+    \item la série lue en aval est celle du dernier run;
+    \item la référence Banque Mondiale ne sert qu'à évaluer la croissance du PIB.
 \end{itemize}
 
 Les tests marqués \texttt{donnees} portent sur les fichiers réellement produits et se sautent tant que le pipeline n'a pas été exécuté.
 
-La suite a été validée par mutation: chacun des six défauts correspondants a été réintroduit dans une copie du code afin de vérifier qu'elle échoue effectivement. Les six sont détectés --- un test qui ne tombe jamais ne garantit rien.
+La suite a été validée par mutation: chaque défaut correspondant a été réintroduit dans une copie du code afin de vérifier qu'elle échoue effectivement. Tous sont détectés --- un test qui ne tombe jamais ne garantit rien.
 
 \section{Guide du Notebook Jupyter}
 

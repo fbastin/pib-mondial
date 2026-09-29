@@ -11,7 +11,7 @@ Génère des visualisations graphiques et un tableau de bord interactif HTML :
 """
 
 import os
-import glob
+import sys
 import logging
 import argparse
 import pandas as pd
@@ -21,6 +21,8 @@ import seaborn as sns
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+
+from gdp_pipeline import unified_csv_path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -35,25 +37,20 @@ def load_data(data_dir: str = "data"):
     """
     Charge le jeu de données unifié et le résumé par pays.
 
-    Le nom du fichier unifié porte les bornes du run : il est retrouvé par motif
-    plutôt que par un nom figé, sans quoi tout run non standard serait invisible.
+    Le nom du fichier unifié porte les bornes du run : c'est celui du dernier run, désigné
+    par ses métadonnées (voir `unified_csv_path`), qui accompagne la synthèse.
     """
-    processed = os.path.join(data_dir, "processed")
-    candidats = sorted(glob.glob(os.path.join(processed, "gdp_unified_*.csv")))
-    summary_csv = os.path.join(processed, "gdp_country_summary.csv")
-
-    if not candidats or not os.path.exists(summary_csv):
-        logging.error("Fichiers de données introuvables. Veuillez exécuter gdp_pipeline.py au préalable.")
+    summary_csv = os.path.join(data_dir, "processed", "gdp_country_summary.csv")
+    try:
+        unified_csv = unified_csv_path(data_dir)
+    except FileNotFoundError as e:
+        logging.error(str(e))
+        return None, None
+    if not os.path.exists(summary_csv):
+        logging.error("Synthèse introuvable. Veuillez exécuter gdp_pipeline.py au préalable.")
         return None, None
 
-    if len(candidats) > 1:
-        candidats.sort(key=os.path.getmtime)
-        logging.warning(f"Plusieurs séries unifiées présentes, la plus récente est retenue : "
-                        f"{os.path.basename(candidats[-1])}")
-
-    df_unified = pd.read_csv(candidats[-1])
-    df_summary = pd.read_csv(summary_csv)
-    return df_unified, df_summary
+    return pd.read_csv(unified_csv), pd.read_csv(summary_csv)
 
 
 def detect_years(df_unified: pd.DataFrame) -> dict:
@@ -407,9 +404,10 @@ def plot_source_discrepancy(df_unified: pd.DataFrame, years: dict, output_dir: s
 
     fig.suptitle("Confrontation des deux sources sur les années observées",
                  fontsize=14, fontweight="bold")
+    concordants = int((jonction["Ecart_Sources_Pct"].abs() < 0.1).sum())
     plt.figtext(0.5, 0.015,
                 f"Quinze pays où l'écart est le plus marqué, sur {len(jonction)} comparables. "
-                "Pour la plupart des pays l'écart est inférieur à 0,1 %.",
+                f"L'écart est inférieur à 0,1 % pour {concordants} d'entre eux.",
                 fontsize=9, fontstyle="italic", color="#555555", ha="center")
 
     plt.tight_layout(rect=[0, 0.04, 1, 0.94])
@@ -452,7 +450,7 @@ def plot_forecast_accuracy(data_dir: str = "data", output_dir: str = "outputs"):
     ax1.set_xticks(x)
     ax1.set_xlabel("Horizon de projection (années)", fontsize=10, fontweight="bold")
     ax1.set_ylabel("Points de croissance", fontsize=10)
-    ax1.set_title("Le biais apparaît dès qu'on\ndépasse l'année en cours",
+    ax1.set_title("Biais et erreur absolue\npar horizon de projection",
                   fontsize=12, fontweight="bold", pad=12)
     ax1.legend(fontsize=9, frameon=True)
     ax1.grid(axis="y", linestyle="--", alpha=0.5)
@@ -473,7 +471,7 @@ def plot_forecast_accuracy(data_dir: str = "data", output_dir: str = "outputs"):
     ax2.axhline(0, color="#555555", linewidth=0.9)
     ax2.set_xlabel("Année visée par la prévision", fontsize=10, fontweight="bold")
     ax2.set_ylabel("Erreur médiane (points)", fontsize=10)
-    ax2.set_title("Surestimation en rouge : les récessions\nne se prévoient pas",
+    ax2.set_title("Erreur médiane par année visée\n(rouge / bleu : sur- / sous-estimation de plus de 1,5 pt)",
                   fontsize=12, fontweight="bold", pad=12)
     ax2.grid(axis="y", linestyle="--", alpha=0.5)
 
@@ -482,7 +480,8 @@ def plot_forecast_accuracy(data_dir: str = "data", output_dir: str = "outputs"):
                      xytext=(0, 6), textcoords="offset points", ha="center",
                      fontsize=9, fontweight="bold", color="#c0392b")
 
-    fig.suptitle("Les prévisions de croissance du FMI, confrontées aux faits (1990-2025)",
+    fig.suptitle("Les prévisions de croissance du FMI, confrontées aux faits "
+                 f"(éditions {ev['annee_millesime'].min()}-{ev['annee_millesime'].max()})",
                  fontsize=14, fontweight="bold")
     plt.figtext(0.5, 0.015,
                 f"{len(ev):,} projections de croissance réelle, {ev['country_code'].nunique()} pays. "
@@ -548,7 +547,7 @@ def main():
 
     unified_df, summary_df = load_data(args.data_dir)
     if unified_df is None or summary_df is None:
-        return
+        sys.exit(1)
 
     output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
