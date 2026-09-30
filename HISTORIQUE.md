@@ -5,6 +5,18 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 🎯 Fourchettes et Probabilités Éprouvées en Temps Réel (30 Septembre 2026)
+
+Suite de la revue de littérature : nouveau module `pib.calibration`, dans la chaîne. Chaque édition de 2000 à 2019 reçoit des fourchettes et des probabilités de recul tirées des seules erreurs connues à sa date (éditions jusqu'à v − 7 à 5 ans). Scores propres (score d'intervalle, CRPS, Brier), méthodes comparées sur les mêmes 6 874 projections, intervalles de confiance par bootstrap en blocs d'années visées.
+
+- **Fourchettes :** couverture de 79 % (76 à 82 %) pour une cible de 80 %, mais de 66 à 86 % selon l'édition ; 58 % tirées de l'historique du pays.
+- **Ce qui a changé dans notre lecture :** le conditionnement ne se justifie que par le groupe de revenu et pondéré par le PIB. Le score d'intervalle pondéré vaut 33,5 pour la méthode retenue contre 36,0 pour une fourchette unique, écart significatif. Sans pondération, méthode retenue, classe seule et fourchette unique se valent. La revue de littérature est corrigée : l'article revendiquera des fourchettes poolées calibrées en temps réel, pas un gain du conditionnement par la croissance projetée.
+- **Probabilités de récession :** compétence de 7,2 % sur une probabilité unique (4,5 à 10,2 %), due à la classe de croissance ; trop basses sur 2000-2019 (38 % pour 49 % observés).
+
+173 tests ; cinq mutations du module, toutes rattrapées.
+
+---
+
 ## ✈️ Trafic Aérien et PIB après 2008 (30 Septembre 2026)
 
 Test de l'hypothèse : le retard du trafic aérien après 2008 s'explique-t-il en partie par l'écart du PIB aux projections d'avant la crise ? Option `--trafic` de `pib.cas_de_crise`.

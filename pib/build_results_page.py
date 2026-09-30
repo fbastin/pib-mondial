@@ -613,6 +613,7 @@ def section_recessions(data_dir: str) -> str:
     médiane. Les récessions mondiales de {et(ANNEES_RECESSION_MONDIALE)} {crises}.</p>
 {bloc_table(["Groupe", "Recul annoncé", "Recul survenu", "Pondéré par le PIB",
              f"Hors {' et '.join(map(str, ANNEES_RECESSION_MONDIALE))}", "Pire année médiane", "Périodes"], corps)}{par_classe}
+{temps_reel_recessions(processed)}
     <p class="col note">Recul : croissance annuelle du PIB en volume négative, selon la
     ré-estimation du FMI un an après. Période : les {horizon} années suivant l'année de l'édition.
     Une année de recul n'est pas une récession au sens trimestriel, mais elle en est la trace annuelle.
@@ -621,6 +622,30 @@ def section_recessions(data_dir: str) -> str:
     <code>weo_recession_by_horizon_ngdp_rpch.csv</code>.</p>
   </section>
 """
+
+
+def temps_reel_recessions(processed: str) -> str:
+    """Probabilités de récession éprouvées en temps réel (pib.calibration) : compétence et fiabilité."""
+    chemin = os.path.join(processed, "recession_probability_realtime_scores.csv")
+    if not os.path.exists(chemin):
+        return ""
+    s = pd.read_csv(chemin).set_index("methode")
+    if not {"classe × groupe de revenu", "classe de croissance", "groupe de revenu"} <= set(s.index):
+        return ""
+    r = s.loc["classe × groupe de revenu"]
+    fmi = (f" La trajectoire du FMI, qui n'annonce presque jamais de recul, ferait bien pire : score de Brier "
+           f"supérieur de {nb(-s.loc['trajectoire du FMI', 'competence'] * 100)} %."
+           if "trajectoire du FMI" in s.index else "")
+    niveau = ("trop basses" if r["proba_moyenne"] < r["frequence_observee"] - 0.05 else
+              "trop hautes" if r["proba_moyenne"] > r["frequence_observee"] + 0.05 else "justes en moyenne")
+    return f"""
+    <p class="col">Éprouvées en temps réel, sur les seules données connues à chaque édition, ces
+    probabilités font mieux qu'une probabilité unique : score de Brier inférieur de
+    {nb(r['competence'] * 100, 1)} % (intervalle de confiance de {nb(r['competence_ic95_bas'] * 100, 1)} à
+    {nb(r['competence_ic95_haut'] * 100, 1)} %). L'apport vient de la classe de croissance
+    ({nb(s.loc['classe de croissance', 'competence'] * 100, 1)} % à elle seule), pas du groupe de revenu
+    ({signe(s.loc['groupe de revenu', 'competence'] * 100, 1)} %). Elles ont été {niveau} : {nb(r['proba_moyenne'] * 100)} %
+    en moyenne, pour {nb(r['frequence_observee'] * 100)} % de périodes avec un recul.{fmi}</p>"""
 
 
 def nom_edition(edition: str) -> str:
@@ -814,6 +839,47 @@ def revisions_de_la_derniere_edition(processed: str, synthese: pd.DataFrame, c: 
 {bloc_table(["Pays", f"Croissance {base}-{cible} en volume", "En dollars courants", f"Niveau FMI {cible} en dollars"], corps)}{historique_phrase}"""
 
 
+def temps_reel_fourchettes(processed: str) -> str:
+    """
+    Les fourchettes éprouvées en temps réel (pib.calibration) : couverture et son intervalle,
+    variation selon l'édition, score d'intervalle pondéré par le PIB face à une fourchette
+    unique. Vide sans les tables.
+    """
+    scores_csv = os.path.join(processed, "gdp_bands_realtime_scores.csv")
+    editions_csv = os.path.join(processed, "gdp_bands_realtime_coverage_by_edition.csv")
+    if not (os.path.exists(scores_csv) and os.path.exists(editions_csv)):
+        return ""
+    s = pd.read_csv(scores_csv).set_index("methode")
+    e = pd.read_csv(editions_csv)
+    if "classe × groupe de revenu" not in s.index or "inconditionnelle" not in s.index or e.empty:
+        return ""
+    r, u = s.loc["classe × groupe de revenu"], s.loc["inconditionnelle"]
+    basse, haute = e.loc[e["couverture_pct"].idxmin()], e.loc[e["couverture_pct"].idxmax()]
+    significatif = u["ecart_score_retenue_pondere_pib_ic95_haut"] < 0
+    comparaison = (f"pondéré par le PIB, son score d'intervalle ({nb(r['score_intervalle_pondere_pib'], 1)}) est "
+                   f"meilleur que celui d'une fourchette unique pour tous les pays "
+                   f"({nb(u['score_intervalle_pondere_pib'], 1)})"
+                   + (", écart significatif" if significatif else ", sans écart significatif")
+                   + (" ; sans pondération, les deux se valent"
+                      if u["ecart_score_retenue_ic95_bas"] <= 0 <= u["ecart_score_retenue_ic95_haut"]
+                      else " ; sans pondération aussi" if u["ecart_score_retenue_ic95_haut"] < 0
+                      else " ; sans pondération, la fourchette unique fait mieux"))
+    facteur = ("surtout par le groupe de revenu" if {"groupe de revenu", "classe de croissance"} <= set(s.index)
+               and s.loc["groupe de revenu", "score_intervalle_pondere_pib"] < s.loc["classe de croissance", "score_intervalle_pondere_pib"]
+               else "par la classe de croissance et le groupe de revenu")
+    pays = s.loc["historique du pays"] if "historique du pays" in s.index else None
+    historique = (f" Tirées de l'historique de chaque pays, elles n'en auraient contenu que {nb(pays['couverture_pct'])} %."
+                  if pays is not None else "")
+    return f"""
+    <p class="col">Plus exigeant, le test en temps réel : chaque édition de {r['editions_testees'].replace('-', ' à ')}
+    reçoit des fourchettes calculées sur les seules erreurs connues à sa date. Elles ont contenu
+    {nb(r['couverture_pct'])} % des erreurs (intervalle de confiance de {nb(r['couverture_pct_ic95_bas'])} à
+    {nb(r['couverture_pct_ic95_haut'])} %, par blocs d'années visées), mais de {nb(basse['couverture_pct'])} %
+    pour l'édition {int(basse['annee_millesime'])} à {nb(haute['couverture_pct'])} % pour l'édition
+    {int(haute['annee_millesime'])}, selon les chocs que traverse chaque fenêtre de cinq ans. Le choix des
+    projections comparables compte {facteur} : {comparaison}.{historique}</p>"""
+
+
 def qualifier_couverture(couverture: float, cible: float) -> str:
     """Une fourchette qui contient bien plus (moins) d'erreurs que visé est prudente (étroite)."""
     if couverture > cible + 5:
@@ -884,6 +950,8 @@ def section_fourchettes(data_dir: str, synthese: pd.DataFrame, c: dict, f: int) 
     et {qualifier_couverture(r["couverture_faible_revenu_pct"], cible)} pour les pays à faible revenu
     ({nb(r["couverture_faible_revenu_pct"])} %). Tirées de l'historique de chaque pays, elles n'en auraient
     contenu que {nb(par_pays)} %{constat_pays}.</p>"""
+
+    calibration += temps_reel_fourchettes(processed)
 
     return f"""
   <section>

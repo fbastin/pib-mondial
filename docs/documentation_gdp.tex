@@ -182,6 +182,7 @@ Les niveaux de prévision à parité étant obtenus par chaînage à partir du d
     \item \texttt{update\_weo\_editions}: éditions récentes du WEO, depuis l'API SDMX du FMI.
     \item \texttt{evaluate\_forecasts}: évaluation des prévisions d'époque du FMI, risque de récession.
     \item \texttt{revisions\_weo}: révisions d'une édition du WEO à la suivante.
+    \item \texttt{calibration}: fourchettes et probabilités de récession éprouvées en temps réel.
     \item \texttt{millesimes\_bm}: éditions archivées des WDI de la Banque Mondiale, révisions du réalisé.
     \item \texttt{cas\_de\_crise}: une récession mondiale dans les prévisions du FMI, sur demande (\texttt{-{}-annee 2009}, \texttt{-{}-annee 2020}).
     \item \texttt{visualize\_gdp}: graphiques PNG et tableau de bord HTML.
@@ -300,12 +301,14 @@ Les projections de l'horizon (2031) viennent de l'édition d'avril 2026, à cinq
 
 Ce n'est pas une prévision corrigée, mais la marge d'erreur qu'a connue le FMI; elle porte sur le volume et serait plus large en dollars courants.
 
+\paragraph{En temps réel.} Le module \texttt{calibration} éprouve les fourchettes édition par édition, de 2000 à 2019, chacune calculée sur les seules erreurs connues à sa date (à cinq ans, les éditions jusqu'à $v - 7$). Scores propres (score d'intervalle et CRPS de Gneiting et Raftery, 2007), méthodes comparées sur les mêmes 6\,874 projections, intervalles de confiance par bootstrap en blocs d'années visées. La couverture est de $79\,\%$ (de $76$ à $82\,\%$), de $66$ à $86\,\%$ selon l'édition, et de $58\,\%$ pour des fourchettes tirées de l'historique du pays. Le conditionnement ne se justifie que par le groupe de revenu et pondéré par le PIB: score d'intervalle de $33{,}5$ contre $36{,}0$ pour une fourchette unique, écart significatif; sans pondération, les méthodes poolées se valent.
+
 \subsection{Les Récessions que la Trajectoire ne Montre Pas}
 Une trajectoire peut atteindre le niveau prévu en passant par un creux. L'erreur de niveau porte donc aussi, pour chaque édition et horizon $h$, la plus faible croissance projetée et réalisée des horizons 1 à $h$: négative, elle signale au moins une année de recul (croissance annuelle en volume négative, selon la ré-estimation du FMI à un an). L'année de l'édition, en partie connue à sa publication, n'en fait pas partie.
 
 Le FMI n'annonce presque jamais de recul au-delà de l'année en cours: à un an, $2{,}4\,\%$ de ses projections sont négatives, contre $14{,}2\,\%$ des croissances réalisées, et il n'avait annoncé que $10\,\%$ de ces reculs ($59\,\%$ dans l'année même). Sur les cinq années suivant une édition, un recul était annoncé dans $3\,\%$ des cas; il en est survenu un dans $45\,\%$ ($48\,\%$ pondéré par le PIB, $49\,\%$ pour les vingt premières économies, $32\,\%$ hors des périodes contenant 2009 ou 2020), la pire année à $-3{,}4\,\%$ en médiane.
 
-\paragraph{Une probabilité par pays.} Le risque dépend surtout de la croissance projetée: sur cinq ans, un recul est survenu dans $64\,\%$ des cas pour les croissances cumulées projetées les plus faibles, dans $27\,\%$ pour les plus fortes. L'ordre des classes tient avant et après 2007; le niveau dépend des crises de la période ($38\,\%$ des cas pour les éditions jusqu'à 2007, $56\,\%$ ensuite). Calculées sur 1990-2007 et éprouvées sur 2008-2019, les probabilités par classe de croissance et groupe de revenu donnent le meilleur score de Brier ($0{,}250$, contre $0{,}279$ pour une probabilité unique); la fréquence passée des reculs du pays et sa volatilité passée font moins bien qu'une probabilité unique ($0{,}283$). Chaque fourchette reçoit donc, de sa cellule, la probabilité d'au moins une année de recul d'ici son horizon et la profondeur typique de la pire année: $65\,\%$ pour les États-Unis et les grandes économies avancées, $46\,\%$ pour la Chine, $23\,\%$ pour l'Inde, entre 2027 et 2031.
+\paragraph{Une probabilité par pays.} Le risque dépend surtout de la croissance projetée: sur cinq ans, un recul est survenu dans $64\,\%$ des cas pour les croissances cumulées projetées les plus faibles, dans $27\,\%$ pour les plus fortes. L'ordre des classes tient avant et après 2007; le niveau dépend des crises de la période ($38\,\%$ des cas pour les éditions jusqu'à 2007, $56\,\%$ ensuite). Calculées sur 1990-2007 et éprouvées sur 2008-2019, les probabilités par classe de croissance et groupe de revenu donnent le meilleur score de Brier ($0{,}250$, contre $0{,}279$ pour une probabilité unique); la fréquence passée des reculs du pays et sa volatilité passée font moins bien qu'une probabilité unique ($0{,}283$). Chaque fourchette reçoit donc, de sa cellule, la probabilité d'au moins une année de recul d'ici son horizon et la profondeur typique de la pire année: $65\,\%$ pour les États-Unis et les grandes économies avancées, $46\,\%$ pour la Chine, $23\,\%$ pour l'Inde, entre 2027 et 2031. Éprouvées en temps réel, ces probabilités ont une compétence de $7{,}2\,\%$ sur une probabilité unique (de $4{,}5$ à $10{,}2\,\%$), due à la classe de croissance; bien ordonnées, elles ont été trop basses sur 2000-2019 ($38\,\%$ pour $49\,\%$ observés).
 
 \subsection{Révisions d'une Édition à l'Autre}
 Le module \texttt{revisions\_weo} rapproche chaque prévision de celle de l'édition précédente, pour le même pays et la même année visée, les éditions consécutives seulement (avril puis octobre, octobre puis avril suivant). Les éditions à deux ans et plus de l'année visée ne révisent presque pas (au plus $0{,}03$ point en moyenne); l'édition d'avril de l'année visée retire $0{,}61$ point en moyenne ($0{,}29$ hors 2009 et 2020), celle d'octobre $0{,}32$. Mises bout à bout, les révisions font $-1{,}09$ point, à peu de chose près le biais à cinq ans ($+0{,}93$): il se résorbe dans les dernières éditions.
@@ -330,7 +333,7 @@ Le champ \texttt{derniere\_mise\_a\_jour} reprend le \texttt{lastupdated} décla
 
 \section{Tests des Invariants}
 
-Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (167 tests, sans accès réseau) fixe les propriétés correspondantes:
+Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (173 tests, sans accès réseau) fixe les propriétés correspondantes:
 
 \begin{itemize}
     \item les agrégats sont absents des classements par pays;
@@ -358,7 +361,8 @@ Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur si
     \item une révision n'est calculée qu'entre éditions consécutives, et l'historique est contrôlé sur une année observée dans les deux éditions;
     \item le PIB en volume par habitant est le volume divisé par la population raccordée, observé comme projeté, et reste vide faute de population;
     \item une révision du réalisé se mesure depuis la vraie première publication, et la référence en temps réel ne connaît que les éditions parues à la fin de l'année suivante;
-    \item le trafic d'Eurostat est attribué au bon pays et à la bonne année, et la part du retard du trafic expliquée par le PIB a le bon signe.
+    \item le trafic d'Eurostat est attribué au bon pays et à la bonne année, et la part du retard du trafic expliquée par le PIB a le bon signe;
+    \item la calibration en temps réel n'utilise aucune erreur encore inconnue à la date de l'édition, et ses scores sont exacts.
 \end{itemize}
 
 Les tests marqués \texttt{donnees} portent sur les fichiers réellement produits et se sautent tant que le pipeline n'a pas été exécuté.

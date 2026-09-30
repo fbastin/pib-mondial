@@ -218,22 +218,26 @@ Voir aussi [KrugerPlett2024], des intervalles pour les prévisions à date fixe 
 5. des erreurs de trafic attribuées aux erreurs de PIB, à titre de diagnostic [GAO2016 ; FAA2026 ; DfT2017], et des Monte-Carlo sur le PIB en planification aéroportuaire [ACRP76 ; AirportsCommission2014].
 
 **Apparemment nouveau (aucun précédent trouvé) :**
-1. **Des fourchettes calibrées du niveau du PIB à 5 ans autour des projections du WEO, pour environ 190 pays**, conditionnées par la croissance projetée et le groupe de revenu. Elles sont testées hors échantillon à travers la crise de 2008 : 82,5 % de couverture, contre 67 % pour les fourchettes propres à chaque pays. Ce second résultat contraste avec la réussite des fenêtres par pays de Becker et al. à court terme.
-2. **Une probabilité par pays d'au moins une année de recul à 5 ans**, conditionnelle à la projection : 3 % de reculs annoncés, 45 % survenus.
+1. **Des fourchettes calibrées du niveau du PIB à 5 ans autour des projections du WEO, pour environ 190 pays, éprouvées en temps réel** (`pib.calibration`). Chaque édition de 2000 à 2019 reçoit des fourchettes tirées des seules erreurs connues à sa date :
+   - elles contiennent 79 % des erreurs (intervalle de confiance de 76 à 82 %, par bootstrap en blocs d'années visées), mais de 66 à 86 % selon l'édition ;
+   - tirées de l'historique propre de chaque pays, elles n'en contiennent que 58 %, ce qui contraste avec la réussite des fenêtres par pays de Becker et al. à court terme.
+
+   Le conditionnement n'améliore les scores que par le groupe de revenu et pondéré par le PIB : score d'intervalle de 33,5 contre 36,0 pour une fourchette unique, écart significatif. Sans pondération, méthode retenue, classe de croissance seule et fourchette unique se valent (score d'intervalle et CRPS). **L'article doit donc revendiquer des fourchettes poolées et calibrées en temps réel, pas un gain du conditionnement par la croissance projetée.**
+2. **Une probabilité par pays d'au moins une année de recul à 5 ans**, conditionnelle à la projection : 3 % de reculs annoncés, 45 % survenus. En temps réel, compétence de 7,2 % sur une probabilité unique (score de Brier ; intervalle de 4,5 à 10,2 %), qui vient de la classe de croissance. Les probabilités sont bien ordonnées mais trop basses sur 2000-2019 (38 % en moyenne pour 49 % de périodes avec recul) : leur niveau dépend des crises de la période d'apprentissage. La trajectoire du FMI, prise comme une probabilité de 0 ou 1, fait bien pire (Brier supérieur de 79 %).
 3. **La propagation de l'erreur du FMI, ainsi calibrée, aux prévisions de trafic aérien** : son biais, sa dépendance à la croissance projetée et au revenu, les récessions omises. Aucune étude, prévision officielle ou industrielle trouvée ne le fait ; l'IATA injecte la trajectoire ponctuelle du FMI.
-4. **Pour 2008, décomposer pays par pays l'écart du trafic aux prévisions d'avant-crise** en écart du PIB aux projections d'avant-crise, multiplié par l'élasticité. Les pièces existent séparément [IATA2008 ; Eurocontrol2010 ; DobruszkesVanHamme2011 ; Hanson2022].
+4. **Pour 2008, décomposer l'écart du trafic aux prévisions d'avant-crise** en écart du PIB aux projections d'avant-crise, multiplié par l'élasticité. Les pièces existaient séparément [IATA2008 ; Eurocontrol2010 ; DobruszkesVanHamme2011 ; Hanson2022] ; c'est fait pour l'Europe et les États-Unis : 30 à 45 % du retard du trafic en 2013, mais rien des différences entre pays européens (`docs/cas_crise_2008.md`).
 
 **Cadrage proposé.** Hors récession, la trajectoire du FMI est à peu près juste. L'erreur de niveau vient des reculs qu'elle omet, plus fréquents là où la croissance projetée est modeste. D'où deux compléments à la trajectoire médiane, à propager au trafic : une fourchette de niveau et une probabilité de récession.
 
 ## 5. À faire avant de soumettre
 
-- **Mesures de qualité à ajouter :**
+- **Fait** (`pib.calibration`) :
   - score d'intervalle et CRPS à côté de la couverture [Becker2025 ; Kaack2017] ;
-  - diagramme de fiabilité et score de compétence de Brier pour les probabilités ;
-  - couverture par cellule, pour valider le cadre conditionnel.
-- **Robustesse statistique :**
+  - fiabilité et compétence de Brier pour les probabilités ;
+  - couverture par cellule et par édition ;
   - bootstrap par blocs d'années visées ;
-  - calibration sur des origines glissantes plutôt qu'une coupure unique en 2007.
+  - calibration en temps réel, édition par édition, plutôt qu'une coupure unique en 2007.
+- **Le niveau des probabilités de récession :** trop basses sur 2000-2019, parce qu'elles dépendent des crises de la période d'apprentissage. À discuter, ou à corriger (fréquence des crises mondiales traitée à part).
 - **Le biais hors années de recul de chaque pays :** le publier, avec sa limite mécanique.
 - **Nos corrélations de révisions :** les expliquer face à celles d'An et al. (2018) et d'Aktuğ et Rezghi (2025).
 - **La propagation au trafic :**

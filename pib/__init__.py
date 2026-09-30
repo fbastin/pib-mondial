@@ -13,6 +13,7 @@ Calcul
     update_weo_editions    éditions récentes du WEO (API SDMX du FMI)
     evaluate_forecasts     prévisions d'époque confrontées au réalisé, risque de récession
     revisions_weo          révisions d'une édition du WEO à la suivante
+    calibration            fourchettes et probabilités de récession éprouvées en temps réel
     cas_de_crise           une récession mondiale dans les prévisions (hors chaîne)
     millesimes_bm          éditions archivées des WDI : révisions du réalisé
 

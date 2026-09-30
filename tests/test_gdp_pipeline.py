@@ -1476,6 +1476,87 @@ class TestPopulationEtParHabitant:
         assert s.loc["AAA", "GDP_Reel_Par_Habitant_2000_USD_2015"] == pytest.approx(20000.0)
 
 
+class TestCalibrationEnTempsReel:
+    """
+    Évaluation probabiliste des fourchettes et des probabilités de récession : chaque
+    édition n'utilise que les erreurs connues à sa date ; scores propres (intervalle, CRPS,
+    Brier) comparés entre méthodes sur les mêmes cas.
+    """
+
+    def test_score_d_intervalle(self):
+        from pib.calibration import score_intervalle
+        s = score_intervalle([-10, -10, -10], [10, 10, 10], [0, -15, 12], alpha=0.2)
+        assert list(s) == pytest.approx([20.0, 20 + 10 * 5, 20 + 10 * 2])
+
+    def test_crps_de_la_distribution_empirique(self):
+        """Formule en O(log n) = définition : E|X − y| − E|X − X'| / 2."""
+        from pib.calibration import Distribution
+        x = np.array([3.0, -1.0, 4.0, 1.0, 5.0, 9.0])
+        for y in (-2.0, 2.5, 4.0, 12.0):
+            attendu = np.abs(x - y).mean() - np.abs(x[:, None] - x[None, :]).mean() / 2
+            assert Distribution(x).crps(y)[0] == pytest.approx(attendu)
+
+    @staticmethod
+    def _niveaux():
+        """
+        Projections à 5 ans de 30 pays à revenu élevé, éditions 1990 à 2006. Erreurs des
+        éditions jusqu'à 1998 : de −10 à +10 ; ensuite : +50. Un recul survient une fois sur deux.
+        """
+        lignes = []
+        for m in range(1990, 2007):
+            for i in range(30):
+                lignes.append(dict(country_code=f"P{i}", income_group="HIC", horizon=5, annee_millesime=m, year=m + 5,
+                                   poids_pib=1.0, croissance_prevue_cumulee_pct=10.0 + i,
+                                   erreur_niveau_vs_fmi_pct=-10 + 20 * i / 29 if m <= 1998 else 50.0,
+                                   pire_croissance_realisee=-1.0 if i % 2 else 1.0, pire_croissance_prevue=1.0))
+        return pd.DataFrame(lignes)
+
+    def test_aucune_erreur_encore_inconnue(self):
+        """
+        Pour l'édition 2005 à 5 ans, seules les erreurs des éditions jusqu'à 1998 sont connues :
+        les +50 des éditions 1999 à 2004 ne doivent pas élargir sa fourchette.
+        """
+        from pib.calibration import previsions_en_temps_reel
+        p = previsions_en_temps_reel(self._niveaux(), horizon=5, premiere=2005)
+        e2005 = p[(p["annee_millesime"] == 2005) & (p["methode"] == "inconditionnelle")]
+        assert (e2005["haut"] <= 10).all()
+        assert set(p["annee_millesime"]) == {2005, 2006}
+
+    def test_cas_communs_et_historique_du_pays(self):
+        """Moins de `MIN_CAS_PAYS` erreurs connues : pas de fourchette tirée de l'historique du pays."""
+        from pib.calibration import previsions_en_temps_reel, cas_communs, MIN_CAS_PAYS
+        assert MIN_CAS_PAYS == 8
+        p = previsions_en_temps_reel(self._niveaux(), horizon=5, premiere=2003)
+        pays = p[p["methode"] == "historique du pays"]
+        assert pays[pays["annee_millesime"] == 2003].empty        # 7 éditions connues (1990 à 1996)
+        assert len(pays[pays["annee_millesime"] == 2004]) == 30   # 8 éditions connues (1990 à 1997)
+        commun = cas_communs(p)
+        assert set(commun["annee_millesime"]) == {2004, 2005, 2006}
+        assert commun.groupby(["country_code", "annee_millesime", "year"])["methode"].nunique().eq(5).all()
+
+    def test_brier_et_competence(self):
+        """Une probabilité juste (1 ou 0 selon le recul) a une compétence de 1 face à la fréquence moyenne."""
+        from pib.calibration import scores_recession, METHODES, METHODE_FMI
+        lignes = []
+        for i in range(40):
+            recul = float(i % 2)
+            for methode in (*METHODES, METHODE_FMI):
+                proba = recul if methode == "classe de croissance" else 0.5
+                lignes.append(dict(country_code=f"P{i}", annee_millesime=2000, year=2000 + i % 10, methode=methode,
+                                   proba_recul=proba, recul=recul, brier=(proba - recul) ** 2))
+        s = scores_recession(pd.DataFrame(lignes), tirages=20).set_index("methode")
+        assert s.loc["classe de croissance", "competence"] == pytest.approx(1.0)
+        assert s.loc["inconditionnelle", "brier"] == pytest.approx(0.25)
+        assert s.loc["classe × groupe de revenu", "competence"] == pytest.approx(0.0)
+
+    def test_fiabilite_par_tranche(self):
+        from pib.calibration import fiabilite_recession, METHODE_RETENUE
+        p = pd.DataFrame(dict(methode=METHODE_RETENUE, proba_recul=[0.15, 0.15, 0.35, 0.35], recul=[0.0, 1.0, 1.0, 1.0]))
+        f = fiabilite_recession(p).set_index("tranche")
+        assert f.loc["(0.1, 0.2]", "frequence_observee"] == pytest.approx(0.5)
+        assert f.loc["(0.3, 0.4]", "frequence_observee"] == pytest.approx(1.0)
+
+
 class TestMillesimesBanqueMondiale:
     """
     Le réalisé se révise aussi : éditions archivées des WDI, révisions depuis la première
