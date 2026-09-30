@@ -182,6 +182,11 @@ Voir aussi [KrugerPlett2024], des intervalles pour les prévisions à date fixe 
 
   L'incertitude y est calibrée sur la variabilité historique de la croissance, symétrique, sans biais ni omission des récessions.
 - **Le précédent le plus proche d'une incertitude calibrée sur des erreurs de prévision : [DfT2013].** Le Département des Transports britannique y adopte l'éventail de l'OBR, l'office britannique de responsabilité budgétaire, construit sur les erreurs officielles passées. Mais seulement pour le PIB britannique, en bornes à 20 % et 80 %, sans correction de biais ; le PIB étranger ne varie que de ±1 point.
+- **Aéroports de Paris, berceau de la méthode de Kenza qu'utilise le projet trafic [Sallier2010Kenza], prévoit le trafic en probabilités depuis 2003** (Monte-Carlo et bootstrap) [ADP2011].
+  - La note de 2011 demande des prévisions probabilistes des entrées, dont le PIB : « not a very common and ready to use type of forecast sold by economical data providers ». Les événements exceptionnels y forment une loi des résidus multimodale.
+  - [Sallier2010PIB] construit donc la sienne, faute d'offre : une telle prévision « n'existe pas sur étagère à titre gracieux, ni même onéreux ». Modèles de tendance et de cycle, lois empiriques des erreurs relatives par horizon tirées de tests hors échantillon, et, pour les horizons lointains, extrapolation de l'écart-type de l'erreur avec l'horizon. La note rappelle une élasticité du trafic au PIB d'environ 2,3.
+  - **Différence avec notre approche :** ces lois d'erreur sont celles des modèles d'ADP, pas celles de la projection qui alimente effectivement les prévisions. Nous calibrons sur les erreurs passées du FMI : son biais et ses récessions omises y entrent. En retour, l'extrapolation de Sallier répond à notre limite au-delà de l'horizon du WEO (`docs/scenarios_trafic.md`).
+  - Deux notes internes, non publiées : à citer comme pratique d'un grand aéroport, pas comme littérature évaluée par les pairs. Une présentation de 2013 du même auteur, *LT probabilist GDP forecast*, figure dans le même dossier ; son format (.ppt) n'a pas permis de la lire.
 - **Planification adaptative sous incertitude profonde :** [Kwakkel2010 ; Kwakkel2012].
 - **La pratique industrielle injecte des trajectoires ponctuelles :**
   - [IATA2026] : « the single GDP forecasts from the IMF » jusqu'en 2030 ;
@@ -215,7 +220,7 @@ Voir aussi [KrugerPlett2024], des intervalles pour les prévisions à date fixe 
 2. l'échec à prévoir les récessions, et l'avantage sur une prévision naïve qui s'efface avec l'horizon ;
 3. des fourchettes tirées des erreurs passées, y compris autour du WEO, mais pour le G7 et à court terme [Becker2025] ;
 4. l'absence de retour à la trajectoire après 2008, mesurée sur les éditions du WEO [FatasSummers2018] ;
-5. des erreurs de trafic attribuées aux erreurs de PIB, à titre de diagnostic [GAO2016 ; FAA2026 ; DfT2017], et des Monte-Carlo sur le PIB en planification aéroportuaire [ACRP76 ; AirportsCommission2014].
+5. des erreurs de trafic attribuées aux erreurs de PIB, à titre de diagnostic [GAO2016 ; FAA2026 ; DfT2017], et des Monte-Carlo sur le PIB en planification aéroportuaire [ACRP76 ; AirportsCommission2014 ; ADP2011].
 
 **Apparemment nouveau (aucun précédent trouvé) :**
 1. **Des fourchettes calibrées du niveau du PIB à 5 ans autour des projections du WEO, pour environ 190 pays, éprouvées en temps réel** (`pib.calibration`). Chaque édition de 2000 à 2019 reçoit des fourchettes tirées des seules erreurs connues à sa date :
@@ -224,7 +229,7 @@ Voir aussi [KrugerPlett2024], des intervalles pour les prévisions à date fixe 
 
    Le conditionnement n'améliore les scores que par le groupe de revenu et pondéré par le PIB : score d'intervalle de 33,5 contre 36,0 pour une fourchette unique, écart significatif. Sans pondération, méthode retenue, classe de croissance seule et fourchette unique se valent (score d'intervalle et CRPS). **L'article doit donc revendiquer des fourchettes poolées et calibrées en temps réel, pas un gain du conditionnement par la croissance projetée.**
 2. **Une probabilité par pays d'au moins une année de recul à 5 ans**, conditionnelle à la projection : 3 % de reculs annoncés, 45 % survenus. En temps réel, compétence de 7,2 % sur une probabilité unique (score de Brier ; intervalle de 4,5 à 10,2 %), qui vient de la classe de croissance. Les probabilités sont bien ordonnées mais trop basses sur 2000-2019 (38 % en moyenne pour 49 % de périodes avec recul) : leur niveau dépend des crises de la période d'apprentissage. La trajectoire du FMI, prise comme une probabilité de 0 ou 1, fait bien pire (Brier supérieur de 79 %).
-3. **La propagation de l'erreur du FMI, ainsi calibrée, aux prévisions de trafic aérien** : son biais, sa dépendance à la croissance projetée et au revenu, les récessions omises. Aucune étude, prévision officielle ou industrielle trouvée ne le fait ; l'IATA injecte la trajectoire ponctuelle du FMI.
+3. **La propagation de l'erreur du FMI, ainsi calibrée, aux prévisions de trafic aérien** : son biais, sa dépendance à la croissance projetée et au revenu, les récessions omises. Aucune étude, prévision officielle ou industrielle trouvée ne le fait ; l'IATA injecte la trajectoire ponctuelle du FMI. Aéroports de Paris propage bien un PIB probabiliste au trafic, mais calibré sur les erreurs de ses propres modèles, et dans des notes internes [Sallier2010PIB ; ADP2011].
 4. **Pour 2008, décomposer l'écart du trafic aux prévisions d'avant-crise** en écart du PIB aux projections d'avant-crise, multiplié par l'élasticité. Les pièces existaient séparément [IATA2008 ; Eurocontrol2010 ; DobruszkesVanHamme2011 ; Hanson2022] ; c'est fait pour l'Europe et les États-Unis : 30 à 45 % du retard du trafic en 2013, mais rien des différences entre pays européens (`docs/cas_crise_2008.md`).
 
 **Cadrage proposé.** Hors récession, la trajectoire du FMI est à peu près juste. L'erreur de niveau vient des reculs qu'elle omet, plus fréquents là où la croissance projetée est modeste. D'où deux compléments à la trajectoire médiane, à propager au trafic : une fourchette de niveau et une probabilité de récession.
@@ -250,4 +255,4 @@ Voir aussi [KrugerPlett2024], des intervalles pour les prévisions à date fixe 
 
 ## Références écartées, faute de vérification
 
-Barrionuevo (1993) ; Ahir et Loungani (2014, présentation seulement) ; Zhu et al. (2020) ; Niemeier (2013) ; Maldonado (1990) ; Sallier (2010) ; la méthode de Boeing (*Commercial Market Outlook*) ; une prépublication arXiv d'août 2026 sur la prédiction conforme selon le régime, non évaluée par les pairs.
+Barrionuevo (1993) ; Ahir et Loungani (2014, présentation seulement) ; Zhu et al. (2020) ; Niemeier (2013) ; Maldonado (1990) ; la méthode de Boeing (*Commercial Market Outlook*) ; une prépublication arXiv d'août 2026 sur la prédiction conforme selon le régime, non évaluée par les pairs.

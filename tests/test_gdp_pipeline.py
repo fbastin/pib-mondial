@@ -1488,6 +1488,63 @@ class TestPopulationEtParHabitant:
         assert s.loc["AAA", "GDP_Reel_Par_Habitant_2000_USD_2015"] == pytest.approx(20000.0)
 
 
+class TestScenariosPourLeTrafic:
+    """
+    Scénarios de PIB par habitant et de population pour le projet trafic : fourchettes à
+    chaque horizon jusqu'à celui du FMI, puis croissance de long terme de l'OCDE et
+    population de l'ONU.
+    """
+
+    @staticmethod
+    def _entrees():
+        unifie = pd.DataFrame([dict(country_code="AAA", country_name="Pays A", income_group="HIC", is_aggregate=False,
+                                    year=a, is_forecast=a > 2024, GDP_Real_Per_Capita_USD_2015=v, Population_Millions=10.0,
+                                    GDP_Per_Capita_USD=v * 1.5)
+                               for a, v in ((2023, 98.0), (2024, 100.0), (2025, 102.0), (2026, 104.0))])
+        bandes = pd.DataFrame(dict(country_code="AAA", year=[2025, 2026], erreur_niveau_mediane_pct=[5.0, 10.0],
+                                   borne_basse_pct=[-10.0, -20.0], borne_haute_pct=[5.0, 10.0],
+                                   erreur_niveau_mediane_si_crise_mondiale_pct=[np.nan, 25.0]))
+        ocde = pd.DataFrame([dict(zone="AAA", scenario=s, year=a, valeur=100 * (1 + g) ** (a - 2026))
+                             for s, g in (("BAU1", 0.01), ("ET3", 0.005), ("BAU2", 0.02)) for a in range(2026, 2029)])
+        wpp = pd.DataFrame([dict(country_code="AAA", year=a, variante=v, population=9.0 * 1.02 ** (a - 2024) * r)
+                            for a in range(2023, 2029) for v, r in (("centrale", 1.0), ("basse", 0.9), ("haute", 1.1))])
+        return unifie, bandes, ocde, wpp
+
+    def test_zone_de_croissance(self):
+        from pib.scenarios import zone_de_croissance
+        zones = {"CAN", "A2", "F6", "W"}
+        assert zone_de_croissance("CAN", "NAC", zones) == ("CAN", "pays")
+        assert zone_de_croissance("NGA", "SSF", zones) == ("F6", "région")
+        assert zone_de_croissance("XXX", None, zones) == ("W", "monde")
+
+    def test_scenarios_jusqu_a_l_horizon_du_fmi(self):
+        from pib.scenarios import construire_scenarios
+        table, _ = construire_scenarios(*self._entrees(), regions={}, annee_fin=2028)
+        t = table.set_index(["year", "scenario"])["pib_reel_par_habitant_usd_2015"]
+        assert t[(2026, "central_fmi")] == pytest.approx(104.0)
+        assert t[(2026, "central_corrige")] == pytest.approx(104.0 / 1.10)
+        assert t[(2026, "bas")] == pytest.approx(104.0 * 0.8)
+        assert t[(2026, "haut")] == pytest.approx(104.0 * 1.1)
+        assert t[(2026, "crise_mondiale")] == pytest.approx(104.0 / 1.25)
+        assert t[(2025, "crise_mondiale")] == pytest.approx(102.0 / 1.05)    # sans erreur de crise : médiane générale
+        assert t.xs(2024, level="year").nunique() == 1                       # le passé observé est commun
+
+    def test_croissance_de_long_terme_et_population(self):
+        """Au-delà : croissance de l'OCDE (centrale, la plus faible, la plus forte) ; population de l'ONU."""
+        from pib.scenarios import construire_scenarios
+        table, fiches = construire_scenarios(*self._entrees(), regions={}, annee_fin=2028)
+        t = table.set_index(["year", "scenario"])
+        pib = t["pib_reel_par_habitant_usd_2015"]
+        assert pib[(2028, "central_fmi")] == pytest.approx(104.0 * 1.01 ** 2)
+        assert pib[(2028, "bas")] == pytest.approx(104.0 * 0.8 * 1.005 ** 2)
+        assert pib[(2028, "haut")] == pytest.approx(104.0 * 1.1 * 1.02 ** 2)
+        assert t.loc[(2028, "central_fmi"), "population_millions_centrale"] == pytest.approx(10.0 * 1.02 ** 2)
+        assert t.loc[(2028, "central_fmi"), "population_millions_basse"] == pytest.approx(10.0 * 1.02 ** 2 * 0.9)
+        assert t.loc[(2024, "central_fmi"), "population_millions_basse"] == pytest.approx(10.0)
+        assert fiches.iloc[0]["scenario_ocde_bas"] == "ET3" and fiches.iloc[0]["scenario_ocde_haut"] == "BAU2"
+        assert t.loc[(2028, "central_fmi"), "periode"] == "long terme"
+
+
 class TestCalibrationEnTempsReel:
     """
     Évaluation probabiliste des fourchettes et des probabilités de récession : chaque

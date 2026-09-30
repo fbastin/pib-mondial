@@ -5,6 +5,22 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## ✈️ Scénarios de PIB et de Population pour le Projet Trafic (30 Septembre 2026)
+
+Chantier 3. Le projet de prévision de long terme pour Aéroports de Montréal (méthode de Kenza) lisait notre PIB par habitant courant dans `gdp_unified_2000_2030.csv`, disparu avec le passage à l'horizon 2031. Son incertitude se résumait à une marge forfaitaire de ±20 %. Nouveau module `pib.scenarios`, dans la chaîne, et note d'utilisation `docs/scenarios_trafic.md`.
+
+- **Export stable** `scenarios_pib_population.csv` : PIB en volume par habitant et population, par pays, de 2000 à 2050, cinq scénarios.
+- **Jusqu'en 2031 :** fourchettes calculées désormais à chaque horizon (`gdp_projection_bands_by_horizon.csv`), et erreur médiane des périodes passées en crise mondiale pour un scénario de crise.
+- **Au-delà :** scénarios de long terme de l'OCDE (*Perspectives économiques* n° 117, par API : PIB potentiel par habitant jusqu'en 2100, pour 49 pays et 7 régions) ; population de l'ONU (*World Population Prospects* 2024, variante médiane et intervalle à 80 %). Données en cache dans `data/raw/scenarios_long_terme/`, non versionné.
+- **Canada :** PIB par habitant de 2031 de 43 059 $ à 52 261 $ autour de 48 883 $ ; population de 2050 de 42,1 à 51,5 millions autour de 46,6.
+- **Source écartée :** les scénarios SSP de l'IIASA exigent une inscription et interdisent la récupération automatique.
+- **Limite :** les scénarios de l'OCDE ne diffèrent que par le climat et la transition énergétique ; au-delà de 2031, l'écart entre scénarios ne s'élargit guère, alors que l'incertitude réelle continue de croître.
+- **Revue de littérature :** trois références d'Aéroports de Paris, trouvées dans le dossier du projet trafic. La méthode de Kenza (Sallier, 2010, *European Transport Conference*) ; deux notes internes de prévision probabiliste, qui calibrent le PIB sur les erreurs des modèles d'ADP et non sur celles du FMI. L'une propose d'extrapoler l'écart-type de l'erreur avec l'horizon : piste pour l'après-2031.
+
+179 tests ; six mutations du module, toutes rattrapées.
+
+---
+
 ## 🌍 Probabilités de Récession : les Crises Mondiales à Part (30 Septembre 2026)
 
 Le test en temps réel montrait des probabilités de récession trop basses (38 % pour 49 % observés sur 2000-2019) : apprises sur les seules fréquences passées, elles dépendaient des crises que contenait la période d'apprentissage. Correction : les crises mondiales sont traitées à part.

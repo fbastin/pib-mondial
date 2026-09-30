@@ -79,6 +79,7 @@ def main():
                        "--classeur", classeur)
                 lancer("revisions_weo", "--data-dir", data_dir, "--classeur", classeur)
                 lancer("calibration", "--data-dir", data_dir)
+                lancer("scenarios", "--data-dir", data_dir)
             else:
                 logging.warning(f"{classeur} absent : évaluation des prévisions omise.")
             lancer("millesimes_bm", "--data-dir", data_dir)

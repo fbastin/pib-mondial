@@ -687,14 +687,20 @@ def fourchettes_projections(niveaux: pd.DataFrame, croissance_actuelle: pd.Serie
     qui contenaient une récession mondiale (`probabilite_recul_si_crise_mondiale_pct`) et
     dans les autres (`…_hors_crise_mondiale_pct`), pondérées par la part des périodes de
     même durée qui en contiennent une sur l'historique long (`probabilite_crise_mondiale_pct`).
+    `erreur_niveau_mediane_si_crise_mondiale_pct` donne l'erreur de niveau médiane des
+    seules périodes passées en crise mondiale : de quoi bâtir un scénario de crise.
+
+    Sans colonne de niveau pour `annee_fin` dans `synthese_pays` (années intermédiaires),
+    seules les bornes et probabilités, en %, sont données.
     """
     horizon = annee_fin - annee_edition
     colonne = "erreur_niveau_vs_fmi_pct"
     niveau = f"GDP_Reel_{annee_fin}_Billion_USD_2015"
     passe = niveaux[niveaux["horizon"] == horizon].dropna(subset=[colonne, "croissance_prevue_cumulee_pct"]).copy()
-    if passe.empty or niveau not in synthese_pays.columns:
+    if passe.empty:
         logging.warning(f"Pas d'erreur de niveau historique à l'horizon {horizon} : fourchettes omises.")
         return pd.DataFrame()
+    avec_niveau = niveau in synthese_pays.columns
 
     passe["classe"], bornes = classes_de_croissance(passe["croissance_prevue_cumulee_pct"])
     par_cellule, par_classe = _quantiles_retenus(passe)
@@ -709,9 +715,13 @@ def fourchettes_projections(niveaux: pd.DataFrame, croissance_actuelle: pd.Serie
         crise = periodes_en_crise(passe["annee_millesime"], horizon, recessions_mondiales(monde))
         pi = probabilite_crise_mondiale(monde, horizon)
         melange = (pi, frequences_de_recul(passe[crise]), frequences_de_recul(passe[~crise]), frequences_de_recul(passe))
+        en_crise = passe[crise]
+        if not en_crise.empty:
+            crise_cellule, crise_classe = _quantiles_retenus(en_crise)
+            crise_ensemble = pd.Series({"mediane": en_crise[colonne].median(), "cas": len(en_crise)})
 
     lignes = []
-    for _, pays in synthese_pays.dropna(subset=[niveau]).iterrows():
+    for _, pays in (synthese_pays.dropna(subset=[niveau]) if avec_niveau else synthese_pays).iterrows():
         croissance = croissance_actuelle.get(pays["country_code"], np.nan)
         classe = (classes_de_croissance(pd.Series([croissance]), bornes)[0].iloc[0]
                   if pd.notna(croissance) else np.nan)
@@ -730,7 +740,10 @@ def fourchettes_projections(niveaux: pd.DataFrame, croissance_actuelle: pd.Serie
             recul = {"probabilite_recul_pct": proba * 100,
                      "probabilite_recul_si_crise_mondiale_pct": f_crise * 100,
                      "probabilite_recul_hors_crise_mondiale_pct": f_hors * 100,
-                     "probabilite_crise_mondiale_pct": melange[0] * 100}
+                     "probabilite_crise_mondiale_pct": melange[0] * 100,
+                     "erreur_niveau_mediane_si_crise_mondiale_pct": (
+                         _choisir(crise_cellule, crise_classe, crise_ensemble, classe, groupe)[0]["mediane"]
+                         if not en_crise.empty else np.nan)}
         lignes.append({
             "country_code": pays["country_code"], "country_name": pays["country_name"],
             "income_group": groupe, "horizon": horizon,
@@ -741,9 +754,9 @@ def fourchettes_projections(niveaux: pd.DataFrame, croissance_actuelle: pd.Serie
             "erreur_niveau_p90_pct": q["haut"],
             "borne_basse_pct": borne_basse, "borne_haute_pct": borne_haute,
             **recul, "pire_annee_mediane_pct": q.get("pire_recul", np.nan),
-            niveau: pays[niveau],
-            f"GDP_Reel_{annee_fin}_Bas": pays[niveau] * (1 + borne_basse / 100),
-            f"GDP_Reel_{annee_fin}_Haut": pays[niveau] * (1 + borne_haute / 100),
+            **({niveau: pays[niveau],
+                f"GDP_Reel_{annee_fin}_Bas": pays[niveau] * (1 + borne_basse / 100),
+                f"GDP_Reel_{annee_fin}_Haut": pays[niveau] * (1 + borne_haute / 100)} if avec_niveau else {}),
         })
     return pd.DataFrame(lignes).round(3)
 
@@ -1122,6 +1135,15 @@ def evaluer_niveaux(evaluation: pd.DataFrame, base: pd.DataFrame, data_dir: str,
     fourchettes.to_csv(os.path.join(processed, "gdp_projection_bands.csv"), index=False, encoding="utf-8-sig")
     logging.info(f"Fourchettes empiriques du PIB {annee_fin} (édition {annee_edition}, horizon "
                  f"{annee_fin - annee_edition}) : {len(fourchettes)} pays.")
+
+    # Les mêmes fourchettes à chaque horizon, de l'année de l'édition à la dernière : les
+    # trajectoires des scénarios (voir `pib.scenarios`)
+    synthese = pd.read_csv(synthese_csv)
+    par_horizon = pd.concat([
+        fourchettes_projections(niveaux, croissance_projetee_actuelle(base, annee_edition, h), synthese,
+                                annee_edition + h, annee_edition, monde).assign(year=annee_edition + h)
+        for h in range(0, horizon + 1)], ignore_index=True)
+    par_horizon.to_csv(os.path.join(processed, "gdp_projection_bands_by_horizon.csv"), index=False, encoding="utf-8-sig")
 
     excel = os.path.join(output_dir, "gdp_master_dataset.xlsx")
     if os.path.exists(excel):

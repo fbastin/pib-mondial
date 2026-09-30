@@ -15,6 +15,10 @@ data/extraction_metadata.json
 # qui se re-téléchargent par `python -m pib.millesimes_bm --collecter`
 data/raw/wdi_archive/
 
+# Scénarios de long terme de l'OCDE et projections de population de l'ONU : re-téléchargés
+# par `python -m pib.scenarios` (données ouvertes, 21 Mo)
+data/raw/scenarios_long_terme/
+
 # Compilation LaTeX (le PDF, lui, reste versionné : lisible sans installation LaTeX)
 build/
 *.aux

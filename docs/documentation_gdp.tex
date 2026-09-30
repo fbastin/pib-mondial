@@ -183,6 +183,7 @@ Les niveaux de prévision à parité étant obtenus par chaînage à partir du d
     \item \texttt{evaluate\_forecasts}: évaluation des prévisions d'époque du FMI, risque de récession.
     \item \texttt{revisions\_weo}: révisions d'une édition du WEO à la suivante.
     \item \texttt{calibration}: fourchettes et probabilités de récession éprouvées en temps réel.
+    \item \texttt{scenarios}: scénarios de PIB par habitant et de population jusqu'en 2050, pour le projet trafic.
     \item \texttt{millesimes\_bm}: éditions archivées des WDI de la Banque Mondiale, révisions du réalisé.
     \item \texttt{cas\_de\_crise}: une récession mondiale dans les prévisions du FMI, sur demande (\texttt{-{}-annee 2009}, \texttt{-{}-annee 2020}).
     \item \texttt{visualize\_gdp}: graphiques PNG et tableau de bord HTML.
@@ -325,6 +326,9 @@ Le module \texttt{cas\_de\_crise} suit une récession mondiale à travers les é
 
 \paragraph{Le trafic aérien.} Avec l'option \texttt{-{}-trafic}, le module confronte le PIB au trafic passagers: Eurostat pour 30 pays européens (trafic par aéroport, homogène depuis 2004), Banque Mondiale pour les États-Unis; la série mondiale de la Banque Mondiale, rompue en 2010 par un changement de couverture, est écartée. En 2013, le trafic accuse un retard de $35\,\%$ sur sa tendance de 2004-2007 en Europe, de $19\,\%$ aux États-Unis; l'écart du PIB à la projection d'octobre 2008, multiplié par une élasticité de $1{,}0$ à $1{,}5$, en explique $30$ à $45\,\%$ des deux côtés. Entre pays européens, la relation entre trafic et PIB, forte avant la crise ($R^2 = 0{,}54$ en 2004-2007), disparaît après ($R^2 = 0{,}06$ en 2007-2013).
 
+\subsection{Scénarios pour le Projet Trafic}
+Le module \texttt{scenarios} exporte, sous un nom stable (\texttt{scenarios\_pib\_population.csv}), le PIB en volume par habitant et la population de chaque pays de 2000 à 2050, selon cinq scénarios. Jusqu'en 2031, ceux-ci sont tirés des fourchettes calculées à chaque horizon: central du FMI, central corrigé de l'erreur médiane, bornes à $80\,\%$, crise mondiale (erreur médiane des périodes passées en crise mondiale). Au-delà, chaque scénario suit la croissance du PIB potentiel par habitant des scénarios de long terme de l'OCDE (pays, sinon région), sans rattrapage du niveau atteint en 2031. La population suit le pipeline jusqu'en 2031, puis la croissance médiane de l'ONU, avec les bornes de son intervalle à $80\,\%$. Au-delà de 2031, l'écart entre scénarios ne reflète plus qu'imparfaitement l'incertitude: les scénarios de l'OCDE ne diffèrent que par le climat et la transition énergétique. Le mode d'emploi est dans \texttt{docs/scenarios\_trafic.md}.
+
 \section{Provenance et Reproductibilité}
 
 Chaque exécution écrit \texttt{data/extraction\_metadata.json}: horodatage de l'extraction, bornes du run, indicateurs interrogés, volumes obtenus et couverture par colonne. Ses bornes désignent aussi la série unifiée du dernier run: plusieurs fichiers \texttt{gdp\_unified\_<début>\_<fin>.csv} pouvant coexister, les scripts en aval, les notebooks et les tests lisent celui-là, jamais le plus récemment modifié.
@@ -333,7 +337,7 @@ Le champ \texttt{derniere\_mise\_a\_jour} reprend le \texttt{lastupdated} décla
 
 \section{Tests des Invariants}
 
-Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (176 tests, sans accès réseau) fixe les propriétés correspondantes:
+Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (179 tests, sans accès réseau) fixe les propriétés correspondantes:
 
 \begin{itemize}
     \item les agrégats sont absents des classements par pays;
@@ -363,7 +367,8 @@ Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur si
     \item une révision du réalisé se mesure depuis la vraie première publication, et la référence en temps réel ne connaît que les éditions parues à la fin de l'année suivante;
     \item le trafic d'Eurostat est attribué au bon pays et à la bonne année, et la part du retard du trafic expliquée par le PIB a le bon signe;
     \item la calibration en temps réel n'utilise aucune erreur encore inconnue à la date de l'édition, et ses scores sont exacts;
-    \item les crises mondiales traitées à part ne reposent que sur les récessions et l'historique mondial connus à la date de l'édition.
+    \item les crises mondiales traitées à part ne reposent que sur les récessions et l'historique mondial connus à la date de l'édition;
+    \item les scénarios pour le trafic ont des bornes dans le bon sens, suivent la croissance du pays à défaut de sa région, et leurs variantes de population ne touchent pas le passé observé.
 \end{itemize}
 
 Les tests marqués \texttt{donnees} portent sur les fichiers réellement produits et se sautent tant que le pipeline n'a pas été exécuté.
