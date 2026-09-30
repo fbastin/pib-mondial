@@ -35,11 +35,12 @@ pib-mondial/
 │   ├── update_weo_editions.py    #   Évaluation : éditions récentes du WEO (API SDMX du FMI)
 │   ├── evaluate_forecasts.py     #   Évaluation : prévisions d'époque confrontées au réalisé, récessions
 │   ├── revisions_weo.py          #   Évaluation : révisions d'une édition du WEO à la suivante
+│   ├── cas_de_crise.py           #   Évaluation : une récession mondiale (2009, 2020) dans les prévisions
 │   ├── visualize_gdp.py          #   Livrables : graphiques et tableau de bord
 │   └── build_results_page.py     #   Livrables : page de résultats HTML
 ├── notebooks/                    # Analyse interactive (Python et Julia) et générateurs
 ├── tests/                        # Tests des invariants (pytest)
-├── docs/                         # Documentation technique (LaTeX et PDF)
+├── docs/                         # Documentation technique (LaTeX et PDF), cas d'étude
 ├── data/
 │   ├── raw/                      # Sources : classeur WEO historique, complément API, LISEZ-MOI
 │   │   └── weo_archive/          # Éditions complètes du WEO, archivées à leur parution
@@ -89,6 +90,7 @@ python produire_rapports.py [--start-year 2000] [--end-year AAAA] [--fcst-end AA
 | Éditions récentes du WEO, depuis l'API, et archivage des éditions complètes | `python -m pib.update_weo_editions [--sans-archive]` |
 | Évaluation des prévisions | `python -m pib.evaluate_forecasts [--indicateur pcpi_pch]` |
 | Révisions d'une édition à la suivante | `python -m pib.revisions_weo` |
+| Cas d'étude d'une récession mondiale (hors chaîne) | `python -m pib.cas_de_crise --annee 2009` |
 | Graphiques et tableau de bord | `python -m pib.visualize_gdp` |
 | Page de résultats | `python -m pib.build_results_page [--pays FRA]` |
 | Collecte seule, historique | `python -m pib.fetch_historical_gdp --start-year 2000 --end-year 2025` |
@@ -123,7 +125,7 @@ jupyter nbconvert --to html --execute --ExecutePreprocessor.kernel_name=julia-1.
 ### Tests
 
 ```bash
-pytest                      # 145 tests, sans accès réseau
+pytest                      # 150 tests, sans accès réseau
 pytest -m "not donnees"     # sans les contrôles sur les fichiers produits
 ```
 
@@ -328,6 +330,8 @@ Recul : croissance annuelle en volume négative, selon la ré-estimation du FMI 
 
 **Ce que change la dernière édition.** L'archive des éditions complètes permet de comparer les deux dernières sur les niveaux. Le rapport raccorde les projections du FMI au dernier niveau observé par la Banque Mondiale, `niveau[y] = observé[base] × FMI[y] / FMI[base]` : ce qui passe dans ses projections est la révision de la croissance cumulée projetée. Entre octobre 2025 et avril 2026, celle de 2024-2030 change de plus de 2 % en volume pour 52 pays sur 189 (médiane 1,0 %), de plus de 5 % en dollars courants pour 64 (médiane 3,2 %) — Russie −9,0 %, Japon −6,3 %, Inde −3,2 %, États-Unis +2,3 % en dollars. Les révisions du niveau de l'historique, elles, s'éliminent dans le raccord ; elles se lisent sur une année observée dans les deux éditions (l'année de l'ancienne édition moins deux, 2023 ici) : 14 pays ont changé d'année de base de leurs prix constants (Inde, Royaume-Uni, Norvège…), et le PIB en dollars de 10 pays a été révisé de plus de 5 %. Contrôlé sur 2025, encore estimée par l'édition d'octobre 2025, le même test signalait 31 pays au lieu de 14 : il prenait des révisions de l'inflation estimée pour des changements d'année de base. Détail : `weo_edition_revisions.csv`.
 
+**La crise de 2008, cas d'étude** (`docs/cas_crise_2008.md`, reproduit par `python -m pib.cas_de_crise --annee 2009`). La chute de 2009 n'a été vue que dans l'année même : l'édition d'octobre 2008, trois semaines après la faillite de Lehman Brothers, annonçait encore +3,0 % pour le monde et un recul pour sept pays, quand 89 pays (77 % du PIB mondial) ont reculé. Le rebond de 2010 ne l'a pas été davantage : l'édition d'avril 2009 le sous-estime pour 77 % des pays (−3,0 points pondéré par le PIB). En niveau, le rebond a relevé la croissance, pas la trajectoire : en 2013, le PIB mondial reste 6,4 % sous le niveau projeté en octobre 2008, celui des économies avancées 7,4 %, celui de l'Espagne 17,8 % ; celui des États-Unis, du Royaume-Uni, de l'Italie et de l'Espagne finit même sous la projection d'avril 2009, faute d'avoir prévu la crise de la zone euro.
+
 **Autres indicateurs : lire les médianes.** La référence Banque Mondiale n'existe que pour la croissance du PIB : pour `pcpi_pch` (inflation) et `bca_gdp_bp6` (balance courante), seule la ré-estimation du FMI sert de référence. Pour l'inflation, les moyennes ne décrivent pas l'erreur typique : quelques projections d'hyperinflation (le Venezuela à 10 000 000 %) portent le biais moyen au-delà de 1 600 points à un an, quand la médiane reste à −0,1 point. La synthèse fournit donc aussi `mediane` et `erreur_absolue_mediane`, et le script avertit dès que l'erreur absolue moyenne dépasse dix fois la médiane.
 
 ---
@@ -357,6 +361,7 @@ Pour chaque rapport (`data/` et `outputs/` ; `plus_recent/` pour le plus récent
 | `data/processed/weo_forecast_revisions_ngdp_rpch.csv` | Révisions d'une édition à la suivante : sens, enchaînement (test de Nordhaus) |
 | `data/processed/weo_edition_revisions.csv` | Ce que change la dernière édition archivée, par pays ; changements d'année de base |
 | `data/processed/gdp_projection_bands.csv` | Fourchette empirique autour du PIB projeté, et probabilité d'une année de recul, par pays |
+| `data/processed/weo_cas_<année>_*.csv` | Cas d'étude d'une récession mondiale, sur demande (`pib.cas_de_crise`) : croissance, reculs annoncés, rebond, niveaux |
 | `data/processed/gdp_projection_bands_calibration.csv` | Test rétrospectif des fourchettes : part des erreurs contenues |
 | `outputs/gdp_master_dataset.xlsx` | Classeur multi-onglets (voir ci-dessous) |
 | `outputs/resultats_gdp.html` | Page de résultats autonome, commentée |
@@ -386,7 +391,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 
 ## ✅ Tests des invariants
 
-145 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
+150 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
 
 | Invariant | Ce qu'il empêche |
 |---|---|
@@ -414,6 +419,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 | Récessions : pire année des horizons 1 à h, interrompue au premier réalisé manquant ; premières économies comptées par édition | Un recul de l'année de l'édition compté comme imprévu, ou « 20 premières économies » qui n'en comptaient que 10 |
 | Révisions entre éditions consécutives seulement, étapes dans l'ordre ; historique contrôlé sur une année observée | Une révision calculée par-dessus une édition manquante, ou une révision de l'inflation prévue prise pour un changement d'année de base |
 | Commentaires de la page déduits des chiffres | Une conclusion écrite d'avance que la prochaine édition démentirait |
+| Cas d'étude : estimation actuelle tirée de la dernière édition archivée ; reculs annoncés rapportés aux reculs survenus | Un « réalisé » qui n'est que l'estimation d'il y a deux ans, ou une part calculée à l'envers |
 
 Chaque invariant est **validé par mutation** : le défaut correspondant, réintroduit dans une copie du code, fait bien échouer la suite. Les tests marqués `donnees` contrôlent les CSV réellement produits et se sautent tant que le pipeline n'a pas tourné. Les tests tournent à chaque push (GitHub Actions).
 

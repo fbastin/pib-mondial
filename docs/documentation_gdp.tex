@@ -177,6 +177,7 @@ Les niveaux de prévision à parité étant obtenus par chaînage à partir du d
     \item \texttt{update\_weo\_editions}: éditions récentes du WEO, depuis l'API SDMX du FMI.
     \item \texttt{evaluate\_forecasts}: évaluation des prévisions d'époque du FMI, risque de récession.
     \item \texttt{revisions\_weo}: révisions d'une édition du WEO à la suivante.
+    \item \texttt{cas\_de\_crise}: une récession mondiale dans les prévisions du FMI, sur demande (\texttt{-{}-annee 2009}, \texttt{-{}-annee 2020}).
     \item \texttt{visualize\_gdp}: graphiques PNG et tableau de bord HTML.
     \item \texttt{build\_results\_page}: page HTML de résultats, construite depuis les CSV et les PNG produits.
 \end{itemize}
@@ -307,6 +308,9 @@ Le module \texttt{revisions\_weo} rapproche chaque prévision de celle de l'édi
 
 \paragraph{Ce que change la dernière édition.} L'archive des éditions complètes permet de comparer les deux dernières sur les niveaux. Le raccord, $\text{niveau}_y = \text{observé}_{\text{base}} \times \text{FMI}_y / \text{FMI}_{\text{base}}$, ne retient du FMI que la croissance cumulée projetée: c'est sa révision qui passe dans les projections. Entre octobre 2025 et avril 2026, celle de 2024-2030 change de plus de $2\,\%$ en volume pour 52 pays sur 189, de plus de $5\,\%$ en dollars courants pour 64. Les révisions du niveau de l'historique s'éliminent dans le raccord; elles sont signalées, sur une année observée dans les deux éditions (l'année de l'ancienne édition moins deux): changement d'année de base des prix constants quand le rapport du PIB courant au PIB en volume est révisé de plus de $5\,\%$ (14 pays, dont l'Inde et le Royaume-Uni), nouvelle estimation des comptes quand le PIB en dollars l'est (10 pays). Contrôlé sur une année encore estimée, le test confondait révision de l'inflation et changement de base.
 
+\subsection{Cas d'Étude: la Crise de 2008}
+Le module \texttt{cas\_de\_crise} suit une récession mondiale à travers les éditions qui l'encadrent; le détail de 2009 est dans \texttt{docs/cas\_crise\_2008.md}. La chute n'a été vue que dans l'année même: l'édition d'octobre 2008, trois semaines après la faillite de Lehman Brothers, annonçait encore $+3{,}0\,\%$ pour le monde et un recul pour sept pays, quand 89 pays ($77\,\%$ du PIB mondial) ont reculé. Le rebond de 2010 ne l'a pas été davantage: l'édition d'avril 2009 le sous-estime pour $77\,\%$ des pays ($-3{,}0$ points pondéré par le PIB). En niveau, le rebond a relevé la croissance, pas la trajectoire: en 2013, le PIB mondial reste $6{,}4\,\%$ sous le niveau projeté en octobre 2008, celui des économies avancées $7{,}4\,\%$. Le réalisé des niveaux est l'estimation actuelle, tirée de la dernière édition archivée: le classeur ne ré-estime chaque année que deux ans après.
+
 \section{Provenance et Reproductibilité}
 
 Chaque exécution écrit \texttt{data/extraction\_metadata.json}: horodatage de l'extraction, bornes du run, indicateurs interrogés, volumes obtenus et couverture par colonne. Ses bornes désignent aussi la série unifiée du dernier run: plusieurs fichiers \texttt{gdp\_unified\_<début>\_<fin>.csv} pouvant coexister, les scripts en aval, les notebooks et les tests lisent celui-là, jamais le plus récemment modifié.
@@ -315,7 +319,7 @@ Le champ \texttt{derniere\_mise\_a\_jour} reprend le \texttt{lastupdated} décla
 
 \section{Tests des Invariants}
 
-Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (145 tests, sans accès réseau) fixe les propriétés correspondantes:
+Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (150 tests, sans accès réseau) fixe les propriétés correspondantes:
 
 \begin{itemize}
     \item les agrégats sont absents des classements par pays;

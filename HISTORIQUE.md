@@ -5,6 +5,22 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 🏦 Cas d'Étude : la Crise de 2008 (30 Septembre 2026)
+
+Question posée : la chute du PIB de 2009 avait-elle été prévue, et le rebond qui a suivi ? Nouveau module `pib.cas_de_crise` (hors chaîne, `--annee 2009` ou `2020`), résultats consignés dans `docs/cas_crise_2008.md`.
+
+- **La chute n'a été vue que dans l'année même.** Octobre 2008 : +3,0 % pour le monde, recul annoncé pour 7 pays (16 % du PIB mondial). Il en est survenu 89 (77 %). Avril 2009 voit la chute et l'exagère (−1,3 % contre −0,6 %).
+- **Le rebond non plus.** Avril 2009 sous-estime la croissance 2010 pour 77 % des pays, de −3,0 points pondéré par le PIB ; les prévisions d'avant la crise étaient plus justes pour 2010.
+- **En niveau, pas de retour sur la trajectoire.** En 2013, le PIB mondial reste 6,4 % sous le niveau projeté en octobre 2008 (économies avancées −7,4 %, Espagne −17,8 %) ; les États-Unis, le Royaume-Uni, l'Italie et l'Espagne finissent même sous la projection d'avril 2009.
+
+**Correction en cours d'analyse.** Le premier calcul prenait pour réalisé la dernière valeur du classeur, qui ne ré-estime chaque année que deux ans après, et ordonnait les éditions alphabétiquement (avril après octobre). L'estimation actuelle vient désormais de la dernière édition archivée ; les niveaux réalisés bougent de quelques dixièmes, les conclusions tiennent.
+
+Le lien avec la demande de trafic aérien fait l'objet d'une note dans le dossier *Transport Aérien* du Google Drive. Au niveau mondial, le trafic a rebondi plus vite que le PIB en 2010 (+7,5 % contre +5,1 %, IATA) ; les marchés restés sous leur pic d'avant la récession fin 2010, intérieurs américain et japonais, sont ceux d'économies dont le PIB a fini sous la projection d'après-choc.
+
+150 tests ; trois mutations du cas d'étude, toutes rattrapées.
+
+---
+
 ## 📉 Risque de Récession ; Révisions d'une Édition à l'Autre (30 Septembre 2026)
 
 **Les récessions que la trajectoire ne montre pas.** Le FMI n'annonce presque jamais de recul du PIB au-delà de l'année en cours : à un an, 2,4 % de ses projections sont négatives, contre 14,2 % des croissances réalisées ; il n'avait annoncé que 10 % de ces reculs. Sur les cinq années suivant une édition, un recul était annoncé dans 3 % des cas et en est survenu un dans 45 % (48 % pondéré par le PIB, 49 % pour les vingt premières économies ; 32 % hors des périodes contenant 2009 ou 2020), la pire année à −3,4 % en médiane. L'erreur de niveau porte désormais la pire année projetée et réalisée des horizons 1 à h (`pire_croissance_*`), d'où deux synthèses (`weo_recession_by_horizon_*`, `weo_recession_risk_*`) et une nouvelle section de la page de résultats.

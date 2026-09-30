@@ -1647,6 +1647,68 @@ class TestRevisionsDesEditions:
         assert signe(-0.5) == "−0,50"
 
 
+class TestCasDeCrise:
+    """
+    Une récession mondiale dans les prévisions du FMI (2009, 2020) : recul annoncé ou non,
+    rebond sous-estimé ou non, niveau projeté contre niveau réalisé.
+    """
+
+    @staticmethod
+    def _base():
+        """
+        Trois pays, recul de 2009 : A annoncé et survenu, B survenu sans être annoncé, C ni
+        l'un ni l'autre. Réalisé : ré-estimation d'octobre 2010 (horizon −1).
+        """
+        lignes = []
+        for code, prevu, reel in (("AAA", -1.0, -2.0), ("BBB", 1.0, -1.0), ("CCC", 1.0, 1.0)):
+            lignes += [dict(country=code, country_code=code, year=2009, vintage="S2009", saison="S",
+                            annee_millesime=2009, horizon=0, valeur=prevu),
+                       dict(country=code, country_code=code, year=2009, vintage="F2010", saison="F",
+                            annee_millesime=2010, horizon=-1, valeur=reel),
+                       dict(country=code, country_code=code, year=2010, vintage="S2009", saison="S",
+                            annee_millesime=2009, horizon=1, valeur=1.0),
+                       dict(country=code, country_code=code, year=2010, vintage="F2011", saison="F",
+                            annee_millesime=2011, horizon=-1, valeur=4.0)]
+        return pd.DataFrame(lignes).assign(est_projection=lambda d: d["horizon"] >= 0)
+
+    def test_editions_autour_du_choc(self):
+        from pib.cas_de_crise import editions_autour
+        assert editions_autour(2009) == ["S2008", "F2008", "S2009", "F2009", "S2010", "F2010"]
+
+    def test_reculs_annonces_et_survenus(self):
+        from pib.cas_de_crise import reculs_annonces
+        poids = pd.Series({"AAA": 1.0, "BBB": 3.0, "CCC": 6.0})
+        ligne = reculs_annonces(self._base(), 2009, poids).set_index("edition").loc["S2009"]
+        assert (ligne["recul_annonce"], ligne["recul_survenu"]) == (1, 2)
+        assert ligne["recul_annonce_part_pib_pct"] == pytest.approx(10.0)
+        assert ligne["recul_survenu_part_pib_pct"] == pytest.approx(40.0)
+        assert ligne["reculs_survenus_annonces_pct"] == pytest.approx(50.0)
+
+    def test_rebond_sous_estime(self):
+        """Prévu +1 %, réalisé +4 % : erreur de −3 points, rebond sous-estimé partout."""
+        from pib.cas_de_crise import erreurs_du_rebond
+        ligne = erreurs_du_rebond(self._base(), 2009, pd.Series({"AAA": 1.0, "BBB": 1.0, "CCC": 1.0})).iloc[0]
+        assert ligne["erreur_mediane"] == pytest.approx(-3.0)
+        assert ligne["rebond_sous_estime_pct"] == pytest.approx(100.0)
+
+    def test_indice_de_niveau(self):
+        from pib.cas_de_crise import indice_de_niveau
+        niveau = indice_de_niveau(pd.Series({2008: 10.0, 2009: -10.0}), 2008, 2009)
+        assert list(niveau.round(6)) == [110.0, 99.0]
+
+    def test_estimation_actuelle_tiree_de_la_derniere_edition(self, tmp_path):
+        """Le classeur ne ré-estime que deux ans en arrière : l'estimation actuelle vient de l'archive."""
+        from pib.cas_de_crise import estimation_actuelle
+        for edition, valeur in (("F2025", -3.0), ("S2026", -2.5)):
+            pd.DataFrame(dict(country_code=["KOS", "USA"], indicator="NGDP_RPCH", year=2009, value=valeur)
+                         ).to_csv(tmp_path / f"WEO_{edition}.csv.gz", index=False)
+        actuel = estimation_actuelle(str(tmp_path))
+        assert actuel[("USA", 2009)] == pytest.approx(-2.5)
+        assert ("XKX", 2009) in actuel.index
+        assert estimation_actuelle(str(tmp_path / "absent")).empty
+
+
+
 # ------------------------------------------- fichiers réellement produits
 
 @pytest.mark.donnees
