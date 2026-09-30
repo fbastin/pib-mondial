@@ -106,13 +106,23 @@ REFERENCES = {
     "bm": ("realise_bm", "Banque Mondiale (série observée)"),
 }
 
-# Fourchette empirique autour des projections : 80 % des erreurs de niveau passées,
-# tirées de l'historique du pays s'il couvre assez d'années visées, sinon de son groupe
-# de revenu. À 5 ans, la France est sortie dans 80 % des cas entre +1,4 % et +9,8 %
-# au-dessus du réalisé, quand le groupe des pays à revenu élevé va de −6,5 % à +18 % :
-# le groupe ne dit rien de la précision propre à une grande économie.
+# Fourchette empirique autour des projections : 10e à 90e centile des erreurs de niveau
+# passées au même horizon, parmi les projections comparables — même classe (quintile) de
+# croissance cumulée projetée et même groupe de revenu. Le FMI surestime d'autant plus
+# qu'il annonce de croissance, et ses erreurs sont plus dispersées pour les pays pauvres.
+# Le biais propre à un pays, lui, ne se reproduit pas d'une période à l'autre : une
+# fourchette tirée de l'historique du pays, calculée sur 1990-2007, ne contenait que 67 %
+# des erreurs suivantes au lieu de 80 % (voir `calibration_fourchettes`). Une cellule de
+# moins de `MIN_CAS_CELLULE` cas se replie sur la seule classe de croissance.
 QUANTILES_FOURCHETTE = (0.10, 0.90)
-MIN_ANNEES_PAYS = 20
+CLASSES_CROISSANCE = 5
+MIN_CAS_CELLULE = 100
+ANNEE_COUPURE_CALIBRATION = 2007
+GRANDES_ECONOMIES = 20
+
+# Test d'efficience : la droite est ajustée sans le 1 % de valeurs extrêmes de chaque côté
+# (croissances de guerre ou d'après-guerre, hors de portée de toute prévision)
+QUANTILES_ROGNAGE = (0.01, 0.99)
 
 # Le FMI publie ses agrégats dans le même onglet, sous des codes en G suivis de chiffres
 PREFIXE_AGREGAT = "G"
@@ -491,13 +501,19 @@ def erreurs_de_niveau(evaluation: pd.DataFrame) -> pd.DataFrame:
     interrompt l'enchaînement : les horizons suivants restent sans erreur de niveau.
     """
     colonnes = ["country", "country_code", "income_group", "vintage", "saison", "annee_millesime",
-                "year", "horizon", "poids_pib"]
+                "year", "horizon", "poids_pib", "croissance_prevue_cumulee_pct"]
     d = evaluation[evaluation["horizon"] >= 0].sort_values(["country_code", "vintage", "horizon"]).copy()
     for c in ("income_group", "poids_pib"):
         if c not in d.columns:
             d[c] = np.nan
     cles = [d["country_code"], d["vintage"]]
     attendu = d.groupby(["country_code", "vintage"]).cumcount()
+
+    # Croissance cumulée que l'édition projetait jusqu'à cet horizon : l'ampleur de la
+    # projection, à laquelle l'erreur est liée (voir `efficience`)
+    projete = np.log1p(d["valeur"] / 100)
+    rompu = (projete.isna() | (d["horizon"] != attendu)).astype(int).groupby(cles).cummax().astype(bool)
+    d["croissance_prevue_cumulee_pct"] = ((np.exp(projete.where(~rompu).groupby(cles).cumsum()) - 1) * 100).where(~rompu)
 
     for ref, (realise, _) in REFERENCES.items():
         ecart = np.log1p(d["valeur"] / 100) - np.log1p(d[realise] / 100)
@@ -545,64 +561,213 @@ def synthese_niveau_par_revenu(niveaux: pd.DataFrame) -> pd.DataFrame:
             .reset_index().round(3))
 
 
-def fourchettes_projections(niveaux: pd.DataFrame, synthese_pays: pd.DataFrame,
+def classes_de_croissance(croissance: pd.Series, bornes: list = None) -> tuple:
+    """
+    Classe (1 à `CLASSES_CROISSANCE`) de chaque croissance projetée. Les bornes sont les
+    quantiles de `croissance`, sauf si elles sont fournies (celles de l'historique, pour
+    classer une projection actuelle). Retourne les classes et les bornes.
+    """
+    if bornes is None:
+        bornes = croissance.quantile(np.linspace(0, 1, CLASSES_CROISSANCE + 1)[1:-1]).tolist()
+    classes = pd.Series(np.digitize(croissance, bornes) + 1, index=croissance.index, dtype=float)
+    return classes.where(croissance.notna()), bornes
+
+
+def croissance_projetee_actuelle(base: pd.DataFrame, annee_edition: int, horizon: int) -> pd.Series:
+    """
+    Croissance cumulée projetée par la dernière édition de l'année `annee_edition` (octobre
+    si elle est parue, sinon avril), de l'année de l'édition à `horizon` ans : celle des
+    projections du rapport. Pays dont un horizon manque : absents.
+    """
+    edition = base[base["annee_millesime"] == annee_edition]
+    saison = "F" if (edition["saison"] == "F").any() else "S"
+    edition = edition[(edition["saison"] == saison) & edition["horizon"].between(0, horizon)]
+    par_pays = edition.groupby("country_code")
+    complet = par_pays["horizon"].nunique() == horizon + 1
+    cumul = par_pays["valeur"].apply(lambda g: (np.prod(1 + g / 100) - 1) * 100)
+    return cumul[complet]
+
+
+def _quantiles_fourchette(cas: pd.DataFrame, cles: list) -> pd.DataFrame:
+    """Quantiles de la fourchette, médiane et effectif des erreurs de niveau, par cellule `cles`."""
+    q_bas, q_haut = QUANTILES_FOURCHETTE
+    g = cas.dropna(subset=cles).groupby(cles)["erreur_niveau_vs_fmi_pct"]
+    return pd.DataFrame({"bas": g.quantile(q_bas), "haut": g.quantile(q_haut), "mediane": g.median(), "cas": g.size()})
+
+
+def _quantiles_retenus(cas: pd.DataFrame) -> tuple:
+    """
+    Quantiles par classe × groupe de revenu, et par classe seule pour le repli. Les
+    cellules de moins de `MIN_CAS_CELLULE` cas sont retirées : elles se replient.
+    """
+    par_cellule = _quantiles_fourchette(cas, ["classe", "income_group"])
+    return par_cellule[par_cellule["cas"] >= MIN_CAS_CELLULE], _quantiles_fourchette(cas, ["classe"])
+
+
+def _choisir(par_cellule, par_classe, ensemble, classe, groupe):
+    """Quantiles de la cellule (classe, groupe), à défaut de la classe, à défaut de l'ensemble."""
+    if pd.notna(classe) and (classe, groupe) in par_cellule.index:
+        return par_cellule.loc[(classe, groupe)], "classe × groupe de revenu"
+    if pd.notna(classe) and classe in par_classe.index:
+        return par_classe.loc[classe], "classe de croissance"
+    return ensemble, "ensemble des projections"
+
+
+def fourchettes_projections(niveaux: pd.DataFrame, croissance_actuelle: pd.Series, synthese_pays: pd.DataFrame,
                             annee_fin: int, annee_edition: int) -> pd.DataFrame:
     """
     Fourchette empirique autour du PIB en volume projeté pour `annee_fin`.
 
-    Elle applique à la projection actuelle les erreurs de niveau passées au même horizon
-    (`annee_fin` − `annee_edition`), du 10e au 90e centile : celles du pays lui-même s'il
-    en compte sur au moins `MIN_ANNEES_PAYS` années visées, sinon celles de son groupe de
-    revenu, à défaut celles de l'ensemble des pays. Le niveau réalisé vaut le niveau
-    prévu divisé par (1 + erreur) : une erreur passée de +10 % abaisse la projection de
-    9,1 %. Ce n'est pas une prévision corrigée, mais la marge dans laquelle sont tombées
-    80 % des projections comparables. Elle porte sur le volume : en dollars courants
-    s'ajoutent les erreurs de change et d'inflation, que la base historique ne permet pas
-    de mesurer.
+    Les projections passées au même horizon (`annee_fin` − `annee_edition`) sont réparties
+    en classes de croissance cumulée projetée (`classes_de_croissance`) et en groupes de
+    revenu. Chaque pays reçoit le 10e et le 90e centile des erreurs de niveau de sa
+    cellule, selon la croissance que l'édition actuelle lui projette (`croissance_actuelle`)
+    et son groupe de revenu (voir `_choisir` pour les replis). Le niveau réalisé valant le
+    niveau prévu divisé par (1 + erreur), une erreur passée de +10 % abaisse la projection
+    de 9,1 %.
+
+    Ce n'est pas une prévision corrigée, mais la marge dans laquelle sont tombées 80 % des
+    projections comparables. Elle porte sur le volume : en dollars courants s'ajoutent les
+    erreurs de change et d'inflation, que la base historique ne mesure pas.
     """
     horizon = annee_fin - annee_edition
     colonne = "erreur_niveau_vs_fmi_pct"
     niveau = f"GDP_Reel_{annee_fin}_Billion_USD_2015"
-    passe = niveaux[niveaux["horizon"] == horizon].dropna(subset=[colonne])
+    passe = niveaux[niveaux["horizon"] == horizon].dropna(subset=[colonne, "croissance_prevue_cumulee_pct"]).copy()
     if passe.empty or niveau not in synthese_pays.columns:
         logging.warning(f"Pas d'erreur de niveau historique à l'horizon {horizon} : fourchettes omises.")
         return pd.DataFrame()
 
+    passe["classe"], bornes = classes_de_croissance(passe["croissance_prevue_cumulee_pct"])
+    par_cellule, par_classe = _quantiles_retenus(passe)
     q_bas, q_haut = QUANTILES_FOURCHETTE
-
-    def quantiles(cle: str) -> pd.DataFrame:
-        g = passe.groupby(cle)
-        return pd.DataFrame({"bas": g[colonne].quantile(q_bas), "haut": g[colonne].quantile(q_haut),
-                             "cas": g.size(), "annees": g["year"].nunique()})
-
-    par_pays, par_groupe = quantiles("country_code"), quantiles("income_group")
-    par_pays = par_pays[par_pays["annees"] >= MIN_ANNEES_PAYS]
     ensemble = pd.Series({"bas": passe[colonne].quantile(q_bas), "haut": passe[colonne].quantile(q_haut),
-                          "cas": len(passe)})
+                          "mediane": passe[colonne].median(), "cas": len(passe)})
+    limites = [-np.inf, *bornes, np.inf]
 
     lignes = []
     for _, pays in synthese_pays.dropna(subset=[niveau]).iterrows():
+        croissance = croissance_actuelle.get(pays["country_code"], np.nan)
+        classe = (classes_de_croissance(pd.Series([croissance]), bornes)[0].iloc[0]
+                  if pd.notna(croissance) else np.nan)
         groupe = pays.get("income_group")
-        if pays["country_code"] in par_pays.index:
-            q, source = par_pays.loc[pays["country_code"]], "pays"
-        elif groupe in par_groupe.index:
-            q, source = par_groupe.loc[groupe], groupe
-        else:
-            q, source = ensemble, "ensemble"
+        q, reference = _choisir(par_cellule, par_classe, ensemble, classe, groupe)
+        libelle = ("" if pd.isna(classe) else
+                   f"moins de {bornes[0]:.0f} %" if classe == 1 else
+                   f"plus de {bornes[-1]:.0f} %" if classe == CLASSES_CROISSANCE else
+                   f"{limites[int(classe) - 1]:.0f} à {limites[int(classe)]:.0f} %")
         # Erreur passée élevée (p90) -> réalisé bien en dessous : borne basse, et inversement
         borne_basse = (1 / (1 + q["haut"] / 100) - 1) * 100
         borne_haute = (1 / (1 + q["bas"] / 100) - 1) * 100
         lignes.append({
             "country_code": pays["country_code"], "country_name": pays["country_name"],
             "income_group": groupe, "horizon": horizon,
-            "historique_de_reference": source,
+            "croissance_projetee_pct": croissance, "classe_de_croissance": classe,
+            "croissance_de_la_classe": libelle, "projections_de_reference": reference,
             "cas_historiques": int(q["cas"]),
-            "erreur_niveau_p10_pct": q["bas"], "erreur_niveau_p90_pct": q["haut"],
+            "erreur_niveau_p10_pct": q["bas"], "erreur_niveau_mediane_pct": q["mediane"],
+            "erreur_niveau_p90_pct": q["haut"],
             "borne_basse_pct": borne_basse, "borne_haute_pct": borne_haute,
             niveau: pays[niveau],
             f"GDP_Reel_{annee_fin}_Bas": pays[niveau] * (1 + borne_basse / 100),
             f"GDP_Reel_{annee_fin}_Haut": pays[niveau] * (1 + borne_haute / 100),
         })
+    return pd.DataFrame(lignes).round(3)
+
+
+def calibration_fourchettes(niveaux: pd.DataFrame, horizon: int,
+                            coupure: int = ANNEE_COUPURE_CALIBRATION) -> pd.DataFrame:
+    """
+    Test rétrospectif des fourchettes : calculées sur les éditions jusqu'à `coupure`,
+    quelle part des erreurs des éditions suivantes contiennent-elles ? Une fourchette 80 %
+    bien calibrée en contient 80 %. La méthode retenue (classe de croissance projetée ×
+    groupe de revenu) est comparée à trois autres, et sa couverture détaillée pour les
+    `GRANDES_ECONOMIES` premières économies de l'année visée, les pays à faible revenu,
+    et en pondérant par le PIB.
+    """
+    colonne = "erreur_niveau_vs_fmi_pct"
+    q_bas, q_haut = QUANTILES_FOURCHETTE
+    cas = niveaux[niveaux["horizon"] == horizon].dropna(subset=[colonne, "croissance_prevue_cumulee_pct"]).copy()
+    cas["grande"] = cas.groupby("year")["poids_pib"].rank(ascending=False) <= GRANDES_ECONOMIES
+    avant = cas[cas["annee_millesime"] <= coupure].copy()
+    apres = cas[cas["annee_millesime"] > coupure].copy()
+    if avant.empty or apres.empty:
+        return pd.DataFrame()
+    avant["classe"], bornes = classes_de_croissance(avant["croissance_prevue_cumulee_pct"])
+    apres["classe"], _ = classes_de_croissance(apres["croissance_prevue_cumulee_pct"], bornes)
+
+    def bornes_retenues(x):
+        par_cellule, par_classe = _quantiles_retenus(avant)
+        choix = [_choisir(par_cellule, par_classe, pd.Series({"bas": np.nan, "haut": np.nan}), c, g)[0]
+                 for c, g in zip(x["classe"], x["income_group"])]
+        return pd.DataFrame({"bas": [q["bas"] for q in choix], "haut": [q["haut"] for q in choix]}, index=x.index)
+
+    lignes = []
+    for methode, cle in (("classe de croissance × groupe de revenu", None),
+                         ("classe de croissance projetée", "classe"),
+                         ("groupe de revenu", "income_group"), ("historique du pays", "country_code")):
+        if cle is None:
+            x = apres.join(bornes_retenues(apres))
+        else:
+            q = _quantiles_fourchette(avant, [cle])[["bas", "haut"]]
+            x = apres.join(q, on=cle)
+        x = x.dropna(subset=["bas", "haut"])
+        x["dedans"] = x[colonne].between(x["bas"], x["haut"])
+        ponderes = x.dropna(subset=["poids_pib"])
+        lignes.append({
+            "methode": methode, "retenue": cle is None, "horizon": horizon,
+            "editions_de_calcul": f"{int(avant['annee_millesime'].min())}-{coupure}",
+            "editions_de_test": f"{coupure + 1}-{int(apres['annee_millesime'].max())}",
+            "cas_testes": len(x), "cible_pct": (q_haut - q_bas) * 100,
+            "couverture_pct": x["dedans"].mean() * 100,
+            "largeur_mediane_pts": (x["haut"] - x["bas"]).median(),
+            "couverture_grandes_economies_pct": x.loc[x["grande"], "dedans"].mean() * 100,
+            "couverture_faible_revenu_pct": x.loc[x["income_group"] == "LIC", "dedans"].mean() * 100,
+            "couverture_ponderee_pib_pct": (np.average(ponderes["dedans"], weights=ponderes["poids_pib"]) * 100
+                                            if len(ponderes) else np.nan),
+        })
+    return pd.DataFrame(lignes).round(2)
+
+
+def efficience(evaluation: pd.DataFrame) -> pd.DataFrame:
+    """
+    Test d'efficience de Mincer et Zarnowitz, par horizon, contre la ré-estimation du FMI :
+    réalisé = a + b × prévu. Une prévision efficace donne b = 1. Sous 1, le réalisé ne suit
+    qu'en partie les écarts de croissance annoncés d'un pays à l'autre : plus le FMI annonce
+    de croissance, plus il surestime. La droite est ajustée sans les valeurs extrêmes
+    (`QUANTILES_ROGNAGE`) ; le biais médian par quintile de prévision montre la même chose
+    sans modèle.
+    """
+    valides = evaluation.dropna(subset=["valeur", "realise_fmi"])
+    lignes = []
+    for horizon, g in valides.groupby("horizon"):
+        bas, haut = QUANTILES_ROGNAGE
+        garde = (g["valeur"].between(*g["valeur"].quantile([bas, haut]))
+                 & g["realise_fmi"].between(*g["realise_fmi"].quantile([bas, haut])))
+        c = g[garde]
+        if len(c) < 10:
+            continue
+        pente, constante = np.polyfit(c["valeur"], c["realise_fmi"], 1)
+        ligne = {"horizon": horizon, "observations": len(c), "pente": pente, "constante": constante}
+        quintile = pd.qcut(g["valeur"], 5, labels=False, duplicates="drop")
+        for k, q in g.groupby(quintile):
+            ligne[f"prevision_mediane_q{int(k) + 1}"] = q["valeur"].median()
+            ligne[f"biais_median_q{int(k) + 1}"] = (q["valeur"] - q["realise_fmi"]).median()
+        lignes.append(ligne)
+    return pd.DataFrame(lignes).round(3)
+
+
+def synthese_niveau_par_croissance(niveaux: pd.DataFrame) -> pd.DataFrame:
+    """Erreur de niveau par horizon et classe de croissance cumulée projetée."""
+    colonne = "erreur_niveau_vs_fmi_pct"
+    lignes = []
+    for horizon, g in niveaux.dropna(subset=[colonne, "croissance_prevue_cumulee_pct"]).groupby("horizon"):
+        classes, _ = classes_de_croissance(g["croissance_prevue_cumulee_pct"])
+        for classe, c in g.groupby(classes):
+            lignes.append({"horizon": horizon, "classe_de_croissance": int(classe), "observations": len(c),
+                           "croissance_projetee_mediane_pct": c["croissance_prevue_cumulee_pct"].median(),
+                           "mediane": c[colonne].median(), "p10": c[colonne].quantile(0.10),
+                           "p90": c[colonne].quantile(0.90)})
     return pd.DataFrame(lignes).round(3)
 
 
@@ -669,6 +834,8 @@ def main():
     naif = comparaison_naive(evaluation)
     naif.to_csv(os.path.join(processed, f"weo_forecast_vs_naive_{args.indicateur}.csv"), index=False, encoding="utf-8-sig")
     logging.info("FMI face à la prévision naïve (croissance moyenne des années v−5 à v−2) :\n" + naif.to_string(index=False))
+    efficience(evaluation).to_csv(
+        os.path.join(processed, f"weo_forecast_efficiency_{args.indicateur}.csv"), index=False, encoding="utf-8-sig")
     monde = synthese_par_horizon(evaluer_monde(base_complete))
     if not monde.empty:
         monde.to_csv(os.path.join(processed, f"weo_world_bias_{args.indicateur}.csv"), index=False, encoding="utf-8-sig")
@@ -696,6 +863,8 @@ def evaluer_niveaux(evaluation: pd.DataFrame, base: pd.DataFrame, data_dir: str,
     synthese.to_csv(os.path.join(processed, "weo_level_bias_ngdp_rpch.csv"), index=False, encoding="utf-8-sig")
     synthese_niveau_par_revenu(niveaux).to_csv(
         os.path.join(processed, "weo_level_bias_by_income_ngdp_rpch.csv"), index=False, encoding="utf-8-sig")
+    synthese_niveau_par_croissance(niveaux).to_csv(
+        os.path.join(processed, "weo_level_bias_by_projected_growth_ngdp_rpch.csv"), index=False, encoding="utf-8-sig")
     logging.info("Erreur sur le niveau du PIB en volume (prévu / réalisé − 1, en %) :\n"
                  + synthese.to_string(index=False))
 
@@ -708,9 +877,14 @@ def evaluer_niveaux(evaluation: pd.DataFrame, base: pd.DataFrame, data_dir: str,
     with open(meta_json, encoding="utf-8") as f:
         annee_fin = json.load(f)["bornes"]["prevision"][1]
     annee_edition = int(base["annee_millesime"].max())
-    fourchettes = fourchettes_projections(niveaux, pd.read_csv(synthese_csv), annee_fin, annee_edition)
+    horizon = annee_fin - annee_edition
+    fourchettes = fourchettes_projections(niveaux, croissance_projetee_actuelle(base, annee_edition, horizon),
+                                          pd.read_csv(synthese_csv), annee_fin, annee_edition)
     if fourchettes.empty:
         return
+    calibration = calibration_fourchettes(niveaux, horizon)
+    calibration.to_csv(os.path.join(processed, "gdp_projection_bands_calibration.csv"), index=False, encoding="utf-8-sig")
+    logging.info("Calibration des fourchettes (test rétrospectif) :\n" + calibration.to_string(index=False))
     fourchettes.to_csv(os.path.join(processed, "gdp_projection_bands.csv"), index=False, encoding="utf-8-sig")
     logging.info(f"Fourchettes empiriques du PIB {annee_fin} (édition {annee_edition}, horizon "
                  f"{annee_fin - annee_edition}) : {len(fourchettes)} pays.")

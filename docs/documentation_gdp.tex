@@ -282,10 +282,15 @@ Le niveau de départ, commun aux deux, s'élimine. Une année sans croissance r�
 
 À cinq ans, le niveau prévu dépasse le réalisé de 4 à 5\,\% en médiane, et les erreurs ne se compensent pas: il est trop haut de plus de 5\,\% dans près d'un cas sur deux, trop bas de plus de 5\,\% dans un sur sept. L'erreur médiane va de $+3{,}6\,\%$ pour les pays à revenu élevé à $+6{,}0\,\%$ pour les pays à faible revenu; contre la série de la Banque Mondiale, elle est de $+3{,}6\,\%$. La base historique ne contenant que des taux, cette mesure porte sur le volume: en dollars courants s'ajouteraient les erreurs de change et d'inflation.
 
-\subsection{Les Projections à l'Aune des Erreurs Passées}
-Les projections de l'horizon (2031) viennent de l'édition d'avril 2026, à cinq ans d'horizon. Leur appliquer les erreurs de niveau passées au même horizon donne une fourchette empirique: le niveau réalisé valant le niveau prévu divisé par $(1 + e)$, les 10\textsuperscript{e} et 90\textsuperscript{e} centiles des erreurs passées bornent l'intervalle où seraient tombés 80\,\% des cas comparables. Les erreurs retenues sont celles du pays lui-même s'il en compte sur au moins vingt années visées (169 pays), sinon celles de son groupe de revenu: à cinq ans, la France est sortie dans 80\,\% des cas entre $+1{,}4\,\%$ et $+9{,}8\,\%$ au-dessus du réalisé, quand le groupe des pays à revenu élevé va de $-6{,}5\,\%$ à $+18\,\%$.
+\subsection{Efficience: l'Erreur Croît avec la Croissance Annoncée}
+Le test d'efficience de Mincer et Zarnowitz ajuste, par horizon, le réalisé sur le prévu: $g^{\text{réalisé}} = a + b\,g^{\text{prévu}}$, sans le 1\,\% de valeurs extrêmes de chaque côté. Une prévision efficace donne $b = 1$. La pente vaut $0{,}93$ sur l'année en cours, $0{,}74$ à un an, $0{,}61$ à trois ans et $0{,}57$ à cinq ans: le réalisé ne suit qu'à moitié les écarts de croissance annoncés d'un pays à l'autre. À cinq ans, le biais médian va de $-0{,}36$ point pour le cinquième des prévisions les plus modestes à $+1{,}35$ pour le cinquième des plus fortes; sur le niveau, l'erreur médiane va de $+1{,}7\,\%$ pour les croissances cumulées projetées les plus faibles à $+6{,}8\,\%$ pour les plus fortes. Les marchés à forte croissance projetée, où se concentre la croissance du trafic aérien, sont ceux dont les projections sont les plus optimistes.
 
-Pour le Japon ($-14{,}5$ à $-1{,}4\,\%$), la France ($-8{,}9$ à $-1{,}4\,\%$) et l'Italie ($-11{,}3$ à $-2{,}5\,\%$), la fourchette est entièrement sous la projection: leur niveau à cinq ans a été surestimé dans au moins 90\,\% des cas passés. Ce n'est pas une prévision corrigée, mais la marge d'erreur qu'a connue le FMI; elle porte sur le volume et serait plus large en dollars courants.
+\subsection{Les Projections à l'Aune des Erreurs Passées}
+Les projections de l'horizon (2031) viennent de l'édition d'avril 2026, à cinq ans d'horizon. Leur appliquer les erreurs de niveau passées au même horizon donne une fourchette empirique: le niveau réalisé valant le niveau prévu divisé par $(1 + e)$, les 10\textsuperscript{e} et 90\textsuperscript{e} centiles des erreurs passées bornent l'intervalle où seraient tombés 80\,\% des cas comparables. Sont comparables les projections de la même classe de croissance cumulée projetée (cinq classes de même effectif) et du même groupe de revenu; une cellule de moins de cent cas se replie sur la classe seule. Plus la croissance projetée est forte, plus la fourchette penche vers le bas: de $-11{,}9$ à $+6{,}9\,\%$ pour les États-Unis (croissance projetée de $12{,}5\,\%$ sur six ans), de $-21{,}8$ à $+4{,}8\,\%$ pour l'Inde ($46\,\%$).
+
+\paragraph{Calibration.} Calculées sur les éditions 1990-2007, ces fourchettes ont contenu 83\,\% des erreurs des éditions 2008-2019, pour une cible de 80\,\%; elles sont prudentes pour les vingt premières économies (94\,\%) et justes pour les pays à faible revenu (78\,\%). Ce test rétrospectif est refait à chaque exécution. Une première version tirait la fourchette de l'historique propre de chaque pays; elle n'aurait contenu que 67\,\% des erreurs suivantes. Le biais d'un pays ne se reproduit pas d'une période à l'autre: sa corrélation entre 1990-2007 et 2008-2020 est de $0{,}01$.
+
+Ce n'est pas une prévision corrigée, mais la marge d'erreur qu'a connue le FMI; elle porte sur le volume et serait plus large en dollars courants.
 
 \section{Provenance et Reproductibilité}
 
@@ -295,7 +300,7 @@ Le champ \texttt{derniere\_mise\_a\_jour} reprend le \texttt{lastupdated} décla
 
 \section{Tests des Invariants}
 
-Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (121 tests, sans accès réseau) fixe les propriétés correspondantes:
+Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (129 tests, sans accès réseau) fixe les propriétés correspondantes:
 
 \begin{itemize}
     \item les agrégats sont absents des classements par pays;
@@ -315,7 +320,8 @@ Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur si
     \item une édition du WEO lue dans l'API n'est nommée que si l'horizon servi le confirme, le complément reste cumulatif et le classeur fait foi;
     \item le biais pondéré suit les poids, l'intervalle de confiance est groupé par année visée, et le biais hors récessions les exclut bien;
     \item l'erreur de niveau enchaîne les croissances et s'interrompt au premier réalisé manquant;
-    \item la fourchette des projections s'appuie sur l'historique du pays s'il est assez long, et ses bornes sont dans le bon sens;
+    \item la fourchette des projections s'appuie sur la classe de croissance projetée et le groupe de revenu, sa calibration est vérifiée sur une période ultérieure, et ses bornes sont dans le bon sens;
+    \item la pente d'efficience et la croissance cumulée projetée sont exactes;
     \item la prévision naïve n'utilise que ce que le FMI savait à l'édition, les éditions d'avril et d'octobre restent distinctes, et la croissance mondiale n'est comparée qu'à la ré-estimation du FMI;
     \item chaque édition archivée l'est une seule fois, telle que servie.
 \end{itemize}

@@ -1290,56 +1290,138 @@ class TestErreursDeNiveau:
 class TestFourchettesDesProjections:
     """
     Fourchette empirique autour du PIB projeté : erreurs de niveau passées au même
-    horizon, du pays lui-même s'il a assez d'historique, sinon de son groupe de revenu.
+    horizon, parmi les projections de même classe de croissance projetée et de même
+    groupe de revenu. Le biais propre à un pays ne se reproduisant pas d'une période à
+    l'autre, l'historique du pays n'est plus utilisé.
     """
 
     @staticmethod
-    def _niveaux():
+    def _niveaux(cas_par_cellule=120):
+        """
+        Projections passées à 5 ans : les faibles croissances projetées (10 %) se sont
+        réalisées à peu près (erreurs de −5 à +5 %), les fortes (50 %) ont été surestimées
+        (erreurs de +10 à +30 %). Tous pays à revenu élevé, éditions 1995 à 2014.
+        """
         lignes = []
-        # France : 25 années visées, erreurs de +10 à +30 % (toujours trop haut)
-        for i, annee in enumerate(range(1995, 2020)):
-            lignes.append(dict(country_code="FRA", income_group="HIC", horizon=5, year=annee,
-                               erreur_niveau_vs_fmi_pct=10.0 + 20.0 * i / 24))
-        # Autres pays à revenu élevé : 25 cas, erreurs de −20 à +20 %
-        for i, annee in enumerate(range(1995, 2020)):
-            lignes.append(dict(country_code="XXX", income_group="HIC", horizon=5, year=annee,
-                               erreur_niveau_vs_fmi_pct=-20.0 + 40.0 * i / 24))
-        # Monaco : trois années seulement
-        for annee in (2015, 2016, 2017):
-            lignes.append(dict(country_code="MCO", income_group="HIC", horizon=5, year=annee,
-                               erreur_niveau_vs_fmi_pct=0.0))
+        for i in range(cas_par_cellule):
+            annee = 1995 + i % 20
+            lignes.append(dict(country_code=f"F{i}", income_group="HIC", horizon=5, annee_millesime=annee,
+                               year=annee + 5, poids_pib=1.0, croissance_prevue_cumulee_pct=10.0,
+                               erreur_niveau_vs_fmi_pct=-5.0 + 10.0 * i / (cas_par_cellule - 1)))
+            lignes.append(dict(country_code=f"R{i}", income_group="HIC", horizon=5, annee_millesime=annee,
+                               year=annee + 5, poids_pib=1.0, croissance_prevue_cumulee_pct=50.0,
+                               erreur_niveau_vs_fmi_pct=10.0 + 20.0 * i / (cas_par_cellule - 1)))
         return pd.DataFrame(lignes)
 
     @staticmethod
     def _synthese():
-        return pd.DataFrame(dict(country_code=["FRA", "MCO", "TWN"], country_name=["France", "Monaco", "Taïwan"],
-                                 income_group=["HIC", "HIC", None], GDP_Reel_2031_Billion_USD_2015=100.0))
+        return pd.DataFrame(dict(country_code=["LEN", "VIF", "SAN", "TWN"],
+                                 country_name=["Lente", "Vive", "Sans projection", "Taïwan"],
+                                 income_group=["HIC", "HIC", "HIC", None], GDP_Reel_2031_Billion_USD_2015=100.0))
 
-    def test_historique_propre_ou_groupe(self):
+    @staticmethod
+    def _croissance():
+        return pd.Series({"LEN": 8.0, "VIF": 55.0, "TWN": 55.0})
+
+    def test_classes_de_croissance(self):
+        from pib.evaluate_forecasts import classes_de_croissance
+        classes, bornes = classes_de_croissance(pd.Series(range(1, 11), dtype=float))
+        assert list(classes) == [1, 1, 2, 2, 3, 3, 4, 4, 5, 5]
+        nouvelles, _ = classes_de_croissance(pd.Series([0.0, 100.0, np.nan]), bornes)
+        assert list(nouvelles[:2]) == [1, 5] and pd.isna(nouvelles.iloc[2])
+
+    def test_fourchette_selon_la_croissance_projetee(self):
+        """Une projection vive reçoit la marge des projections vives : entièrement vers le bas."""
         from pib.evaluate_forecasts import fourchettes_projections
-        bandes = fourchettes_projections(self._niveaux(), self._synthese(), 2031, 2026).set_index("country_code")
-        assert bandes.loc["FRA", "historique_de_reference"] == "pays"
-        assert bandes.loc["MCO", "historique_de_reference"] == "HIC"       # trop peu d'années
-        assert bandes.loc["TWN", "historique_de_reference"] == "ensemble"  # sans groupe
+        bandes = fourchettes_projections(self._niveaux(), self._croissance(), self._synthese(), 2031, 2026
+                                         ).set_index("country_code")
+        assert bandes.loc["VIF", "borne_haute_pct"] < 0
+        assert bandes.loc["LEN", "borne_basse_pct"] < 0 < bandes.loc["LEN", "borne_haute_pct"]
         assert (bandes["horizon"] == 5).all()
 
-    def test_bornes_tirees_des_erreurs_passees(self):
-        """
-        Un niveau passé trop haut de p % ramène le réalisé à 1 / (1 + p) de la projection :
-        la France, toujours surestimée, a une fourchette entièrement sous la projection.
-        """
+    def test_replis(self):
+        """Sans groupe : la classe seule ; sans croissance projetée : toutes les projections."""
         from pib.evaluate_forecasts import fourchettes_projections
-        bandes = fourchettes_projections(self._niveaux(), self._synthese(), 2031, 2026).set_index("country_code")
-        france = bandes.loc["FRA"]
-        p10, p90 = france["erreur_niveau_p10_pct"], france["erreur_niveau_p90_pct"]
-        assert france["borne_basse_pct"] == pytest.approx((1 / (1 + p90 / 100) - 1) * 100, abs=1e-2)   # sorties arrondies
-        assert france["borne_haute_pct"] == pytest.approx((1 / (1 + p10 / 100) - 1) * 100, abs=1e-2)
-        assert france["borne_haute_pct"] < 0
-        assert france["GDP_Reel_2031_Bas"] == pytest.approx(100 * (1 + france["borne_basse_pct"] / 100), abs=1e-2)
+        bandes = fourchettes_projections(self._niveaux(), self._croissance(), self._synthese(), 2031, 2026
+                                         ).set_index("country_code")
+        assert bandes.loc["VIF", "projections_de_reference"] == "classe × groupe de revenu"
+        assert bandes.loc["TWN", "projections_de_reference"] == "classe de croissance"
+        assert bandes.loc["SAN", "projections_de_reference"] == "ensemble des projections"
+
+    def test_cellule_trop_petite_repliee_sur_la_classe(self):
+        from pib.evaluate_forecasts import fourchettes_projections
+        bandes = fourchettes_projections(self._niveaux(cas_par_cellule=40), self._croissance(), self._synthese(),
+                                         2031, 2026).set_index("country_code")
+        assert bandes.loc["VIF", "projections_de_reference"] == "classe de croissance"
+
+    def test_bornes_tirees_des_erreurs_passees(self):
+        """Un niveau passé trop haut de p % ramène le réalisé à 1 / (1 + p) de la projection."""
+        from pib.evaluate_forecasts import fourchettes_projections
+        vive = fourchettes_projections(self._niveaux(), self._croissance(), self._synthese(), 2031, 2026
+                                       ).set_index("country_code").loc["VIF"]
+        p10, p90 = vive["erreur_niveau_p10_pct"], vive["erreur_niveau_p90_pct"]
+        assert vive["borne_basse_pct"] == pytest.approx((1 / (1 + p90 / 100) - 1) * 100, abs=1e-2)
+        assert vive["borne_haute_pct"] == pytest.approx((1 / (1 + p10 / 100) - 1) * 100, abs=1e-2)
+        assert vive["GDP_Reel_2031_Bas"] == pytest.approx(100 * (1 + vive["borne_basse_pct"] / 100), abs=1e-2)
 
     def test_horizon_sans_historique(self):
         from pib.evaluate_forecasts import fourchettes_projections
-        assert fourchettes_projections(self._niveaux(), self._synthese(), 2033, 2026).empty
+        assert fourchettes_projections(self._niveaux(), self._croissance(), self._synthese(), 2033, 2026).empty
+
+    def test_croissance_projetee_par_la_derniere_edition(self):
+        """Octobre si l'édition est parue, sinon avril ; un pays dont un horizon manque est écarté."""
+        from pib.evaluate_forecasts import croissance_projetee_actuelle
+        lignes = [dict(country_code="FRA", annee_millesime=2026, saison=s, horizon=h, valeur=v)
+                  for s, v in (("S", 1.0), ("F", 2.0)) for h in range(0, 3)]
+        lignes += [dict(country_code="ITA", annee_millesime=2026, saison="F", horizon=h, valeur=1.0) for h in (0, 1)]
+        croissance = croissance_projetee_actuelle(pd.DataFrame(lignes), 2026, 2)
+        assert croissance["FRA"] == pytest.approx((1.02 ** 3 - 1) * 100)
+        assert "ITA" not in croissance.index
+
+    def test_calibration_retrospective(self):
+        """
+        Les biais par pays s'inversent d'une période à l'autre : les fourchettes tirées de
+        l'historique du pays manquent la cible, celles par classe de croissance l'atteignent.
+        """
+        from pib.evaluate_forecasts import calibration_fourchettes
+        rng = np.random.default_rng(0)
+        lignes = []
+        for pays in range(40):
+            biais = 5.0 if pays % 2 else -5.0
+            for annee in range(1995, 2020):
+                inverse = -biais if annee > 2007 else biais     # le biais du pays s'inverse
+                lignes.append(dict(country_code=f"P{pays}", income_group="HIC", horizon=5,
+                                   annee_millesime=annee, year=annee + 5, poids_pib=1.0,
+                                   croissance_prevue_cumulee_pct=20.0 + pays % 5,
+                                   erreur_niveau_vs_fmi_pct=inverse + rng.normal(0, 1)))
+        table = calibration_fourchettes(pd.DataFrame(lignes), 5).set_index("methode")
+        assert table.loc["historique du pays", "couverture_pct"] < 20
+        assert table.loc["classe de croissance × groupe de revenu", "couverture_pct"] > 60
+        assert table.loc["classe de croissance × groupe de revenu", "retenue"]
+
+
+class TestEfficience:
+    """Plus le FMI annonce de croissance, plus il surestime : pente de Mincer-Zarnowitz sous 1."""
+
+    def test_pente_et_biais_par_quintile(self):
+        from pib.evaluate_forecasts import efficience
+        prevu = np.linspace(0, 8, 200)
+        evaluation = pd.DataFrame(dict(horizon=1, valeur=prevu, realise_fmi=1.0 + 0.5 * prevu))
+        ligne = efficience(evaluation).iloc[0]
+        assert ligne["pente"] == pytest.approx(0.5, abs=1e-6)
+        assert ligne["constante"] == pytest.approx(1.0, abs=1e-6)
+        assert ligne["biais_median_q1"] < ligne["biais_median_q5"]
+
+    def test_croissance_cumulee_projetee(self):
+        from pib.evaluate_forecasts import erreurs_de_niveau
+        niveaux = erreurs_de_niveau(TestErreursDeNiveau._evaluation()).set_index("horizon")
+        assert niveaux.loc[2, "croissance_prevue_cumulee_pct"] == pytest.approx((1.02 ** 3 - 1) * 100)
+
+    def test_niveaux_par_classe_de_croissance(self):
+        from pib.evaluate_forecasts import synthese_niveau_par_croissance
+        niveaux = TestFourchettesDesProjections._niveaux()
+        table = synthese_niveau_par_croissance(niveaux)
+        assert table["mediane"].iloc[-1] > table["mediane"].iloc[0]
 
 
 # ------------------------------------------- fichiers réellement produits

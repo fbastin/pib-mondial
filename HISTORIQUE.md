@@ -5,6 +5,18 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## ↩️ Fourchettes Corrigées ; Efficience des Prévisions (29 Septembre 2026)
+
+**Correction.** Les fourchettes livrées plus tôt dans la journée s'appuyaient sur l'historique propre de chaque pays (dès vingt années visées), au motif qu'il décrivait mieux une grande économie que son groupe de revenu. Le test rétrospectif le dément : calculées sur les éditions 1990-2007, elles ne contenaient que 67 % des erreurs des éditions 2008-2019, pour une cible de 80 %. Le biais d'un pays ne se reproduit pas d'une période à l'autre — corrélation de 0,01 ; la Chine passe de −1,9 à +1,0 point, l'Inde de −0,5 à +1,8 —, et la dispersion à peine (0,23). Le constat mis en avant alors (« Japon, France et Italie : fourchette entièrement sous la projection ») ne tenait pas davantage.
+
+Les fourchettes reposent désormais sur les projections comparables : même classe de croissance cumulée projetée (cinq classes de même effectif) et même groupe de revenu, repli sur la classe seule sous cent cas. Couverture rétrospective : 83 % (94 % pour les vingt premières économies, prudentes ; 78 % pour les pays à faible revenu). Variantes écartées au même test : classe seule (83 %, mais 75 % pour les pays à faible revenu), classe × taille de l'économie (81 %). Le test est refait à chaque exécution (`gdp_projection_bands_calibration.csv`), la page de résultats le cite.
+
+**Efficience.** Ce qui justifie le conditionnement : plus le FMI annonce de croissance, plus il surestime. Pente de Mincer-Zarnowitz (réalisé sur prévu, 1 % extrême retiré de chaque côté) : 0,93 sur l'année en cours, 0,74 à un an, 0,57 à 5 ans. À 5 ans, biais médian de −0,36 point pour le quintile des prévisions les plus modestes, +1,35 pour les plus fortes ; erreur de niveau médiane de +1,7 % à +6,8 % selon la croissance cumulée projetée.
+
+129 tests ; six mutations de la nouvelle méthode, toutes rattrapées.
+
+---
+
 ## 🗄️ Avril et Octobre, Prévision Naïve, Croissance Mondiale ; Archive des Éditions (29 Septembre 2026)
 
 Les projections alimentent la prévision du trafic aérien, projet distinct. Côté PIB, trois lectures complètent l'évaluation et une archive prépare la suite.

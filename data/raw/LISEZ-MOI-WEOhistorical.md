@@ -106,8 +106,11 @@ Produit dans `data/processed/` :
 * `weo_world_bias_<indicateur>.csv` — l'agrégat mondial `G001`, contre sa seule ré-estimation ;
 * pour la croissance du PIB seulement : `weo_level_evaluation_ngdp_rpch.csv` et ses
   synthèses (`weo_level_bias_*`), l'erreur sur le niveau du PIB obtenue en enchaînant les
-  croissances, et `gdp_projection_bands.csv`, la fourchette qu'elle donne autour des
-  projections du rapport.
+  croissances, par horizon, groupe de revenu et classe de croissance projetée, et
+  `gdp_projection_bands.csv`, la fourchette qu'elle donne autour des projections du rapport,
+  avec son test rétrospectif (`gdp_projection_bands_calibration.csv`) ;
+* `weo_forecast_efficiency_<indicateur>.csv` — test d'efficience : pente du réalisé sur le
+  prévu, et biais médian par quintile de prévision.
 
 Pour l'inflation, lire les médianes : quelques projections d'hyperinflation (le Venezuela
 à 10 000 000 %) portent les moyennes à des milliers de points. Le script le signale.

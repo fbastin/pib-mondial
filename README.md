@@ -121,7 +121,7 @@ jupyter nbconvert --to html --execute --ExecutePreprocessor.kernel_name=julia-1.
 ### Tests
 
 ```bash
-pytest                      # 121 tests, sans accès réseau
+pytest                      # 129 tests, sans accès réseau
 pytest -m "not donnees"     # sans les contrôles sur les fichiers produits
 ```
 
@@ -294,19 +294,23 @@ Le FMI apporte beaucoup sur l'année en cours ; à 5 ans — l'horizon des proje
 
 À 5 ans, le niveau prévu dépasse le réalisé de 4 à 5 % en médiane, et les erreurs ne se compensent pas : trop haut de plus de 5 % dans près d'un cas sur deux, trop bas de plus de 5 % dans un sur sept. L'erreur médiane à 5 ans va de +3,6 % (revenu élevé) à +6,0 % (faible revenu) ; contre la série Banque Mondiale, elle est de +3,6 %. Visualisé par `gdp_forecast_level_errors.png`. La base historique du FMI ne contenant que des taux, l'erreur sur le PIB en dollars courants — qui ajoute change et inflation — n'est pas mesurable ainsi.
 
-**Les projections à l'aune des erreurs passées.** Les projections 2031 des rapports viennent de l'édition d'avril 2026, à 5 ans d'horizon. Appliquer à chacune les erreurs de niveau passées au même horizon donne une fourchette empirique : celle où seraient tombés 80 % des cas comparables (10ᵉ à 90ᵉ centile). Les erreurs retenues sont celles du pays lui-même s'il en compte sur au moins vingt années visées (169 pays), sinon celles de son groupe de revenu : à 5 ans, la France est sortie dans 80 % des cas entre +1,4 % et +9,8 % au-dessus du réalisé, quand le groupe des pays à revenu élevé va de −6,5 % à +18 %.
+**Plus le FMI annonce de croissance, plus il surestime.** Si les prévisions étaient bien calibrées, le réalisé suivrait un à un les écarts de croissance annoncés d'un pays à l'autre : la droite du réalisé sur le prévu (test d'efficience de Mincer et Zarnowitz, sans le 1 % de valeurs extrêmes de chaque côté) aurait une pente de 1. Elle vaut 0,93 sur l'année en cours, 0,74 à un an, **0,57 à 5 ans**. À 5 ans, le biais médian va de −0,36 point pour le cinquième des prévisions les plus modestes à +1,35 pour le cinquième des plus fortes ; sur le niveau, l'erreur médiane va de +1,7 % pour les croissances cumulées projetées les plus faibles (11 % en médiane) à +6,8 % pour les plus fortes (46 %) (`weo_forecast_efficiency_*.csv`, `weo_level_bias_by_projected_growth_ngdp_rpch.csv`). Pour la prévision du trafic aérien, c'est une mise en garde : les marchés à forte croissance projetée sont ceux dont les projections sont les plus optimistes.
 
-| PIB en volume 2031 | Écart à la projection (80 % des cas passés) |
-|---|---|
-| États-Unis | −9,7 à +5,0 % |
-| Chine | −6,8 à +16,5 % |
-| Allemagne | −8,0 à +1,5 % |
-| Japon | **−14,5 à −1,4 %** |
-| Inde | −17,5 à +10,7 % |
-| France | **−8,9 à −1,4 %** |
-| Italie | **−11,3 à −2,5 %** |
+**Les projections à l'aune des erreurs passées.** Les projections 2031 des rapports viennent de l'édition d'avril 2026, à 5 ans d'horizon. Appliquer à chacune les erreurs de niveau commises par le passé au même horizon, sur des projections comparables — même classe de croissance cumulée projetée (cinq classes de même effectif) et même groupe de revenu —, donne une fourchette empirique : celle où seraient tombés 80 % des cas (10ᵉ à 90ᵉ centile). Une cellule de moins de 100 cas se replie sur la classe de croissance seule.
 
-Pour le Japon, la France et l'Italie, la fourchette est entièrement sous la projection : leur niveau à 5 ans a été surestimé dans au moins 90 % des cas passés. Ce n'est pas une prévision corrigée, mais la marge d'erreur qu'a connue le FMI ; elle porte sur le volume, et serait plus large en dollars courants. Détail pour tous les pays : `data/processed/gdp_projection_bands.csv` et onglet `Fourchettes_2031` du classeur Excel.
+| PIB en volume 2031 | Croissance projetée 2026-2031 | Écart à la projection (80 % des cas passés) |
+|---|---|---|
+| États-Unis | +12,5 % | −11,9 à +6,9 % |
+| Chine | +25,0 % | −16,2 à +8,7 % |
+| Allemagne, Japon, France, Royaume-Uni | +4 à +9 % | −11,9 à +6,9 % |
+| Inde | +46,0 % | **−21,8 à +4,8 %** |
+| Indonésie | +35,1 % | −19,3 à +7,4 % |
+
+Plus la croissance projetée est forte, plus la fourchette penche vers le bas. **Ces fourchettes sont éprouvées sur le passé** : calculées sur les éditions 1990-2007, elles ont contenu 83 % des erreurs des éditions 2008-2019, pour une cible de 80 % (`gdp_projection_bands_calibration.csv`, refait à chaque exécution). Elles sont prudentes pour les vingt premières économies (94 %) et justes pour les pays à faible revenu (78 %).
+
+Une première version tirait la fourchette de l'historique propre de chaque pays : elle n'aurait contenu que 67 % des erreurs de la période suivante. Le biais d'un pays ne se reproduit pas d'une période à l'autre — corrélation de 0,01 entre 1990-2007 et 2008-2020 ; la Chine passe de −1,9 à +1,0 point, l'Inde de −0,5 à +1,8.
+
+Ce n'est pas une prévision corrigée, mais la marge d'erreur qu'a connue le FMI ; elle porte sur le volume, et serait plus large en dollars courants. Détail pour tous les pays : `data/processed/gdp_projection_bands.csv` et onglet `Fourchettes_2031` du classeur Excel.
 
 **Autres indicateurs : lire les médianes.** La référence Banque Mondiale n'existe que pour la croissance du PIB : pour `pcpi_pch` (inflation) et `bca_gdp_bp6` (balance courante), seule la ré-estimation du FMI sert de référence. Pour l'inflation, les moyennes ne décrivent pas l'erreur typique : quelques projections d'hyperinflation (le Venezuela à 10 000 000 %) portent le biais moyen au-delà de 1 600 points à un an, quand la médiane reste à −0,1 point. La synthèse fournit donc aussi `mediane` et `erreur_absolue_mediane`, et le script avertit dès que l'erreur absolue moyenne dépasse dix fois la médiane.
 
@@ -330,7 +334,10 @@ Pour chaque rapport (`data/` et `outputs/` ; `plus_recent/` pour le plus récent
 | `data/processed/weo_world_bias_<indicateur>.csv` | Biais de l'agrégat mondial du FMI, par horizon |
 | `data/processed/weo_level_evaluation_ngdp_rpch.csv` | Erreur sur le niveau du PIB, par pays, édition et horizon |
 | `data/processed/weo_level_bias_ngdp_rpch.csv`, `weo_level_bias_by_income_ngdp_rpch.csv` | Erreur de niveau par horizon (quantiles, parts), et par groupe de revenu |
+| `data/processed/weo_forecast_efficiency_<indicateur>.csv` | Test d'efficience (pente du réalisé sur le prévu) et biais médian par quintile de prévision |
+| `data/processed/weo_level_bias_by_projected_growth_ngdp_rpch.csv` | Erreur de niveau par classe de croissance projetée |
 | `data/processed/gdp_projection_bands.csv` | Fourchette empirique autour du PIB projeté, par pays |
+| `data/processed/gdp_projection_bands_calibration.csv` | Test rétrospectif des fourchettes : part des erreurs contenues |
 | `outputs/gdp_master_dataset.xlsx` | Classeur multi-onglets (voir ci-dessous) |
 | `outputs/resultats_gdp.html` | Page de résultats autonome, commentée |
 | `outputs/gdp_dashboard_interactive.html` | Tableau de bord interactif (Plotly) |
@@ -359,7 +366,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 
 ## ✅ Tests des invariants
 
-121 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
+129 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
 
 | Invariant | Ce qu'il empêche |
 |---|---|
@@ -380,7 +387,8 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 | Une édition lue dans l'API n'est nommée que si l'horizon servi le confirme ; complément cumulatif, classeur prioritaire | Des prévisions d'octobre attribuées à avril, ou une édition perdue quand l'API cesse de la servir |
 | Biais pondéré par le PIB ; intervalle groupé par année visée ; récessions exclues à part | Un biais « d'un point » valant pour le pays moyen, présenté comme mondial et précis |
 | Erreur de niveau : croissances enchaînées, interrompues au premier réalisé manquant | Un niveau « réalisé » reconstitué par-dessus une année inconnue |
-| Fourchette : historique du pays si assez long, sinon du groupe ; bornes dans le bon sens | La marge d'une petite économie volatile appliquée aux États-Unis, ou une fourchette inversée |
+| Fourchette par classe de croissance projetée et groupe de revenu, calibration vérifiée sur une période ultérieure ; bornes dans le bon sens | Une fourchette tirée d'un biais national qui ne se reproduit pas, ou une fourchette inversée |
+| Pente d'efficience et croissance cumulée projetée exactes | Un biais mesuré sans tenir compte de l'ampleur de la croissance annoncée |
 | Prévision naïve limitée à ce que le FMI savait ; avril et octobre séparés ; monde contre le seul FMI | Un étalon qui voit l'avenir, deux éditions confondues, ou un biais mondial gonflé par une pondération différente |
 | Archive : chaque édition une seule fois, telle que servie | Une publication d'époque remplacée par une version corrigée après coup |
 

@@ -22,7 +22,7 @@ from datetime import datetime
 import pandas as pd
 
 from pib.gdp_pipeline import unified_csv_path
-from pib.evaluate_forecasts import GROUPES_REVENU, ANNEES_RECESSION_MONDIALE
+from pib.evaluate_forecasts import GROUPES_REVENU, ANNEES_RECESSION_MONDIALE, GRANDES_ECONOMIES
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -317,6 +317,24 @@ def complements_previsions(processed: str, hmax: int) -> str:
     ({nb(t.loc[hmax, "eam_naif"], 2)} point).</p>
 {bloc_table(["Horizon", "Erreur absolue FMI", "Erreur absolue naïve", "FMI plus proche du réalisé"], corps)}"""
 
+    efficience_csv = os.path.join(processed, "weo_forecast_efficiency_ngdp_rpch.csv")
+    if os.path.exists(efficience_csv):
+        t = pd.read_csv(efficience_csv).set_index("horizon")
+        if 1 in t.index and hmax in t.index and "biais_median_q5" in t.columns:
+            corps = [[f'<td class="num">{int(h)}</td>', f'<td class="num">{nb(r["pente"], 2)}</td>',
+                      f'<td class="num">{signe(r["biais_median_q1"])} pt</td>',
+                      f'<td class="num">{signe(r["biais_median_q5"])} pt</td>'] for h, r in t.iterrows()]
+            html += f"""
+    <p class="col">Le biais n'est pas uniforme : plus le FMI annonce de croissance, plus il
+    surestime. Si les prévisions étaient bien calibrées, le réalisé suivrait un à un les écarts de
+    croissance annoncés d'un pays à l'autre ; la droite du réalisé sur le prévu aurait une pente
+    de 1. Elle vaut {nb(t.loc[1, "pente"], 2)} à un an et {nb(t.loc[hmax, "pente"], 2)} à {hmax} ans.
+    À cet horizon, le biais médian va de {signe(t.loc[hmax, "biais_median_q1"])} point pour le
+    cinquième des prévisions les plus modestes à {signe(t.loc[hmax, "biais_median_q5"])} pour le
+    cinquième des plus fortes.</p>
+{bloc_table(["Horizon", "Pente du réalisé sur le prévu", "Biais médian, prévisions les plus faibles",
+             "Biais médian, prévisions les plus fortes"], corps)}"""
+
     monde_csv = os.path.join(processed, "weo_world_bias_ngdp_rpch.csv")
     if os.path.exists(monde_csv):
         t = pd.read_csv(monde_csv).set_index("horizon")
@@ -468,6 +486,17 @@ def section_niveaux(data_dir: str, figure_uri) -> str:
         if phrase:
             revenu_phrase = f" Selon le niveau de revenu, l'erreur médiane à {horizon} ans va {phrase}."
 
+    croissance_csv = os.path.join(processed, "weo_level_bias_by_projected_growth_ngdp_rpch.csv")
+    if os.path.exists(croissance_csv):
+        t = pd.read_csv(croissance_csv)
+        t = t[t["horizon"] == horizon].sort_values("classe_de_croissance")
+        if len(t) >= 2:
+            bas, haut = t.iloc[0], t.iloc[-1]
+            revenu_phrase += (f" Surtout, elle croît avec la croissance projetée : {signe(bas['mediane'], 1)} % "
+                              f"pour les projections les plus modestes (croissance cumulée médiane de "
+                              f"{nb(bas['croissance_projetee_mediane_pct'])} %), {signe(haut['mediane'], 1)} % pour "
+                              f"les plus fortes ({nb(haut['croissance_projetee_mediane_pct'])} %).")
+
     bm = niveaux[niveaux["reference"].str.startswith("Banque")].set_index("horizon")
     recoupement = (f" Contre la série observée de la Banque Mondiale, elle est de {signe(bm.loc[horizon, 'mediane'], 1)} %."
                    if horizon in bm.index else "")
@@ -503,17 +532,28 @@ def section_niveaux(data_dir: str, figure_uri) -> str:
 """
 
 
+def qualifier_couverture(couverture: float, cible: float) -> str:
+    """Une fourchette qui contient bien plus (moins) d'erreurs que visé est prudente (étroite)."""
+    if couverture > cible + 5:
+        return "prudentes"
+    if couverture < cible - 5:
+        return "trop étroites"
+    return "justes"
+
+
 def section_fourchettes(data_dir: str, synthese: pd.DataFrame, c: dict, f: int) -> str:
     """
     Section « projections à l'aune des erreurs passées » : fourchette empirique autour du
-    PIB en volume projeté, pour les dix premières économies. Omise sans fourchettes.
+    PIB en volume projeté, pour les dix premières économies, et sa calibration. Omise sans
+    fourchettes.
     """
-    chemin = os.path.join(data_dir, "processed", "gdp_projection_bands.csv")
+    processed = os.path.join(data_dir, "processed")
+    chemin = os.path.join(processed, "gdp_projection_bands.csv")
     if not os.path.exists(chemin):
         return ""
     bandes = pd.read_csv(chemin).set_index("country_code")
     niveau, bas, haut = (f"GDP_Reel_{f}_Billion_USD_2015", f"GDP_Reel_{f}_Bas", f"GDP_Reel_{f}_Haut")
-    if niveau not in bandes.columns:
+    if niveau not in bandes.columns or "croissance_projetee_pct" not in bandes.columns:
         return ""
     tete = [code for code in synthese.dropna(subset=[c["rang"]]).nsmallest(10, c["rang"])["country_code"]
             if code in bandes.index]
@@ -521,38 +561,53 @@ def section_fourchettes(data_dir: str, synthese: pd.DataFrame, c: dict, f: int) 
         return ""
     horizon = int(bandes["horizon"].iloc[0])
     edition = f - horizon
-    sous_projection = [code for code in tete if bandes.loc[code, "borne_haute_pct"] < 0]
-    propre = int((bandes["historique_de_reference"] == "pays").sum())
+    liees = bandes.dropna(subset=["croissance_projetee_pct"])
+    penchant = (" Plus la croissance projetée est forte, plus la fourchette penche vers le bas."
+                if len(liees) > 2 and liees["croissance_projetee_pct"].corr(liees["borne_haute_pct"]) < 0 else "")
 
     corps = [[
         f'<td class="name">{bandes.loc[code, "country_name"]}</td>',
+        f'<td class="num">{signe(bandes.loc[code, "croissance_projetee_pct"], 1)} %</td>',
         f'<td class="num">{nb(bandes.loc[code, niveau])}</td>',
         f'<td class="num">{nb(bandes.loc[code, bas])} – {nb(bandes.loc[code, haut])}</td>',
         f'<td class="num">{signe(bandes.loc[code, "borne_basse_pct"], 1)} à {signe(bandes.loc[code, "borne_haute_pct"], 1)} %</td>',
-        f'<td class="name">{"historique du pays" if bandes.loc[code, "historique_de_reference"] == "pays" else pays_du_groupe(bandes.loc[code, "historique_de_reference"])}</td>',
     ] for code in tete]
 
-    # Fourchette entièrement sous la projection : 10e centile des erreurs passées positif,
-    # donc au moins 90 % des niveaux passés surestimés
-    noms = et([bandes.loc[code, "country_name"] for code in sous_projection]) if sous_projection else ""
-    constat = (f"Pour {noms}, la fourchette se situe entièrement sous la projection du FMI : leur "
-               f"niveau à {horizon} ans a été surestimé dans au moins 90 % des cas passés."
-               if sous_projection else
-               "Pour aucune des dix premières économies la fourchette ne se situe entièrement sous la projection.")
+    calibration = ""
+    calibration_csv = os.path.join(processed, "gdp_projection_bands_calibration.csv")
+    if os.path.exists(calibration_csv):
+        cal = pd.read_csv(calibration_csv)
+        retenue, pays = cal[cal["retenue"]], cal[cal["methode"] == "historique du pays"]
+        if len(retenue) and len(pays):
+            r, cible = retenue.iloc[0], retenue.iloc[0]["cible_pct"]
+            par_pays = pays.iloc[0]["couverture_pct"]
+            constat_pays = (" : le biais propre à un pays ne se reproduit pas d'une période à l'autre"
+                            if par_pays < r["couverture_pct"] - 5 else "")
+            calibration = f"""
+    <p class="col">Ces fourchettes sont éprouvées sur le passé : calculées sur les éditions
+    {r["editions_de_calcul"]}, elles ont contenu {nb(r["couverture_pct"])} % des erreurs des éditions
+    {r["editions_de_test"]}, pour une cible de {nb(cible)} %. Elles sont
+    {qualifier_couverture(r["couverture_grandes_economies_pct"], cible)} pour les {GRANDES_ECONOMIES}
+    premières économies, dont elles ont contenu {nb(r["couverture_grandes_economies_pct"])} % des erreurs,
+    et {qualifier_couverture(r["couverture_faible_revenu_pct"], cible)} pour les pays à faible revenu
+    ({nb(r["couverture_faible_revenu_pct"])} %). Tirées de l'historique de chaque pays, elles n'en auraient
+    contenu que {nb(par_pays)} %{constat_pays}.</p>"""
 
     return f"""
   <section>
     <div class="sec-head col"><h2>Les projections {f} à l'aune des erreurs passées</h2></div>
     <p class="col">Les projections {f} de ce rapport viennent de l'édition {edition} du WEO, à
-    {horizon} ans d'horizon. Appliquer à chacune les erreurs de niveau commises par le passé au même
-    horizon donne une fourchette : celle où seraient tombés 80 % des cas comparables. {constat}</p>
-{bloc_table(["Pays", f"PIB {f} projeté", "Fourchette", "Écart à la projection", "Erreurs passées retenues"], corps)}
+    {horizon} ans d'horizon. Appliquer à chacune les erreurs de niveau commises par le passé, au même
+    horizon, sur des projections comparables — même ampleur de croissance projetée, même groupe de
+    revenu — donne une fourchette : celle où seraient tombés 80 % des cas.{penchant}</p>
+{bloc_table(["Pays", f"Croissance projetée {edition}-{f}", f"PIB {f} projeté", "Fourchette", "Écart à la projection"], corps)}{calibration}
     <p class="col note">PIB en volume, milliards de dollars constants de 2015. Fourchette : 10ᵉ à 90ᵉ
-    centile des erreurs de niveau passées à {horizon} ans, celles du pays lui-même s'il en compte sur
-    au moins vingt années visées ({propre} pays), sinon celles de son groupe de revenu. Ce n'est pas une
-    prévision corrigée, mais la marge d'erreur qu'a connue le FMI ; en dollars courants, elle serait
-    plus large. Détail pour tous les pays : <code>data/processed/gdp_projection_bands.csv</code> et
-    onglet <code>Fourchettes_{f}</code> du classeur Excel.</p>
+    centile des erreurs de niveau passées à {horizon} ans, parmi les projections de la même classe de
+    croissance cumulée projetée (cinq classes de même effectif) et du même groupe de revenu. Ce n'est
+    pas une prévision corrigée, mais la marge d'erreur qu'a connue le FMI ; en dollars courants, elle
+    serait plus large. Détail pour tous les pays : <code>data/processed/gdp_projection_bands.csv</code>,
+    onglet <code>Fourchettes_{f}</code> du classeur Excel, et test rétrospectif dans
+    <code>gdp_projection_bands_calibration.csv</code>.</p>
   </section>
 """
 
