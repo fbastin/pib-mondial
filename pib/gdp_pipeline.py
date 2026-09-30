@@ -24,7 +24,8 @@ from typing import Optional
 import pandas as pd
 import numpy as np
 
-from pib.fetch_historical_gdp import fetch_all_historical_gdp, WB_INDICATORS, WB_LAST_UPDATED
+from pib.fetch_historical_gdp import (fetch_all_historical_gdp, fetch_world_per_capita_growth,
+                                     WB_INDICATORS, WB_LAST_UPDATED)
 from pib.fetch_forecast_gdp import fetch_all_forecasts, IMF_INDICATORS, IMF_API_INFO, BASE_URL
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -647,7 +648,7 @@ def _journal_resume():
 
 
 def compute_report(df_hist: pd.DataFrame, df_fcst: pd.DataFrame,
-                   start_year: int, end_year: int, fcst_end: int) -> dict:
+                   start_year: int, end_year: int, fcst_end: int, monde: Optional[pd.Series] = None) -> dict:
     """
     Calcule un rapport complet pour une dernière année observée, sans rien écrire.
 
@@ -671,7 +672,7 @@ def compute_report(df_hist: pd.DataFrame, df_fcst: pd.DataFrame,
                         "Les colonnes correspondantes resteront vides.")
 
     return {"years": years, "hist": hist, "fcst": fcst, "unified": unified,
-            "summary": compute_country_summary(unified, years)}
+            "summary": compute_country_summary(unified, years), "monde": monde}
 
 
 def ranked_countries(report: dict) -> set:
@@ -695,6 +696,9 @@ def write_report(report: dict, data_dir: str, output_dir: str, rapport: dict) ->
         f"gdp_unified_{start_year}_{fcst_end}.csv": report["unified"],
         "gdp_country_summary.csv": report["summary"],
     }
+    # Croissance mondiale par habitant depuis 1961 : les récessions mondiales et leur fréquence
+    if report.get("monde") is not None:
+        fichiers["world_gdp_per_capita_growth.csv"] = report["monde"].reset_index()
     for nom, df in fichiers.items():
         df.to_csv(os.path.join(processed_dir, nom), index=False, encoding="utf-8-sig")
     logging.info(f"Fichiers CSV générés dans {processed_dir} : {', '.join(fichiers)}")
@@ -768,6 +772,11 @@ def run_pipeline(start_year: int = 2000, end_year: Optional[int] = None, fcst_st
     if df_hist.empty:
         raise RuntimeError("L'extraction historique n'a rien produit. Annulation du pipeline.")
     derniere = end_year or latest_observed_year(df_hist)
+    try:
+        monde = fetch_world_per_capita_growth(end_year=derniere)
+    except RuntimeError as e:
+        logging.warning(f"{e} Les probabilités de récession ne traiteront pas les crises mondiales à part.")
+        monde = None
 
     # 2. Extraction prévisions (le WEO couvre aussi les années observées), jusqu'à
     # l'horizon de l'édition si aucune borne n'est imposée
@@ -794,7 +803,7 @@ def run_pipeline(start_year: int = 2000, end_year: Optional[int] = None, fcst_st
     # 3. Rapport unique si la dernière année observée est imposée
     if end_year is not None:
         logging.info(f"--- 3. Rapport unique, historique jusqu'en {end_year} ---")
-        write_report(compute_report(df_hist, df_fcst, start_year, end_year, fcst_end),
+        write_report(compute_report(df_hist, df_fcst, start_year, end_year, fcst_end, monde),
                      data_dir, output_dir, {"type": "unique"})
         _retirer_rapport_recent(data_dir, output_dir)
         logging.info("Pipeline terminé avec succès !")
@@ -824,7 +833,7 @@ def run_pipeline(start_year: int = 2000, end_year: Optional[int] = None, fcst_st
     # 4. Rapport de référence, à l'emplacement habituel
     logging.info(f"--- 4. Rapport de référence : historique jusqu'en {reference} ---")
     recent = derniere != reference
-    write_report(compute_report(df_hist, df_fcst, start_year, reference, fcst_end), data_dir, output_dir,
+    write_report(compute_report(df_hist, df_fcst, start_year, reference, fcst_end, monde), data_dir, output_dir,
                  {"type": "reference", **choix, "autre_rapport": SOUS_DOSSIER_RECENT if recent else None})
 
     # 5. Rapport le plus récent, s'il diffère
@@ -832,7 +841,7 @@ def run_pipeline(start_year: int = 2000, end_year: Optional[int] = None, fcst_st
         sans_rang = sorted(noms.get(c, c) for c in classes[reference] - classes[derniere])
         logging.info(f"--- 5. Rapport le plus récent : historique jusqu'en {derniere} "
                      f"(sans rang faute de donnée {derniere} : {' ; '.join(sans_rang)}) ---")
-        write_report(compute_report(df_hist, df_fcst, start_year, derniere, fcst_end),
+        write_report(compute_report(df_hist, df_fcst, start_year, derniere, fcst_end, monde),
                      os.path.join(data_dir, SOUS_DOSSIER_RECENT),
                      os.path.join(output_dir, SOUS_DOSSIER_RECENT),
                      {"type": "plus_recent", **choix, "autre_rapport": "..",

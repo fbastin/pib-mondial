@@ -237,7 +237,7 @@ Voir aussi [KrugerPlett2024], des intervalles pour les prévisions à date fixe 
   - couverture par cellule et par édition ;
   - bootstrap par blocs d'années visées ;
   - calibration en temps réel, édition par édition, plutôt qu'une coupure unique en 2007.
-- **Le niveau des probabilités de récession :** trop basses sur 2000-2019, parce qu'elles dépendent des crises de la période d'apprentissage. À discuter, ou à corriger (fréquence des crises mondiales traitée à part).
+- **Le niveau des probabilités de récession :** corrigé en traitant à part les crises mondiales (fréquence sur l'historique depuis 1961). La compétence passe de 7,2 à 11,8 %, mais les probabilités restent un peu basses (41 % pour 49 %) : avant 2009, le seul exemple de crise était 1991, modérée. À discuter dans l'article.
 - **Le biais hors années de recul de chaque pays :** le publier, avec sa limite mécanique.
 - **Nos corrélations de révisions :** les expliquer face à celles d'An et al. (2018) et d'Aktuğ et Rezghi (2025).
 - **La propagation au trafic :**

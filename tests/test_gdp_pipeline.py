@@ -41,6 +41,18 @@ from pib.visualize_gdp import detect_years
 PROCESSED = os.path.join("data", "processed")
 
 
+@pytest.fixture(autouse=True)
+def sans_reseau_monde(monkeypatch):
+    """
+    Le pipeline collecte la croissance mondiale par habitant : les tests restent hors
+    ligne avec une série simulée (reculs en 1975, 1982, 1991, 2009 et 2020).
+    """
+    serie = pd.Series({a: (-1.0 if a in (1975, 1982, 1991, 2009, 2020) else 2.0) for a in range(1961, 2026)},
+                      name="croissance_pib_mondial_par_habitant")
+    serie.index.name = "year"
+    monkeypatch.setattr(gdp_pipeline, "fetch_world_per_capita_growth", lambda end_year=None: serie)
+
+
 # ---------------------------------------------------------------- fixtures
 
 def _historique() -> pd.DataFrame:
@@ -1533,6 +1545,55 @@ class TestCalibrationEnTempsReel:
         commun = cas_communs(p)
         assert set(commun["annee_millesime"]) == {2004, 2005, 2006}
         assert commun.groupby(["country_code", "annee_millesime", "year"])["methode"].nunique().eq(5).all()
+
+    def test_recessions_mondiales_et_leur_frequence(self):
+        """Reculs en 1975, 1982, 1991 : sur 1961-1998, part des périodes de 5 ans qui en contiennent un."""
+        from pib.evaluate_forecasts import recessions_mondiales, probabilite_crise_mondiale, periodes_en_crise
+        monde = pd.Series({a: (-1.0 if a in (1975, 1982, 1991, 2009) else 2.0) for a in range(1961, 2011)})
+        assert recessions_mondiales(monde, jusqu_a=1998) == [1975, 1982, 1991]
+        periodes = [any(a <= r <= a + 4 for r in (1975, 1982, 1991)) for a in range(1961, 1995)]
+        assert probabilite_crise_mondiale(monde, 5, jusqu_a=1998) == pytest.approx(np.mean(periodes))
+        assert list(periodes_en_crise(pd.Series([2003, 2004, 2009]), 5, [2009])) == [False, True, False]
+
+    def test_probabilite_avec_crises_mondiales_a_part(self):
+        """
+        Périodes passées en crise mondiale : recul toujours ; hors crise : jamais. La
+        probabilité vaut alors la part des périodes de 5 ans en crise sur l'historique long.
+        """
+        from pib.evaluate_forecasts import fourchettes_projections, probabilite_crise_mondiale
+        monde = pd.Series({a: (-1.0 if a in (1982, 1991, 2009) else 2.0) for a in range(1961, 2026)})
+        niveaux = TestFourchettesDesProjections._niveaux()
+        crise = [any(m + 1 <= r <= m + 5 for r in (1982, 1991, 2009)) for m in niveaux["annee_millesime"]]
+        niveaux["pire_croissance_realisee"] = np.where(crise, -2.0, 1.0)
+        bandes = fourchettes_projections(niveaux, pd.Series({"LEN": 10.0, "VIF": 55.0}),
+                                         TestFourchettesDesProjections._synthese(), 2031, 2026, monde).set_index("country_code")
+        pi = probabilite_crise_mondiale(monde, 5) * 100
+        assert bandes.loc["LEN", "probabilite_crise_mondiale_pct"] == pytest.approx(pi, abs=1e-2)
+        assert bandes.loc["LEN", "probabilite_recul_si_crise_mondiale_pct"] == pytest.approx(100.0)
+        assert bandes.loc["LEN", "probabilite_recul_hors_crise_mondiale_pct"] == pytest.approx(0.0)
+        assert bandes.loc["LEN", "probabilite_recul_pct"] == pytest.approx(pi, abs=1e-2)
+
+    def test_crises_mondiales_connues_a_la_date_de_l_edition(self):
+        """
+        Édition 2005 : une récession mondiale de 2003 n'est connue qu'à partir de l'édition
+        2005 (v − 2), celle de 2004 pas encore ; elle ne peut peser sur sa probabilité.
+        """
+        from pib.calibration import previsions_en_temps_reel, METHODE_MELANGE
+        niveaux = self._niveaux()
+        niveaux.loc[niveaux["annee_millesime"] == 1999, "pire_croissance_realisee"] = -1.0   # période 2000-2004 : recul partout
+        sans = pd.Series({a: 2.0 for a in range(1961, 2010)})
+        avec_2004 = sans.copy(); avec_2004[2004] = -1.0
+        p1 = previsions_en_temps_reel(niveaux, horizon=5, premiere=2005, monde=sans)
+        p2 = previsions_en_temps_reel(niveaux, horizon=5, premiere=2005, monde=avec_2004)
+        m1 = p1[(p1["methode"] == METHODE_MELANGE) & (p1["annee_millesime"] == 2005)]["proba_recul"]
+        m2 = p2[(p2["methode"] == METHODE_MELANGE) & (p2["annee_millesime"] == 2005)]["proba_recul"]
+        assert list(m1) == pytest.approx(list(m2))
+        # Édition 2006 : récession de 2004 connue ; probabilité de crise tirée de l'historique jusqu'en 2004
+        # seulement ; recul toujours dans la période en crise (édition 1999), une fois sur deux ailleurs
+        from pib.evaluate_forecasts import probabilite_crise_mondiale
+        pi = probabilite_crise_mondiale(avec_2004, 5, jusqu_a=2004)
+        m6 = p2[(p2["methode"] == METHODE_MELANGE) & (p2["annee_millesime"] == 2006)]["proba_recul"]
+        assert np.allclose(m6, pi * 1.0 + (1 - pi) * 0.5)
 
     def test_brier_et_competence(self):
         """Une probabilité juste (1 ou 0 selon le recul) a une compétence de 1 face à la fréquence moyenne."""

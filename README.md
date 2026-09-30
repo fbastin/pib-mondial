@@ -131,7 +131,7 @@ jupyter nbconvert --to html --execute --ExecutePreprocessor.kernel_name=julia-1.
 ### Tests
 
 ```bash
-pytest                      # 173 tests, sans accès réseau
+pytest                      # 176 tests, sans accès réseau
 pytest -m "not donnees"     # sans les contrôles sur les fichiers produits
 ```
 
@@ -326,10 +326,10 @@ Le FMI apporte beaucoup sur l'année en cours ; à 5 ans — l'horizon des proje
 | PIB en volume 2031 | Croissance projetée 2026-2031 | Écart à la projection (80 % des cas passés) | Au moins une année de recul 2027-2031 |
 |---|---|---|---|
 | États-Unis | +12,5 % | −11,9 à +6,9 % | 65 % |
-| Chine | +25,0 % | −16,2 à +8,7 % | 46 % |
+| Chine | +25,0 % | −16,2 à +8,7 % | 47 % |
 | Allemagne, Japon, France, Royaume-Uni | +4 à +9 % | −11,9 à +6,9 % | 65 % |
 | Inde | +46,0 % | **−21,8 à +4,8 %** | 23 % |
-| Indonésie | +35,1 % | −19,3 à +7,4 % | 42 % |
+| Indonésie | +35,1 % | −19,3 à +7,4 % | 46 % |
 
 Plus la croissance projetée est forte, plus la fourchette penche vers le bas. **Ces fourchettes sont éprouvées sur le passé** : calculées sur les éditions 1990-2007, elles ont contenu 83 % des erreurs des éditions 2008-2019, pour une cible de 80 % (`gdp_projection_bands_calibration.csv`, refait à chaque exécution). Elles sont prudentes pour les vingt premières économies (94 %) et justes pour les pays à faible revenu (78 %). La dernière colonne vient des mêmes projections comparables : la part où il est survenu au moins une année de recul dans les cinq années suivant l'édition (voir ci-dessous).
 
@@ -345,7 +345,12 @@ Plus la croissance projetée est forte, plus la fourchette penche vers le bas. *
 
 - **Les fourchettes poolées sont calibrées en temps réel en moyenne**, mais leur couverture dépend des chocs que traverse chaque fenêtre de cinq ans : de 66 % (édition 2003, qui sous-estimait l'essor d'avant 2008) à 86 % (édition 2014), 70 % pour l'édition 2015, dont la fenêtre inclut 2020.
 - **Le choix des projections comparables compte par le groupe de revenu, et pondéré par le PIB.** Le score de la méthode retenue est alors meilleur que celui d'une fourchette unique (écart de 2,6, intervalle de 1,6 à 3,4) et de la classe seule (3,4), et équivalent à celui du groupe seul. Sans pondération, les méthodes poolées se valent. Seul l'historique du pays est nettement moins bon.
-- **Probabilités de récession.** En temps réel, elles font mieux qu'une probabilité unique : score de Brier inférieur de 7,2 % (intervalle de 4,5 à 10,2 %), grâce à la classe de croissance (le groupe de revenu n'apporte rien). Bien ordonnées, elles ont été trop basses sur 2000-2019 : 38 % en moyenne, pour 49 % de périodes avec recul, les crises de 2009 et 2020 ayant été plus fréquentes que dans les données d'apprentissage. La trajectoire du FMI, qui n'annonce presque jamais de recul, ferait bien pire (Brier supérieur de 79 %).
+- **Probabilités de récession.** Apprises sur les seules fréquences passées, elles faisaient mieux qu'une probabilité unique (score de Brier inférieur de 7,2 %, grâce à la classe de croissance ; le groupe de revenu n'apporte rien), mais leur niveau dépendait des crises que contenait la période d'apprentissage : 38 % en moyenne sur 2000-2019, pour 49 % de périodes avec recul. **Les crises mondiales sont désormais traitées à part** :
+  - les récessions mondiales sont les reculs du PIB mondial par habitant depuis 1961 (1975, 1982, 1991, 2009, 2020 ; série de la Banque Mondiale, `world_gdp_per_capita_growth.csv`) ;
+  - une période de 5 ans en contient une dans 41 % des cas ;
+  - la probabilité de recul d'un pays mêle sa fréquence dans les périodes passées en crise et hors crise, dans sa cellule, pondérées par cette probabilité.
+
+  En temps réel, la compétence passe de 7,2 à 11,8 % (intervalle de 6,4 à 17,4 %), un gain significatif ; la moyenne remonte à 41 %. La trajectoire du FMI, qui n'annonce presque jamais de recul, ferait bien pire (Brier supérieur de 79 %). En production, les probabilités bougent peu, mais `gdp_projection_bands.csv` donne aussi leurs versions conditionnelles, utiles aux scénarios : États-Unis 98 % de recul si une récession mondiale survient d'ici 2031, 42 % sinon ; Chine 73 % et 29 % ; Inde 29 % et 18 %.
 
 Une première version tirait la fourchette de l'historique propre de chaque pays : elle n'aurait contenu que 67 % des erreurs de la période suivante. Le biais d'un pays ne se reproduit pas d'une période à l'autre — corrélation de 0,01 entre 1990-2007 et 2008-2020 ; la Chine passe de −1,9 à +1,0 point, l'Inde de −0,5 à +1,8.
 
@@ -415,7 +420,8 @@ Pour chaque rapport (`data/` et `outputs/` ; `plus_recent/` pour le plus récent
 | `data/processed/wdi_growth_revisions.csv`, `wdi_level_revisions.csv` | Révisions de la croissance et du niveau de la Banque Mondiale depuis leur première publication, par délai et groupe de revenu |
 | `data/processed/wdi_largest_level_revisions.csv` | Plus fortes révisions du niveau parmi les 50 premières économies |
 | `data/processed/weo_forecast_bias_by_reference_ngdp_rpch.csv` | Biais du FMI contre sa ré-estimation, la Banque Mondiale en temps réel et sa série actuelle |
-| `data/processed/gdp_projection_bands.csv` | Fourchette empirique autour du PIB projeté, et probabilité d'une année de recul, par pays |
+| `data/processed/gdp_projection_bands.csv` | Fourchette empirique autour du PIB projeté, et probabilité d'une année de recul, par pays : globale, et selon qu'une récession mondiale survient ou non |
+| `data/processed/world_gdp_per_capita_growth.csv` | Croissance du PIB mondial par habitant depuis 1961 (Banque Mondiale) : les récessions mondiales |
 | `data/processed/weo_cas_<année>_*.csv` | Cas d'étude d'une récession mondiale, sur demande (`pib.cas_de_crise`) : croissance, reculs annoncés, rebond, niveaux ; avec `--trafic`, trafic aérien face au PIB (par pays, régressions, part expliquée) |
 | `data/processed/gdp_projection_bands_calibration.csv` | Test rétrospectif des fourchettes : part des erreurs contenues |
 | `data/processed/gdp_bands_realtime_scores.csv`, `…_coverage_by_cell.csv`, `…_coverage_by_edition.csv` | Fourchettes éprouvées en temps réel : couverture, largeur, score d'intervalle, CRPS par méthode, avec intervalles de confiance ; couverture par cellule et par édition |
@@ -448,7 +454,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 
 ## ✅ Tests des invariants
 
-173 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
+176 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
 
 | Invariant | Ce qu'il empêche |
 |---|---|
@@ -477,6 +483,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 | Récessions : pire année des horizons 1 à h, interrompue au premier réalisé manquant ; premières économies comptées par édition | Un recul de l'année de l'édition compté comme imprévu, ou « 20 premières économies » qui n'en comptaient que 10 |
 | Révisions entre éditions consécutives seulement, étapes dans l'ordre ; historique contrôlé sur une année observée | Une révision calculée par-dessus une édition manquante, ou une révision de l'inflation prévue prise pour un changement d'année de base |
 | Commentaires de la page déduits des chiffres | Une conclusion écrite d'avance que la prochaine édition démentirait |
+| Crises mondiales à part : récessions et historique mondial connus à la date de l'édition ; repli sans période en crise ; mélange pondéré dans le bon sens | Une probabilité qui connaît les crises à venir, ou vide faute d'exemple |
 | Calibration en temps réel : aucune erreur encore inconnue à la date de l'édition ; score d'intervalle, CRPS et compétence de Brier exacts ; méthodes comparées sur les mêmes cas | Une calibration flatteuse parce qu'elle voit l'avenir, ou des méthodes comparées sur des échantillons différents |
 | Millésimes des WDI : champs lus par nom, chaque édition archivée une fois, première publication réelle seulement, valeur en temps réel à la fin de l'année suivante | Une révision mesurée depuis une édition qui n'était pas la première, ou une référence « en temps réel » qui connaît l'avenir |
 | Trafic et PIB : JSON-stat d'Eurostat décodé dans le bon ordre ; retard du trafic mesuré sur la tendance, écart de PIB réalisé moins projeté | Un trafic attribué au mauvais pays ou à la mauvaise année, ou une part expliquée de signe inversé |

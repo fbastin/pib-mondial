@@ -120,6 +120,14 @@ MIN_CAS_CELLULE = 100
 ANNEE_COUPURE_CALIBRATION = 2007
 GRANDES_ECONOMIES = 20
 
+# Récessions mondiales : années de recul du PIB mondial réel par habitant, série de la Banque
+# Mondiale depuis 1961 écrite par le pipeline (1975, 1982, 1991, 2009, 2020). Leur fréquence
+# sur cet historique long, plutôt que dans les seules périodes couvertes par les éditions du
+# WEO, fixe le poids des crises dans la probabilité de recul d'un pays : éprouvée en temps
+# réel, une probabilité apprise sans ce découpage dépend des crises que contenait la période
+# d'apprentissage (voir `pib.calibration`).
+FICHIER_MONDE = "world_gdp_per_capita_growth.csv"
+
 # Test d'efficience : la droite est ajustée sans le 1 % de valeurs extrêmes de chaque côté
 # (croissances de guerre ou d'après-guerre, hors de portée de toute prévision)
 QUANTILES_ROGNAGE = (0.01, 0.99)
@@ -653,7 +661,7 @@ def _choisir(par_cellule, par_classe, ensemble, classe, groupe):
 
 
 def fourchettes_projections(niveaux: pd.DataFrame, croissance_actuelle: pd.Series, synthese_pays: pd.DataFrame,
-                            annee_fin: int, annee_edition: int) -> pd.DataFrame:
+                            annee_fin: int, annee_edition: int, monde: Optional[pd.Series] = None) -> pd.DataFrame:
     """
     Fourchette empirique autour du PIB en volume projeté pour `annee_fin`.
 
@@ -673,6 +681,12 @@ def fourchettes_projections(niveaux: pd.DataFrame, croissance_actuelle: pd.Serie
     survenu au moins une année de recul entre l'année suivant l'édition et `annee_fin`,
     quand la trajectoire du FMI n'en montre presque jamais ; `pire_annee_mediane_pct` en
     donne la profondeur typique.
+
+    Avec `monde` (croissance mondiale par habitant depuis 1961), les crises mondiales sont
+    traitées à part : la probabilité mêle la fréquence des reculs dans les périodes passées
+    qui contenaient une récession mondiale (`probabilite_recul_si_crise_mondiale_pct`) et
+    dans les autres (`…_hors_crise_mondiale_pct`), pondérées par la part des périodes de
+    même durée qui en contiennent une sur l'historique long (`probabilite_crise_mondiale_pct`).
     """
     horizon = annee_fin - annee_edition
     colonne = "erreur_niveau_vs_fmi_pct"
@@ -690,6 +704,11 @@ def fourchettes_projections(niveaux: pd.DataFrame, croissance_actuelle: pd.Serie
     if "pire_croissance_realisee" in passe.columns:
         ensemble = pd.concat([ensemble, pd.Series(_statistiques_de_recul(passe["pire_croissance_realisee"]))])
     limites = [-np.inf, *bornes, np.inf]
+    melange = None
+    if monde is not None and "pire_croissance_realisee" in passe.columns:
+        crise = periodes_en_crise(passe["annee_millesime"], horizon, recessions_mondiales(monde))
+        pi = probabilite_crise_mondiale(monde, horizon)
+        melange = (pi, frequences_de_recul(passe[crise]), frequences_de_recul(passe[~crise]), frequences_de_recul(passe))
 
     lignes = []
     for _, pays in synthese_pays.dropna(subset=[niveau]).iterrows():
@@ -705,6 +724,13 @@ def fourchettes_projections(niveaux: pd.DataFrame, croissance_actuelle: pd.Serie
         # Erreur passée élevée (p90) -> réalisé bien en dessous : borne basse, et inversement
         borne_basse = (1 / (1 + q["haut"] / 100) - 1) * 100
         borne_haute = (1 / (1 + q["bas"] / 100) - 1) * 100
+        recul = {"probabilite_recul_pct": q.get("recul", np.nan)}
+        if melange is not None:
+            proba, f_crise, f_hors = probabilite_de_recul(melange, classe, groupe)
+            recul = {"probabilite_recul_pct": proba * 100,
+                     "probabilite_recul_si_crise_mondiale_pct": f_crise * 100,
+                     "probabilite_recul_hors_crise_mondiale_pct": f_hors * 100,
+                     "probabilite_crise_mondiale_pct": melange[0] * 100}
         lignes.append({
             "country_code": pays["country_code"], "country_name": pays["country_name"],
             "income_group": groupe, "horizon": horizon,
@@ -714,7 +740,7 @@ def fourchettes_projections(niveaux: pd.DataFrame, croissance_actuelle: pd.Serie
             "erreur_niveau_p10_pct": q["bas"], "erreur_niveau_mediane_pct": q["mediane"],
             "erreur_niveau_p90_pct": q["haut"],
             "borne_basse_pct": borne_basse, "borne_haute_pct": borne_haute,
-            "probabilite_recul_pct": q.get("recul", np.nan), "pire_annee_mediane_pct": q.get("pire_recul", np.nan),
+            **recul, "pire_annee_mediane_pct": q.get("pire_recul", np.nan),
             niveau: pays[niveau],
             f"GDP_Reel_{annee_fin}_Bas": pays[niveau] * (1 + borne_basse / 100),
             f"GDP_Reel_{annee_fin}_Haut": pays[niveau] * (1 + borne_haute / 100),
@@ -802,6 +828,74 @@ def efficience(evaluation: pd.DataFrame) -> pd.DataFrame:
             ligne[f"biais_median_q{int(k) + 1}"] = (q["valeur"] - q["realise_fmi"]).median()
         lignes.append(ligne)
     return pd.DataFrame(lignes).round(3)
+
+
+def lire_croissance_mondiale(data_dir: str) -> Optional[pd.Series]:
+    """Croissance mondiale par habitant écrite par le pipeline (`FICHIER_MONDE`), ou None."""
+    chemin = os.path.join(data_dir, "processed", FICHIER_MONDE)
+    if not os.path.exists(chemin):
+        return None
+    t = pd.read_csv(chemin)
+    return t.set_index("year").iloc[:, 0]
+
+
+def recessions_mondiales(monde: pd.Series, jusqu_a: int = None) -> list:
+    """Années de recul du PIB mondial par habitant, connues jusqu'à `jusqu_a` inclus."""
+    m = monde if jusqu_a is None else monde[monde.index <= jusqu_a]
+    return [int(a) for a, v in m.items() if v < 0]
+
+
+def probabilite_crise_mondiale(monde: pd.Series, duree: int, jusqu_a: int = None) -> float:
+    """
+    Part des périodes de `duree` années consécutives de l'historique (connu jusqu'à
+    `jusqu_a`) qui contiennent au moins une récession mondiale : la probabilité qu'une
+    période à venir en contienne une.
+    """
+    m = monde if jusqu_a is None else monde[monde.index <= jusqu_a]
+    annees = list(m.index)
+    periodes = [m.loc[a:a + duree - 1].lt(0).any() for a in annees if a + duree - 1 <= annees[-1]]
+    return float(np.mean(periodes)) if periodes else np.nan
+
+
+def periodes_en_crise(annee_millesime: pd.Series, duree: int, recessions: list) -> pd.Series:
+    """Vrai si la période suivant l'édition (années m + 1 à m + duree) contient une récession mondiale."""
+    return annee_millesime.apply(lambda m: any(m + 1 <= a <= m + duree for a in recessions))
+
+
+def frequences_de_recul(cas: pd.DataFrame) -> tuple:
+    """
+    Part des périodes avec au moins une année de recul : par classe de croissance × groupe
+    de revenu (cellules d'au moins `MIN_CAS_CELLULE` cas), par classe, et pour l'ensemble.
+    """
+    recul = (cas["pire_croissance_realisee"] < 0).astype(float)
+    par_cellule = recul.groupby([cas["classe"], cas["income_group"]]).agg(["mean", "size"])
+    par_cellule = par_cellule.loc[par_cellule["size"] >= MIN_CAS_CELLULE, "mean"]
+    return par_cellule, recul.groupby(cas["classe"]).mean(), recul.mean() if len(recul) else np.nan
+
+
+def frequence_de_recul(tables: tuple, classe, groupe) -> float:
+    """Fréquence de la cellule (classe, groupe), à défaut de la classe, à défaut de l'ensemble (NaN si vide)."""
+    par_cellule, par_classe, ensemble = tables
+    if pd.notna(classe) and (classe, groupe) in par_cellule.index:
+        return float(par_cellule.loc[(classe, groupe)])
+    if pd.notna(classe) and classe in par_classe.index:
+        return float(par_classe.loc[classe])
+    return float(ensemble)
+
+
+def probabilite_de_recul(melange: tuple, classe, groupe) -> tuple:
+    """
+    Probabilité de recul, crises mondiales à part : `melange` = (probabilité de crise
+    mondiale, fréquences en crise, fréquences hors crise, fréquences toutes périodes).
+    Sans période passée en crise (ou hors crise) pour l'estimer, la fréquence toutes
+    périodes la remplace. Retourne (probabilité, fréquence en crise, fréquence hors crise).
+    """
+    pi, en_crise, hors_crise, toutes = melange
+    defaut = frequence_de_recul(toutes, classe, groupe)
+    f_crise, f_hors = frequence_de_recul(en_crise, classe, groupe), frequence_de_recul(hors_crise, classe, groupe)
+    f_crise = defaut if pd.isna(f_crise) else f_crise
+    f_hors = defaut if pd.isna(f_hors) else f_hors
+    return pi * f_crise + (1 - pi) * f_hors, f_crise, f_hors
 
 
 def synthese_niveau_par_croissance(niveaux: pd.DataFrame) -> pd.DataFrame:
@@ -1015,8 +1109,11 @@ def evaluer_niveaux(evaluation: pd.DataFrame, base: pd.DataFrame, data_dir: str,
         annee_fin = json.load(f)["bornes"]["prevision"][1]
     annee_edition = int(base["annee_millesime"].max())
     horizon = annee_fin - annee_edition
+    monde = lire_croissance_mondiale(data_dir)
+    if monde is None:
+        logging.warning(f"{FICHIER_MONDE} absent : probabilités de récession sans les crises mondiales à part.")
     fourchettes = fourchettes_projections(niveaux, croissance_projetee_actuelle(base, annee_edition, horizon),
-                                          pd.read_csv(synthese_csv), annee_fin, annee_edition)
+                                          pd.read_csv(synthese_csv), annee_fin, annee_edition, monde)
     if fourchettes.empty:
         return
     calibration = calibration_fourchettes(niveaux, horizon)

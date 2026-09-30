@@ -18,6 +18,7 @@ import sys
 import logging
 import argparse
 import pandas as pd
+from datetime import datetime
 from typing import Dict
 
 from pib.http_utils import get_json
@@ -137,6 +138,24 @@ def fetch_worldbank_indicator(indicator_code: str, start_year: int, end_year: in
     df = pd.DataFrame(records)
     logging.info(f"-> {len(df)} enregistrements récupérés pour {indicator_name}.")
     return df
+
+
+def fetch_world_per_capita_growth(start_year: int = 1961, end_year: int = None) -> pd.Series:
+    """
+    Croissance du PIB mondial réel par habitant (agrégat `WLD`, `NY.GDP.PCAP.KD.ZG`), en %,
+    depuis `start_year` : son recul définit les récessions mondiales (1975, 1982, 1991,
+    2009, 2020), dont la fréquence sert aux probabilités de récession. Lève `RuntimeError`
+    si la série ne peut être obtenue.
+    """
+    end_year = end_year or datetime.now().year
+    reponse = get_json(f"{WB_API}/country/WLD/indicator/NY.GDP.PCAP.KD.ZG",
+                       params={"format": "json", "date": f"{start_year}:{end_year}", "per_page": 1000})
+    if not isinstance(reponse, list) or len(reponse) < 2 or not reponse[1]:
+        raise RuntimeError("Croissance mondiale par habitant indisponible.")
+    serie = pd.Series({int(x["date"]): float(x["value"]) for x in reponse[1] if x["value"] is not None},
+                      name="croissance_pib_mondial_par_habitant").sort_index()
+    serie.index.name = "year"
+    return serie
 
 
 def fetch_all_historical_gdp(start_year: int = 2000, end_year: int = 2024) -> pd.DataFrame:

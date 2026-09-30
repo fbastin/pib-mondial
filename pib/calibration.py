@@ -37,6 +37,12 @@ from pib.evaluate_forecasts import (
     MIN_CAS_CELLULE,
     QUANTILES_FOURCHETTE,
     classes_de_croissance,
+    frequences_de_recul,
+    lire_croissance_mondiale,
+    periodes_en_crise,
+    probabilite_crise_mondiale,
+    probabilite_de_recul,
+    recessions_mondiales,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -53,6 +59,9 @@ TRANCHES_PROBABILITE = np.linspace(0, 1, 11)
 METHODE_RETENUE = "classe × groupe de revenu"
 METHODES = (METHODE_RETENUE, "classe de croissance", "groupe de revenu", "inconditionnelle", "historique du pays")
 METHODE_FMI = "trajectoire du FMI"      # probabilité 0 ou 1 : l'édition annonçait-elle un recul ?
+# Probabilité de recul retenue en production : crises mondiales à part (voir
+# `evaluate_forecasts.fourchettes_projections`). Méthode propre aux probabilités.
+METHODE_MELANGE = "classe × groupe, crises mondiales à part"
 
 COLONNES = ["erreur_niveau_vs_fmi_pct", "croissance_prevue_cumulee_pct", "pire_croissance_realisee",
             "pire_croissance_prevue"]
@@ -106,11 +115,14 @@ def _cellules(entrainement: pd.DataFrame, cles: list) -> dict:
 
 
 def previsions_en_temps_reel(niveaux: pd.DataFrame, horizon: int = HORIZON,
-                             premiere: int = PREMIERE_EDITION_TEST) -> pd.DataFrame:
+                             premiere: int = PREMIERE_EDITION_TEST, monde: pd.Series = None) -> pd.DataFrame:
     """
     Pour chaque cas testé (pays, édition de `premiere` à la dernière dont l'erreur est
     connue) et chaque méthode : bornes de la fourchette, CRPS, probabilité de recul, avec
     l'erreur et le recul réalisés. Une ligne par cas et par méthode.
+
+    Avec `monde`, la méthode `METHODE_MELANGE` ne connaît, à l'édition v, que les
+    récessions mondiales et l'historique mondial jusqu'à v − 2.
     """
     cas = niveaux[niveaux["horizon"] == horizon].dropna(subset=COLONNES).copy()
     derniere = int(cas["annee_millesime"].max())
@@ -130,6 +142,11 @@ def previsions_en_temps_reel(niveaux: pd.DataFrame, horizon: int = HORIZON,
         par_pays = {k: c for k, c in _cellules(entrainement, ["country_code"]).items() if c[2] >= MIN_CAS_PAYS}
         ensemble = (Distribution(entrainement["erreur_niveau_vs_fmi_pct"]),
                     (entrainement["pire_croissance_realisee"] < 0).mean(), len(entrainement))
+        melange = None
+        if monde is not None:
+            crise = periodes_en_crise(entrainement["annee_millesime"], horizon, recessions_mondiales(monde, v - 2))
+            melange = (probabilite_crise_mondiale(monde, horizon, v - 2), frequences_de_recul(entrainement[crise]),
+                       frequences_de_recul(entrainement[~crise]), frequences_de_recul(entrainement))
 
         def choix(ligne) -> dict:
             retenue = (par_cellule.get((ligne.classe, ligne.income_group)) or par_classe.get(ligne.classe) or ensemble)
@@ -153,6 +170,10 @@ def previsions_en_temps_reel(niveaux: pd.DataFrame, horizon: int = HORIZON,
                                "proba_recul": frequence})
             lignes.append({**commun, "methode": METHODE_FMI, "bas": np.nan, "haut": np.nan, "crps": np.nan,
                            "proba_recul": float(ligne.pire_croissance_prevue < 0)})
+            if melange is not None:
+                proba = probabilite_de_recul(melange, ligne.classe, ligne.income_group)[0]
+                lignes.append({**commun, "methode": METHODE_MELANGE, "bas": np.nan, "haut": np.nan, "crps": np.nan,
+                               "proba_recul": proba})
     previsions = pd.DataFrame(lignes)
     if not previsions.empty:
         previsions["couvert"] = previsions["erreur"].between(previsions["bas"], previsions["haut"]).astype(float)
@@ -240,33 +261,48 @@ def couverture_par_periode(previsions: pd.DataFrame) -> pd.DataFrame:
 def scores_recession(previsions: pd.DataFrame, tirages: int = TIRAGES) -> pd.DataFrame:
     """
     Par méthode, sur les cas communs : score de Brier et compétence face à la probabilité
-    inconditionnelle (1 − Brier / Brier inconditionnel), avec intervalles de confiance.
-    La trajectoire du FMI donne une probabilité de 0 ou 1.
+    inconditionnelle (1 − Brier / Brier inconditionnel), avec intervalles de confiance, et
+    gain de Brier sur la classe × groupe sans découpage des crises (positif : la méthode
+    fait mieux). La trajectoire du FMI donne une probabilité de 0 ou 1. `retenue` désigne
+    la méthode de production : crises mondiales à part quand elle est évaluée.
     """
-    methodes = (*METHODES, METHODE_FMI)
+    methodes = tuple(m for m in (*METHODES, METHODE_MELANGE, METHODE_FMI) if m in set(previsions["methode"]))
+    production = METHODE_MELANGE if METHODE_MELANGE in methodes else METHODE_RETENUE
     p = cas_communs(previsions, methodes)
-    reference = p[p["methode"] == "inconditionnelle"].set_index(["country_code", "annee_millesime", "year"])["brier"]
+    cles = ["country_code", "annee_millesime", "year"]
+    reference = p[p["methode"] == "inconditionnelle"].set_index(cles)["brier"]
+    sans_decoupage = p[p["methode"] == METHODE_RETENUE].set_index(cles)["brier"]
     lignes = []
     for methode in methodes:
-        m = p[p["methode"] == methode].set_index(["country_code", "annee_millesime", "year"])
-        table = m.assign(brier_reference=reference).reset_index()
+        m = p[p["methode"] == methode].set_index(cles)
+        table = m.assign(brier_reference=reference, brier_sans_decoupage=sans_decoupage).reset_index()
 
         def stats(t):
-            return {"brier": t["brier"].mean(), "competence": 1 - t["brier"].mean() / t["brier_reference"].mean()}
-        lignes.append({"methode": methode, "retenue": methode == METHODE_RETENUE, "cas": len(table),
+            return {"brier": t["brier"].mean(), "competence": 1 - t["brier"].mean() / t["brier_reference"].mean(),
+                    "gain_sur_classe_groupe": t["brier_sans_decoupage"].mean() - t["brier"].mean()}
+        lignes.append({"methode": methode, "retenue": methode == production, "cas": len(table),
                        "proba_moyenne": table["proba_recul"].mean(), "frequence_observee": table["recul"].mean(),
                        **stats(table), **_bootstrap(table, stats, tirages)})
     return pd.DataFrame(lignes).round(4)
 
 
-def fiabilite_recession(previsions: pd.DataFrame) -> pd.DataFrame:
-    """Fiabilité des probabilités de la méthode retenue : par tranche, probabilité moyenne et fréquence observée."""
-    p = previsions[previsions["methode"] == METHODE_RETENUE]
-    tranche = pd.cut(p["proba_recul"], TRANCHES_PROBABILITE, include_lowest=True)
-    return (p.groupby(tranche, observed=True)
-            .agg(cas=("recul", "size"), proba_moyenne=("proba_recul", "mean"), frequence_observee=("recul", "mean"))
-            .reset_index().rename(columns={"proba_recul": "tranche"}).assign(tranche=lambda t: t["tranche"].astype(str))
-            .round(3))
+def fiabilite_recession(previsions: pd.DataFrame, methodes=(METHODE_RETENUE, METHODE_MELANGE)) -> pd.DataFrame:
+    """Fiabilité des probabilités, par méthode et tranche : probabilité moyenne et fréquence observée."""
+    tables = []
+    for methode in methodes:
+        p = previsions[previsions["methode"] == methode]
+        if p.empty:
+            continue
+        tranche = pd.cut(p["proba_recul"], TRANCHES_PROBABILITE, include_lowest=True)
+        tables.append(p.groupby(tranche, observed=True)
+                      .agg(cas=("recul", "size"), proba_moyenne=("proba_recul", "mean"),
+                           frequence_observee=("recul", "mean"))
+                      .reset_index().rename(columns={"proba_recul": "tranche"})
+                      .assign(methode=methode, tranche=lambda t: t["tranche"].astype(str)))
+    if not tables:
+        return pd.DataFrame(columns=["methode", "tranche", "cas", "proba_moyenne", "frequence_observee"])
+    t = pd.concat(tables, ignore_index=True)
+    return t[["methode", "tranche", "cas", "proba_moyenne", "frequence_observee"]].round(3)
 
 
 def main():
@@ -281,7 +317,10 @@ def main():
     if not os.path.exists(niveaux_csv):
         logging.warning(f"{niveaux_csv} absent : lancer d'abord pib.evaluate_forecasts. Évaluation omise.")
         return
-    previsions = previsions_en_temps_reel(pd.read_csv(niveaux_csv), args.horizon)
+    monde = lire_croissance_mondiale(args.data_dir)
+    if monde is None:
+        logging.warning("Croissance mondiale absente : pas de probabilités avec les crises mondiales à part.")
+    previsions = previsions_en_temps_reel(pd.read_csv(niveaux_csv), args.horizon, monde=monde)
     if previsions.empty:
         logging.warning("Aucune édition testable en temps réel.")
         return
@@ -299,7 +338,9 @@ def main():
                      "couverture_pct_ic95_haut", "largeur_mediane", "score_intervalle", "crps"]].to_string(index=False))
     logging.info("Probabilités de récession en temps réel :\n"
                  + tableaux["recession_probability_realtime_scores.csv"][["methode", "cas", "brier", "competence",
-                     "competence_ic95_bas", "competence_ic95_haut"]].to_string(index=False))
+                     "competence_ic95_bas", "competence_ic95_haut", "gain_sur_classe_groupe",
+                     "gain_sur_classe_groupe_ic95_bas", "gain_sur_classe_groupe_ic95_haut", "proba_moyenne",
+                     "frequence_observee"]].to_string(index=False))
 
 
 if __name__ == "__main__":

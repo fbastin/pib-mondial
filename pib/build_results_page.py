@@ -632,7 +632,14 @@ def temps_reel_recessions(processed: str) -> str:
     s = pd.read_csv(chemin).set_index("methode")
     if not {"classe × groupe de revenu", "classe de croissance", "groupe de revenu"} <= set(s.index):
         return ""
-    r = s.loc["classe × groupe de revenu"]
+    r = s[s["retenue"]].iloc[0] if s["retenue"].any() else s.loc["classe × groupe de revenu"]
+    sans = s.loc["classe × groupe de revenu"]
+    decoupage = ""
+    if r.name != "classe × groupe de revenu":
+        significatif = r["gain_sur_classe_groupe_ic95_bas"] > 0
+        decoupage = (f" Traiter à part les crises mondiales, avec leur fréquence sur l'historique depuis 1961, "
+                     f"porte cette compétence de {nb(sans['competence'] * 100, 1)} à {nb(r['competence'] * 100, 1)} %"
+                     + (" (gain significatif)." if significatif else " (gain non significatif)."))
     fmi = (f" La trajectoire du FMI, qui n'annonce presque jamais de recul, ferait bien pire : score de Brier "
            f"supérieur de {nb(-s.loc['trajectoire du FMI', 'competence'] * 100)} %."
            if "trajectoire du FMI" in s.index else "")
@@ -644,8 +651,9 @@ def temps_reel_recessions(processed: str) -> str:
     {nb(r['competence'] * 100, 1)} % (intervalle de confiance de {nb(r['competence_ic95_bas'] * 100, 1)} à
     {nb(r['competence_ic95_haut'] * 100, 1)} %). L'apport vient de la classe de croissance
     ({nb(s.loc['classe de croissance', 'competence'] * 100, 1)} % à elle seule), pas du groupe de revenu
-    ({signe(s.loc['groupe de revenu', 'competence'] * 100, 1)} %). Elles ont été {niveau} : {nb(r['proba_moyenne'] * 100)} %
-    en moyenne, pour {nb(r['frequence_observee'] * 100)} % de périodes avec un recul.{fmi}</p>"""
+    ({signe(s.loc['groupe de revenu', 'competence'] * 100, 1)} %).{decoupage} Elles ont été {niveau} :
+    {nb(r['proba_moyenne'] * 100)} % en moyenne, pour {nb(r['frequence_observee'] * 100)} % de périodes avec un
+    recul.{fmi}</p>"""
 
 
 def nom_edition(edition: str) -> str:
@@ -925,11 +933,19 @@ def section_fourchettes(data_dir: str, synthese: pd.DataFrame, c: dict, f: int) 
     recul = ""
     if avec_recul:
         p = bandes.loc[tete, "probabilite_recul_pct"]
+        conditionnel = ""
+        if {"probabilite_recul_si_crise_mondiale_pct", "probabilite_crise_mondiale_pct"} <= set(bandes.columns):
+            tete1 = bandes.loc[tete[0]]
+            conditionnel = (f" Les crises mondiales y sont traitées à part : une période de {horizon} ans en contient "
+                            f"une dans {nb(tete1['probabilite_crise_mondiale_pct'])} % des cas depuis 1961. Si une "
+                            f"récession mondiale survient d'ici {f}, la probabilité de recul de {tete1['country_name']} "
+                            f"passe à {nb(tete1['probabilite_recul_si_crise_mondiale_pct'])} % ; sinon, elle est de "
+                            f"{nb(tete1['probabilite_recul_hors_crise_mondiale_pct'])} %.")
         recul = f"""
     <p class="col">Des mêmes projections comparables vient la dernière colonne : la part où il est
     survenu au moins une année de recul entre {edition + 1} et {f}, de {nb(p.min())} % pour
     {bandes.loc[p.idxmin(), "country_name"]} à {nb(p.max())} % pour {bandes.loc[p.idxmax(), "country_name"]}.
-    Une projection modeste laisse moins de marge avant un recul.</p>"""
+    Une projection modeste laisse moins de marge avant un recul.{conditionnel}</p>"""
 
     calibration = ""
     calibration_csv = os.path.join(processed, "gdp_projection_bands_calibration.csv")

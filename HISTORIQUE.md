@@ -5,6 +5,19 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 🌍 Probabilités de Récession : les Crises Mondiales à Part (30 Septembre 2026)
+
+Le test en temps réel montrait des probabilités de récession trop basses (38 % pour 49 % observés sur 2000-2019) : apprises sur les seules fréquences passées, elles dépendaient des crises que contenait la période d'apprentissage. Correction : les crises mondiales sont traitées à part.
+
+- **Récessions mondiales :** reculs du PIB mondial par habitant (Banque Mondiale, depuis 1961 : 1975, 1982, 1991, 2009, 2020), collectés par le pipeline dans `world_gdp_per_capita_growth.csv`. Une période de 5 ans en contient une dans 41 % des cas.
+- **Probabilité d'un pays :** π × fréquence de recul dans les périodes passées en crise + (1 − π) × fréquence hors crise, dans sa cellule (classe × groupe, replis habituels). Sans période en crise pour l'estimer, la fréquence toutes périodes la remplace.
+- **Éprouvé en temps réel** (seules les récessions et l'historique connus à la date de chaque édition) : compétence de 11,8 % contre 7,2 % (gain significatif), probabilité moyenne de 41 %.
+- **En production,** les probabilités bougent peu (États-Unis 65 %). Les fourchettes donnent en plus les probabilités conditionnelles, pour les scénarios : 98 % pour les États-Unis si une récession mondiale survient d'ici 2031, 42 % sinon.
+
+Le pipeline collecte désormais la croissance mondiale par habitant ; les tests la simulent pour rester hors ligne. 176 tests ; six mutations, toutes rattrapées. Une septième, où la liste des récessions voyait l'avenir, est restée sans effet : les périodes d'apprentissage finissent deux ans avant l'édition, aucune récession future ne peut y tomber. Le test porte désormais sur la probabilité de crise, où la fuite d'information compterait.
+
+---
+
 ## 🎯 Fourchettes et Probabilités Éprouvées en Temps Réel (30 Septembre 2026)
 
 Suite de la revue de littérature : nouveau module `pib.calibration`, dans la chaîne. Chaque édition de 2000 à 2019 reçoit des fourchettes et des probabilités de recul tirées des seules erreurs connues à sa date (éditions jusqu'à v − 7 à 5 ans). Scores propres (score d'intervalle, CRPS, Brier), méthodes comparées sur les mêmes 6 874 projections, intervalles de confiance par bootstrap en blocs d'années visées.
