@@ -278,6 +278,59 @@ def et(elements: list) -> str:
     return elements[0] if len(elements) == 1 else ", ".join(elements[:-1]) + " et " + elements[-1]
 
 
+def complements_previsions(processed: str, hmax: int) -> str:
+    """
+    Trois lectures de plus, chacune omise si son fichier manque : l'édition d'avril face à
+    celle d'octobre, le FMI face à une prévision naïve, et la croissance mondiale.
+    """
+    html = ""
+
+    saison_csv = os.path.join(processed, "weo_forecast_bias_by_season_ngdp_rpch.csv")
+    if os.path.exists(saison_csv):
+        t = pd.read_csv(saison_csv).set_index(["horizon", "saison"])
+        if (0, "S") in t.index and (0, "F") in t.index:
+            s0, f0 = t.loc[(0, "S")], t.loc[(0, "F")]
+            ecart = s0["erreur_absolue_moyenne"] - f0["erreur_absolue_moyenne"]
+            verdict = ("ne se valent pas" if abs(ecart) >= 0.2 else "se valent à peu près")
+            html += f"""
+    <p class="col">Sur l'année en cours, l'édition d'avril et celle d'octobre, publiée six mois
+    plus tard, {verdict} : biais de {signe(s0["biais_moyen"])} point en avril,
+    {signe(f0["biais_moyen"])} en octobre, et erreur absolue moyenne de
+    {nb(s0["erreur_absolue_moyenne"], 2)} contre {nb(f0["erreur_absolue_moyenne"], 2)} point. Le
+    tableau ci-dessus fait la moyenne des deux.</p>"""
+
+    naif_csv = os.path.join(processed, "weo_forecast_vs_naive_ngdp_rpch.csv")
+    if os.path.exists(naif_csv):
+        t = pd.read_csv(naif_csv).set_index("horizon")
+        if 0 in t.index and hmax in t.index:
+            corps = [[f'<td class="num">{int(h)}</td>',
+                      f'<td class="num">{nb(r["eam_fmi"], 2)} pt</td>',
+                      f'<td class="num">{nb(r["eam_naif"], 2)} pt</td>',
+                      f'<td class="num">{nb(r["part_fmi_meilleur"])} %</td>'] for h, r in t.iterrows()]
+            html += f"""
+    <p class="col">Se tromper n'empêche pas d'être utile : encore faut-il faire mieux qu'une règle
+    simple. Face à une prévision naïve — la croissance moyenne des quatre années que le FMI
+    connaissait déjà —, il est plus proche du réalisé dans {nb(t.loc[0, "part_fmi_meilleur"])} % des cas
+    sur l'année en cours, mais dans {nb(t.loc[hmax, "part_fmi_meilleur"])} % seulement à {hmax} ans :
+    à cet horizon, son erreur absolue moyenne ({nb(t.loc[hmax, "eam_fmi"], 2)} point) n'est inférieure
+    que de {nb((1 - t.loc[hmax, "rapport_eam"]) * 100)} % à celle de la règle naïve
+    ({nb(t.loc[hmax, "eam_naif"], 2)} point).</p>
+{bloc_table(["Horizon", "Erreur absolue FMI", "Erreur absolue naïve", "FMI plus proche du réalisé"], corps)}"""
+
+    monde_csv = os.path.join(processed, "weo_world_bias_ngdp_rpch.csv")
+    if os.path.exists(monde_csv):
+        t = pd.read_csv(monde_csv).set_index("horizon")
+        if 1 in t.index and hmax in t.index:
+            html += f"""
+    <p class="col">Pour la croissance mondiale elle-même — l'agrégat du FMI —, le biais moyen vaut
+    {signe(t.loc[0, "biais_moyen"])} point sur l'année en cours, {signe(t.loc[1, "biais_moyen"])} à un an
+    et {signe(t.loc[hmax, "biais_moyen"])} à {hmax} ans (intervalle de confiance de
+    {signe(t.loc[hmax, "ic95_bas"])} à {signe(t.loc[hmax, "ic95_haut"])}). Il n'est mesuré que contre
+    la ré-estimation du FMI : la Banque Mondiale agrège le monde aux taux de change de marché, et
+    non à parité de pouvoir d'achat ; sa croissance mondiale, plus basse, n'est pas comparable.</p>"""
+    return html
+
+
 def section_previsions(data_dir: str, figure_uri) -> str:
     """
     Section « qualité des prévisions », alimentée par pib.evaluate_forecasts.
@@ -336,6 +389,8 @@ def section_previsions(data_dir: str, figure_uri) -> str:
             if phrase:
                 lectures += f"""
     <p class="col">Selon le niveau de revenu, le biais moyen à un an va {phrase}.</p>"""
+
+    lectures += complements_previsions(processed, int(fmi.index.max()))
 
     bm = biais[biais["reference"].str.startswith("Banque")].set_index("horizon")
     if bm.empty:

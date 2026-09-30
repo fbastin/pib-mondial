@@ -16,6 +16,11 @@ Le fichier est cumulatif : une édition que l'API ne sert plus y reste, puisque 
 garde que les éditions récentes. Une édition présente dans le classeur n'y figure pas :
 le classeur fait foi.
 
+Chaque édition servie est en outre archivée en entier — tous pays, tous indicateurs,
+PIB en dollars courants compris — dans `data/raw/weo_archive/`. Le classeur historique
+ne contient que des taux : ces archives permettront, édition après édition, de mesurer
+aussi les erreurs sur les niveaux en dollars courants.
+
     python -m pib.update_weo_editions
 """
 
@@ -51,6 +56,7 @@ HORIZONS = range(-2, 6)
 
 CLASSEUR = os.path.join("data", "raw", "WEOhistorical.xlsx")
 COMPLEMENT = os.path.join("data", "raw", "weo_editions_api.csv")
+ARCHIVE = os.path.join("data", "raw", "weo_archive")
 COLONNES = ["indicateur", "vintage", "flux", "country", "country_code", "year", "valeur", "extrait_le"]
 
 
@@ -117,6 +123,77 @@ def lire_flux(flux: str, indicateur_sdmx: str) -> pd.DataFrame:
     return pd.DataFrame(lignes, columns=["country_code", "country", "year", "valeur"])
 
 
+def lire_edition_complete(flux: str) -> pd.DataFrame:
+    """
+    Toute une édition du WEO : tous pays et agrégats, tous indicateurs, toutes années.
+    Colonnes : country_code, indicator, year, value.
+    """
+    reponse = get_json(f"{SDMX}/data/{AGENCE},{flux}/..A", headers=JSON, timeout=300)
+    if not reponse.get("dataSets"):
+        raise RuntimeError(f"Flux {flux} : aucune donnée.")
+
+    dimensions = reponse["structure"]["dimensions"]
+    pays, indicateurs = dimensions["series"][0]["values"], dimensions["series"][1]["values"]
+    annees = [int(str(v["id"])[:4]) for v in dimensions["observation"][0]["values"]]
+
+    lignes = []
+    for cle, serie in reponse["dataSets"][0]["series"].items():
+        i_pays, i_indicateur = (int(x) for x in cle.split(":")[:2])
+        for position, observation in serie.get("observations", {}).items():
+            if observation and observation[0] is not None:
+                lignes.append((pays[i_pays]["id"], indicateurs[i_indicateur]["id"],
+                               annees[int(position)], float(observation[0])))
+    return (pd.DataFrame(lignes, columns=["country_code", "indicator", "year", "value"])
+            .sort_values(["indicator", "country_code", "year"], ignore_index=True))
+
+
+def archiver_editions(noms: dict, dossier: str = ARCHIVE) -> list:
+    """
+    Archive en entier chaque édition servie qui ne l'est pas encore.
+
+    Une édition est archivée telle qu'elle est servie la première fois, puis jamais
+    réécrite : c'est la publication d'époque qui compte pour évaluer une prévision, pas
+    une version corrigée après coup. `index.csv` consigne, par édition, le flux d'origine,
+    la date d'extraction et le volume archivé. Retourne les éditions ajoutées.
+    """
+    os.makedirs(dossier, exist_ok=True)
+    index_csv = os.path.join(dossier, "index.csv")
+    index = (pd.read_csv(index_csv) if os.path.exists(index_csv)
+             else pd.DataFrame(columns=["edition", "flux", "extrait_le", "valeurs", "entites", "indicateurs", "annees"]))
+
+    ajoutees = []
+    for flux, edition in sorted(noms.items(), key=lambda x: (int(x[1][1:]), x[1][0] == "F")):
+        chemin = os.path.join(dossier, f"WEO_{edition}.csv.gz")
+        if os.path.exists(chemin):
+            continue
+        donnees = lire_edition_complete(flux)
+        donnees.to_csv(chemin, index=False, compression="gzip")
+        index = pd.concat([index[index["edition"] != edition], pd.DataFrame([{
+            "edition": edition, "flux": flux, "extrait_le": date.today().isoformat(),
+            "valeurs": len(donnees), "entites": donnees["country_code"].nunique(),
+            "indicateurs": donnees["indicator"].nunique(),
+            "annees": f"{donnees['year'].min()}-{donnees['year'].max()}"}])], ignore_index=True)
+        ajoutees.append(edition)
+        logging.info(f"-> Édition {edition} archivée ({flux}) : {len(donnees):,} valeurs, "
+                     f"{donnees['indicator'].nunique()} indicateurs.")
+
+    if ajoutees:
+        index.sort_values("edition", key=lambda e: e.str[1:] + e.str[0].map({"S": "0", "F": "1"})).to_csv(
+            index_csv, index=False, encoding="utf-8")
+    else:
+        logging.info("Toutes les éditions servies sont déjà archivées.")
+    return ajoutees
+
+
+def editions_servies() -> tuple:
+    """Éditions servies par l'API, nommées ({flux: édition}), et le flux courant (NGDP_RPCH)."""
+    flux = lister_flux()
+    courant = lire_flux(FLUX_COURANT, INDICATEURS_SDMX["ngdp_rpch"]) if FLUX_COURANT in flux else None
+    noms = nommer_editions(flux, int(courant["year"].max()) if courant is not None else 0)
+    logging.info("Éditions servies par l'API : " + ", ".join(f"{n} ({f})" for f, n in sorted(noms.items(), key=lambda x: x[1])))
+    return noms, courant
+
+
 def editions_du_classeur(classeur: str, feuille: str) -> set:
     """Éditions présentes dans un onglet du classeur, d'après ses en-têtes (`S2019ngdp_rpch`)."""
     if not os.path.exists(classeur):
@@ -125,17 +202,16 @@ def editions_du_classeur(classeur: str, feuille: str) -> set:
     return {c.replace(feuille, "") for c in map(str, entetes) if c.endswith(feuille)}
 
 
-def mettre_a_jour(classeur: str = CLASSEUR, complement: str = COMPLEMENT) -> dict:
+def mettre_a_jour(classeur: str = CLASSEUR, complement: str = COMPLEMENT,
+                  noms: dict = None, courant: pd.DataFrame = None) -> dict:
     """
     Ajoute au complément les éditions servies par l'API et absentes du classeur.
 
     Retourne, par onglet, les éditions ajoutées ou rafraîchies. Lève `RuntimeError` si
     l'API est injoignable ou si l'édition courante ne peut être datée sans ambiguïté.
     """
-    flux = lister_flux()
-    courant = lire_flux(FLUX_COURANT, INDICATEURS_SDMX["ngdp_rpch"]) if FLUX_COURANT in flux else None
-    noms = nommer_editions(flux, int(courant["year"].max()) if courant is not None else 0)
-    logging.info("Éditions servies par l'API : " + ", ".join(f"{n} ({f})" for f, n in sorted(noms.items(), key=lambda x: x[1])))
+    if noms is None:
+        noms, courant = editions_servies()
 
     existant = pd.read_csv(complement) if os.path.exists(complement) else pd.DataFrame(columns=COLONNES)
     morceaux, ajouts = [], {}
@@ -177,11 +253,18 @@ def main():
     parser.add_argument("--classeur", type=str, default=CLASSEUR)
     parser.add_argument("--complement", type=str, default=None,
                         help="Fichier complément (par défaut : weo_editions_api.csv à côté du classeur)")
+    parser.add_argument("--archive", type=str, default=None,
+                        help="Dossier d'archive des éditions complètes (par défaut : weo_archive/ à côté du classeur)")
+    parser.add_argument("--sans-archive", action="store_true", help="Ne pas archiver les éditions complètes")
     args = parser.parse_args()
 
-    complement = args.complement or os.path.join(os.path.dirname(args.classeur), "weo_editions_api.csv")
+    dossier = os.path.dirname(args.classeur)
+    complement = args.complement or os.path.join(dossier, "weo_editions_api.csv")
     try:
-        mettre_a_jour(args.classeur, complement)
+        noms, courant = editions_servies()
+        mettre_a_jour(args.classeur, complement, noms, courant)
+        if not args.sans_archive:
+            archiver_editions(noms, args.archive or os.path.join(dossier, "weo_archive"))
     except RuntimeError as e:
         logging.error(f"Mise à jour des éditions du WEO interrompue : {e}")
         sys.exit(1)

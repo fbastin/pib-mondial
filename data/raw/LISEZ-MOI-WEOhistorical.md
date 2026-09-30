@@ -79,6 +79,11 @@ trois onglets, sur les horizons −2 à +5. Correspondance des indicateurs :
   archive (après `F2025`, c'est `S2026`) et vérifie que la dernière année servie vaut
   l'année de l'édition + 5 ; sinon il s'arrête plutôt que de deviner.
 
+## Archive des éditions complètes
+
+Le même script archive chaque édition servie en entier (tous indicateurs, PIB en dollars
+courants compris) dans `weo_archive/` : voir `weo_archive/LISEZ-MOI.md`.
+
 ## Utilisation
 
 ```bash
@@ -95,6 +100,10 @@ Produit dans `data/processed/` :
   pondérés par le PIB, médians, avec un intervalle de confiance groupé par année visée et
   le biais hors récessions mondiales (2009, 2020) ;
 * `weo_forecast_bias_by_income_<indicateur>.csv` — biais par horizon et groupe de revenu ;
+* `weo_forecast_bias_by_season_<indicateur>.csv` — biais par horizon et saison d'édition ;
+* `weo_forecast_vs_naive_<indicateur>.csv` — le FMI face à une prévision naïve (croissance
+  moyenne des années v−5 à v−2, déjà connues du FMI à l'édition v) ;
+* `weo_world_bias_<indicateur>.csv` — l'agrégat mondial `G001`, contre sa seule ré-estimation ;
 * pour la croissance du PIB seulement : `weo_level_evaluation_ngdp_rpch.csv` et ses
   synthèses (`weo_level_bias_*`), l'erreur sur le niveau du PIB obtenue en enchaînant les
   croissances, et `gdp_projection_bands.csv`, la fourchette qu'elle donne autour des

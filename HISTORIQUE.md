@@ -5,6 +5,19 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 🗄️ Avril et Octobre, Prévision Naïve, Croissance Mondiale ; Archive des Éditions (29 Septembre 2026)
+
+Les projections alimentent la prévision du trafic aérien, projet distinct. Côté PIB, trois lectures complètent l'évaluation et une archive prépare la suite.
+
+- **Avril ou octobre.** L'horizon 0 mêlait deux éditions à six mois d'écart : sur l'année en cours, octobre est sans biais (+0,01 point, erreur absolue 1,40), avril penche de +0,35 (2,01). Synthèse `weo_forecast_bias_by_season_*`.
+- **Face à une prévision naïve** — la croissance moyenne des années v−5 à v−2, déjà connues du FMI à l'édition v : le FMI est plus proche du réalisé dans 74 % des cas sur l'année en cours, 56 % seulement à 5 ans, où son erreur absolue ne vaut que 18 % de moins. Sortie `weo_forecast_vs_naive_*`.
+- **Croissance mondiale** : l'agrégat du FMI, jusque-là écarté, est évalué contre sa seule ré-estimation (+0,56 point à un an, +0,83 à 5 ans). Premier essai contre la Banque Mondiale abandonné : elle agrège le monde aux taux de change, non à parité de pouvoir d'achat, et sa croissance mondiale est inférieure de 0,4 point en moyenne (23 années sur 25) — le biais en aurait été gonflé d'autant. Sortie `weo_world_bias_*`.
+- **Archive des éditions** : l'API ne servant que l'édition courante et la précédente, `pib.update_weo_editions` archive désormais chaque édition servie en entier (tous pays, 145 indicateurs, PIB en dollars courants compris) dans `data/raw/weo_archive/`, une fois pour toutes. Premières éditions archivées : `F2025` et `S2026`. De quoi mesurer, édition après édition, les erreurs en dollars courants que la base historique ne permet pas.
+
+121 tests ; sept mutations, toutes rattrapées.
+
+---
+
 ## 🎯 PIB Prévu et PIB Réalisé ; Lectures du Biais (29 Septembre 2026)
 
 Question posée : les analyses sont-elles bien fondées ? Pour l'essentiel, oui ; mais l'évaluation des prévisions surinterprétait son chiffre phare, et ne reliait pas ses résultats aux projections que les rapports présentent.

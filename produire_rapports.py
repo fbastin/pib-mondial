@@ -42,7 +42,7 @@ def main():
                         help="Impose la dernière année observée (rapport unique)")
     parser.add_argument("--fcst-end", type=int, default=None)
     parser.add_argument("--sans-editions-api", action="store_true",
-                        help="Ne pas interroger l'API du FMI pour les éditions récentes du WEO")
+                        help="Ne pas interroger l'API du FMI : ni éditions récentes du WEO, ni archivage")
     parser.add_argument("--data-dir", type=str, default="data")
     parser.add_argument("--output-dir", type=str, default="outputs")
     args = parser.parse_args()

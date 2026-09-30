@@ -214,6 +214,8 @@ Le téléchargement manuel n'est plus nécessaire pour suivre les nouvelles édi
 
 Le flux courant ne précise pas son édition. Elle est déduite de la plus récente archive --- l'édition d'octobre 2025 étant archivée, le flux courant est celle d'avril 2026 --- puis vérifiée: la dernière année servie doit valoir l'année de l'édition plus cinq. Faute de quoi le script s'arrête plutôt que de deviner.
 
+\paragraph{Archive des éditions complètes.} L'API ne sert que l'édition courante et la précédente. Chaque édition servie est donc archivée en entier dans \texttt{data/raw/weo\_archive/} --- tous pays, 145 indicateurs, PIB en dollars courants compris --- telle qu'elle a été servie la première fois, puis jamais réécrite. La base historique ne contenant que des taux, ces archives permettront, édition après édition, de mesurer aussi les erreurs sur le PIB en dollars courants. Les deux premières (octobre 2025 et avril 2026) datent du 29 septembre 2026.
+
 \subsection{Horizon de Projection}
 Chaque édition couvre huit années relatives, de $-2$ à $+5$ par rapport à sa date de publication. L'horizon se déduit de l'écart entre l'année visée $y$ et l'année de l'édition $v$:
 \begin{equation}
@@ -252,6 +254,13 @@ La prévision de l'année en cours est pratiquement sans biais. Au-delà, la cro
     \item le biais est plus fort pour les pays pauvres: à un an, $+0{,}7$ point pour les pays à revenu élevé, $+1{,}7$ pour les pays à faible revenu (classification courante de la Banque Mondiale, appliquée à toute la période).
 \end{itemize}
 
+\subsection{Avril, Octobre, Prévision Naïve et Croissance Mondiale}
+\paragraph{Avril ou octobre.} Pour une même année visée, l'édition d'octobre dispose de six mois d'information de plus que celle d'avril. Sur l'année en cours, elle est sans biais ($+0{,}01$ point, erreur absolue $1{,}40$) quand celle d'avril penche de $+0{,}35$ point (erreur absolue $2{,}01$): l'horizon 0 fait la moyenne de deux situations différentes. L'écart se réduit à un an et disparaît au-delà.
+
+\paragraph{Face à une prévision naïve.} Une prévision utile doit faire mieux qu'une règle simple. La prévision naïve retenue est, pour une édition de l'année $v$, la croissance moyenne des années $v-5$ à $v-2$ telle que ré-estimée par le FMI --- toutes publiées avant l'édition, la ré-estimation de $v-1$ ne paraissant qu'à l'automne de $v$. Le FMI est plus proche du réalisé dans 74\,\% des cas sur l'année en cours (erreur absolue $1{,}59$ contre $3{,}25$), mais dans 56\,\% seulement à cinq ans ($3{,}04$ contre $3{,}70$): à l'horizon des projections, il ne fait que 18\,\% mieux que la règle naïve.
+
+\paragraph{La croissance mondiale.} L'agrégat \og World \fg{} du FMI, écarté de l'évaluation par pays, est évalué à part: biais de $-0{,}10$ point sur l'année en cours, $+0{,}56$ à un an, $+0{,}83$ à cinq ans (intervalle de confiance de $+0{,}20$ à $+1{,}46$). Il l'est contre sa seule ré-estimation: la Banque Mondiale agrège le monde aux taux de change de marché, et non à parité de pouvoir d'achat, et sa croissance mondiale, inférieure de $0{,}4$ point en moyenne (23 années sur 25), gonflerait le biais de ce seul écart de pondération.
+
 \subsection{PIB Prévu et PIB Réalisé}
 Une erreur de croissance répétée d'année en année se cumule sur le niveau du PIB. Pour une édition $v$ et un pays, le niveau prévu à l'horizon $h$, rapporté au niveau de l'année précédant l'édition, est le produit des croissances projetées; le niveau réalisé, celui des croissances ré-estimées. Leur rapport donne l'erreur de niveau:
 \begin{equation}
@@ -286,7 +295,7 @@ Le champ \texttt{derniere\_mise\_a\_jour} reprend le \texttt{lastupdated} décla
 
 \section{Tests des Invariants}
 
-Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (115 tests, sans accès réseau) fixe les propriétés correspondantes:
+Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (121 tests, sans accès réseau) fixe les propriétés correspondantes:
 
 \begin{itemize}
     \item les agrégats sont absents des classements par pays;
@@ -306,7 +315,9 @@ Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur si
     \item une édition du WEO lue dans l'API n'est nommée que si l'horizon servi le confirme, le complément reste cumulatif et le classeur fait foi;
     \item le biais pondéré suit les poids, l'intervalle de confiance est groupé par année visée, et le biais hors récessions les exclut bien;
     \item l'erreur de niveau enchaîne les croissances et s'interrompt au premier réalisé manquant;
-    \item la fourchette des projections s'appuie sur l'historique du pays s'il est assez long, et ses bornes sont dans le bon sens.
+    \item la fourchette des projections s'appuie sur l'historique du pays s'il est assez long, et ses bornes sont dans le bon sens;
+    \item la prévision naïve n'utilise que ce que le FMI savait à l'édition, les éditions d'avril et d'octobre restent distinctes, et la croissance mondiale n'est comparée qu'à la ré-estimation du FMI;
+    \item chaque édition archivée l'est une seule fois, telle que servie.
 \end{itemize}
 
 Les tests marqués \texttt{donnees} portent sur les fichiers réellement produits et se sautent tant que le pipeline n'a pas été exécuté.

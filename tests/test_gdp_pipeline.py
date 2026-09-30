@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from pib import http_utils, gdp_pipeline, fetch_historical_gdp, fetch_forecast_gdp
+from pib import http_utils, gdp_pipeline, fetch_historical_gdp, fetch_forecast_gdp, update_weo_editions
 from pib.gdp_pipeline import (
     calculate_cagr,
     reference_years,
@@ -1081,6 +1081,103 @@ class TestEditionsAPI:
         table = lire_base_historique(str(classeur)).set_index(["country_code", "year", "vintage"])
         assert table.loc[("FRA", 2020, "F2022"), "horizon"] == -2
         assert table.loc[("FRA", 2020, "F2021"), "valeur"] == pytest.approx(-7.9)
+
+
+class TestArchiveDesEditions:
+    """
+    Chaque édition servie par l'API est archivée en entier, une fois pour toutes : c'est
+    la publication d'époque qui compte, pas une version corrigée après coup.
+    """
+
+    @staticmethod
+    def _reponse():
+        return {
+            "structure": {"dimensions": {
+                "series": [{"id": "COUNTRY", "values": [{"id": "FRA"}, {"id": "G001"}]},
+                           {"id": "INDICATOR", "values": [{"id": "NGDPD"}, {"id": "LP"}]},
+                           {"id": "FREQUENCY", "values": [{"id": "A"}]}],
+                "observation": [{"id": "TIME_PERIOD", "values": [{"id": "2025"}, {"id": "2024"}]}]}},
+            "dataSets": [{"series": {"0:0:0": {"observations": {"0": ["3200.5"], "1": ["3160.4"]}},
+                                     "0:1:0": {"observations": {"1": ["68.4"], "0": [None]}},
+                                     "1:0:0": {"observations": {"0": ["117000"]}}}}],
+        }
+
+    def test_lecture_d_une_edition_complete(self, monkeypatch):
+        monkeypatch.setattr(update_weo_editions, "get_json", lambda url, **kwargs: self._reponse())
+        table = update_weo_editions.lire_edition_complete("WEO").set_index(["country_code", "indicator", "year"])
+        assert table.loc[("FRA", "NGDPD", 2024), "value"] == pytest.approx(3160.4)
+        assert table.loc[("FRA", "LP", 2024), "value"] == pytest.approx(68.4)
+        assert table.loc[("G001", "NGDPD", 2025), "value"] == pytest.approx(117000)
+        assert len(table) == 4                                  # la valeur nulle est écartée
+
+    def test_archivage_unique_et_index(self, tmp_path, monkeypatch):
+        appels = []
+
+        def lire(flux):
+            appels.append(flux)
+            return pd.DataFrame(dict(country_code="FRA", indicator="NGDPD", year=[2024, 2025],
+                                     value=[1.0, 2.0] if flux == "WEO" else [1.5, 2.5]))
+
+        monkeypatch.setattr(update_weo_editions, "lire_edition_complete", lire)
+        noms = {"WEO": "S2026", "WEO_2025_OCT_VINTAGE": "F2025"}
+        assert update_weo_editions.archiver_editions(noms, str(tmp_path)) == ["F2025", "S2026"]
+        assert update_weo_editions.archiver_editions(noms, str(tmp_path)) == []   # rien de nouveau
+        assert len(appels) == 2                                                   # rien retéléchargé
+
+        archive = pd.read_csv(tmp_path / "WEO_S2026.csv.gz")
+        assert list(archive["value"]) == [1.0, 2.0]
+        index = pd.read_csv(tmp_path / "index.csv")
+        assert list(index["edition"]) == ["F2025", "S2026"]
+        assert list(index["flux"]) == ["WEO_2025_OCT_VINTAGE", "WEO"]
+
+
+class TestLecturesComplementaires:
+    """Avril face à octobre, le FMI face à une prévision naïve, et la croissance mondiale."""
+
+    def test_prevision_naive_sans_information_posterieure(self):
+        """
+        Pour une édition de 2016, la prévision naïve est la moyenne des croissances 2011 à
+        2014 : la ré-estimation de 2015 ne paraît qu'à l'automne 2016.
+        """
+        from pib.evaluate_forecasts import ajouter_prevision_naive
+        realise = pd.DataFrame(dict(country_code="FRA", year=range(2010, 2016),
+                                    realise_fmi=[9.0, 1.0, 2.0, 3.0, 4.0, 50.0]))
+        evaluation = pd.DataFrame(dict(country_code="FRA", annee_millesime=[2016, 2015, 2013],
+                                       year=[2017, 2016, 2014], realise_fmi=[1.0, 1.0, 1.0]))
+        naif = ajouter_prevision_naive(evaluation, realise).set_index("annee_millesime")
+        assert naif.loc[2016, "naif"] == pytest.approx(2.5)                 # 2011 à 2014
+        assert naif.loc[2015, "naif"] == pytest.approx((9 + 1 + 2 + 3) / 4)  # 2010 à 2013
+        assert pd.isna(naif.loc[2013, "naif"])                              # moins de trois années
+        assert naif.loc[2016, "erreur_naif"] == pytest.approx(1.5)
+
+    def test_comparaison_avec_la_prevision_naive(self):
+        from pib.evaluate_forecasts import comparaison_naive
+        evaluation = pd.DataFrame(dict(horizon=1, erreur_vs_fmi=[1.0, -1.0, 3.0, np.nan],
+                                       erreur_naif=[2.0, 2.0, -1.0, 5.0]))
+        ligne = comparaison_naive(evaluation).iloc[0]
+        assert ligne["observations"] == 3
+        assert ligne["rapport_eam"] == pytest.approx((5 / 3) / (5 / 3))
+        assert ligne["part_fmi_meilleur"] == pytest.approx(200 / 3, abs=1e-3)
+
+    def test_avril_et_octobre_separes(self):
+        from pib.evaluate_forecasts import synthese_par_saison
+        evaluation = pd.DataFrame(dict(horizon=0, saison=["F", "S", "S"], erreur_vs_fmi=[0.0, 1.0, 2.0]))
+        table = synthese_par_saison(evaluation)
+        assert list(table["saison"]) == ["S", "F"]
+        assert table.set_index("saison").loc["S", "biais_moyen"] == pytest.approx(1.5)
+
+    def test_croissance_mondiale_contre_le_fmi_seulement(self, tmp_path):
+        """
+        L'agrégat World est évalué contre sa propre ré-estimation ; la croissance mondiale
+        de la Banque Mondiale, pondérée aux taux de change, n'est pas comparable.
+        """
+        from pib.evaluate_forecasts import lire_base_historique, evaluer_monde
+        table = lire_base_historique(str(TestBaseHistoriqueWEO._classeur(tmp_path)))
+        monde = evaluer_monde(table)
+        assert set(monde["country_code"]) == {"G001"}
+        ligne = monde[monde.vintage == "S2018"].iloc[0]
+        assert ligne["erreur_vs_fmi"] == pytest.approx(3.9 - 2.8)            # ré-estimation F2020
+        assert monde["erreur_vs_bm"].isna().all()
 
 
 class TestGroupesDeRevenu:

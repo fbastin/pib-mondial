@@ -41,6 +41,7 @@ pib-mondial/
 ├── docs/                         # Documentation technique (LaTeX et PDF)
 ├── data/
 │   ├── raw/                      # Sources : classeur WEO historique, complément API, LISEZ-MOI
+│   │   └── weo_archive/          # Éditions complètes du WEO, archivées à leur parution
 │   ├── processed/                # Rapport de référence : séries, synthèse, évaluation
 │   ├── plus_recent/              # Rapport le plus récent, s'il diffère
 │   └── extraction_metadata.json  # Provenance du rapport de référence
@@ -53,7 +54,7 @@ pib-mondial/
 └── .github/workflows/tests.yml   # Tests à chaque push
 ```
 
-**Versionné ou régénéré.** Le dépôt ne versionne que le code, la documentation et les sources qui ne se re-téléchargent pas par script : `data/raw/WEOhistorical.xlsx` (le site du FMI refuse les scripts) et son complément `data/raw/weo_editions_api.csv`. Tout le reste — `data/processed/`, `data/plus_recent/`, `data/extraction_metadata.json`, `data/raw/gdp_imf_weo_raw.json`, `outputs/` — se régénère par `python produire_rapports.py` et n'est pas versionné.
+**Versionné ou régénéré.** Le dépôt ne versionne que le code, la documentation et les sources qui ne se re-téléchargent pas par script : `data/raw/WEOhistorical.xlsx` (le site du FMI refuse les scripts), son complément `data/raw/weo_editions_api.csv`, et l'archive des éditions complètes du WEO, `data/raw/weo_archive/`, que l'API ne sert plus une fois l'édition suivante parue. Tout le reste — `data/processed/`, `data/plus_recent/`, `data/extraction_metadata.json`, `data/raw/gdp_imf_weo_raw.json`, `outputs/` — se régénère par `python produire_rapports.py` et n'est pas versionné.
 
 ---
 
@@ -84,7 +85,7 @@ python produire_rapports.py [--start-year 2000] [--end-year AAAA] [--fcst-end AA
 | Étape | Commande |
 |---|---|
 | Collecte, séries unifiées, synthèse et Excel | `python -m pib.gdp_pipeline [--start-year …] [--end-year …] [--fcst-start …] [--fcst-end …]` |
-| Éditions récentes du WEO, depuis l'API | `python -m pib.update_weo_editions` |
+| Éditions récentes du WEO, depuis l'API, et archivage des éditions complètes | `python -m pib.update_weo_editions [--sans-archive]` |
 | Évaluation des prévisions | `python -m pib.evaluate_forecasts [--indicateur pcpi_pch]` |
 | Graphiques et tableau de bord | `python -m pib.visualize_gdp` |
 | Page de résultats | `python -m pib.build_results_page [--pays FRA]` |
@@ -120,7 +121,7 @@ jupyter nbconvert --to html --execute --ExecutePreprocessor.kernel_name=julia-1.
 ### Tests
 
 ```bash
-pytest                      # 115 tests, sans accès réseau
+pytest                      # 121 tests, sans accès réseau
 pytest -m "not donnees"     # sans les contrôles sur les fichiers produits
 ```
 
@@ -269,6 +270,20 @@ Le FMI est quasiment sans biais sur l'année en cours, puis **surestime la crois
 
 La conclusion tient avec les deux références de comparaison (ré-estimation du FMI à un an, ou série Banque Mondiale), calculées côte à côte plutôt qu'arbitrées. Le biais pondéré ne porte que sur les années visées que couvre la série du pipeline (depuis 2000).
 
+**Avril ou octobre.** Pour une même année visée, l'édition d'octobre dispose de six mois d'information de plus. Sur l'année en cours, elle est sans biais (+0,01 point, erreur absolue 1,40) quand celle d'avril penche de +0,35 point (erreur absolue 2,01) ; le « quasiment sans biais » de l'horizon 0 fait la moyenne des deux. L'écart se réduit à un an (erreur absolue 2,82 contre 2,65) et disparaît au-delà (`weo_forecast_bias_by_season_*.csv`).
+
+**Face à une prévision naïve.** Se tromper n'empêche pas d'être utile, à condition de faire mieux qu'une règle simple. La prévision naïve retenue est la croissance moyenne des quatre années que le FMI connaissait déjà (v−5 à v−2 pour une édition de l'année v : la ré-estimation de v−1 ne paraît qu'à l'automne de v).
+
+| Horizon | Erreur absolue FMI | Erreur absolue naïve | FMI plus proche du réalisé |
+|---|---|---|---|
+| 0 | 1,59 | 3,25 | 74 % des cas |
+| 1 an | 2,62 | 3,36 | 61 % |
+| 5 ans | 3,04 | 3,70 | 56 % |
+
+Le FMI apporte beaucoup sur l'année en cours ; à 5 ans — l'horizon des projections 2031 —, il ne fait que 18 % mieux que la règle naïve, et n'est plus proche du réalisé qu'un peu plus d'une fois sur deux (`weo_forecast_vs_naive_*.csv`).
+
+**La croissance mondiale.** L'agrégat « World » du FMI, écarté de l'évaluation par pays, est évalué à part : biais de −0,10 point sur l'année en cours, +0,56 à un an, +0,83 à 5 ans (intervalle de confiance +0,20 à +1,46). Contre sa seule ré-estimation : la Banque Mondiale agrège le monde aux taux de change de marché et non à parité de pouvoir d'achat, et sa croissance mondiale, inférieure de 0,4 point en moyenne (23 années sur 25), gonflerait le biais de ce seul écart de pondération (`weo_world_bias_*.csv`).
+
 **PIB prévu et PIB réalisé.** Une erreur de croissance répétée d'année en année se cumule sur le niveau. En enchaînant les croissances projetées par chaque édition, puis les croissances réalisées, on compare le niveau prévu au niveau atteint — en volume, l'année précédant l'édition servant de base commune :
 
 | Horizon | Médiane | Pondérée par le PIB | 80 % des cas | Prévu trop haut de plus de 5 % | Trop bas de plus de 5 % |
@@ -310,6 +325,9 @@ Pour chaque rapport (`data/` et `outputs/` ; `plus_recent/` pour le plus récent
 | `data/processed/weo_forecast_evaluation_<indicateur>.csv` | Une ligne par projection d'époque |
 | `data/processed/weo_forecast_bias_<indicateur>.csv` | Biais et erreurs par horizon : moyens, pondérés par le PIB, médians, IC 95 %, hors récessions |
 | `data/processed/weo_forecast_bias_by_income_<indicateur>.csv` | Biais par horizon et groupe de revenu |
+| `data/processed/weo_forecast_bias_by_season_<indicateur>.csv` | Biais par horizon et saison d'édition (avril, octobre) |
+| `data/processed/weo_forecast_vs_naive_<indicateur>.csv` | Le FMI face à une prévision naïve, par horizon |
+| `data/processed/weo_world_bias_<indicateur>.csv` | Biais de l'agrégat mondial du FMI, par horizon |
 | `data/processed/weo_level_evaluation_ngdp_rpch.csv` | Erreur sur le niveau du PIB, par pays, édition et horizon |
 | `data/processed/weo_level_bias_ngdp_rpch.csv`, `weo_level_bias_by_income_ngdp_rpch.csv` | Erreur de niveau par horizon (quantiles, parts), et par groupe de revenu |
 | `data/processed/gdp_projection_bands.csv` | Fourchette empirique autour du PIB projeté, par pays |
@@ -341,7 +359,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 
 ## ✅ Tests des invariants
 
-115 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
+121 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
 
 | Invariant | Ce qu'il empêche |
 |---|---|
@@ -363,6 +381,8 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 | Biais pondéré par le PIB ; intervalle groupé par année visée ; récessions exclues à part | Un biais « d'un point » valant pour le pays moyen, présenté comme mondial et précis |
 | Erreur de niveau : croissances enchaînées, interrompues au premier réalisé manquant | Un niveau « réalisé » reconstitué par-dessus une année inconnue |
 | Fourchette : historique du pays si assez long, sinon du groupe ; bornes dans le bon sens | La marge d'une petite économie volatile appliquée aux États-Unis, ou une fourchette inversée |
+| Prévision naïve limitée à ce que le FMI savait ; avril et octobre séparés ; monde contre le seul FMI | Un étalon qui voit l'avenir, deux éditions confondues, ou un biais mondial gonflé par une pondération différente |
+| Archive : chaque édition une seule fois, telle que servie | Une publication d'époque remplacée par une version corrigée après coup |
 
 Chaque invariant est **validé par mutation** : le défaut correspondant, réintroduit dans une copie du code, fait bien échouer la suite. Les tests marqués `donnees` contrôlent les CSV réellement produits et se sautent tant que le pipeline n'a pas tourné. Les tests tournent à chaque push (GitHub Actions).
 

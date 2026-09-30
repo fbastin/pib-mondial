@@ -73,6 +73,21 @@ SEUIL_VALEURS_EXTREMES = 10.0
 # la moyenne. La synthèse donne aussi le biais sans elles, pour juger de leur poids.
 ANNEES_RECESSION_MONDIALE = (2009, 2020)
 
+# Prévision naïve de comparaison : pour une édition de l'année v, la croissance moyenne des
+# années v−5 à v−2, telle que ré-estimée par le FMI. Toutes étaient publiées avant
+# l'édition (la ré-estimation de v−1 ne paraît qu'à l'automne de v) : la prévision naïve
+# n'utilise rien que le FMI ne savait pas déjà.
+ANNEES_NAIF = 4
+DECALAGE_NAIF = 2
+MIN_ANNEES_NAIF = 3
+
+# Agrégat « World » du WEO. Il n'a pas d'équivalent comparable à la Banque Mondiale : le
+# FMI agrège la croissance mondiale avec des poids en parité de pouvoir d'achat, la Banque
+# Mondiale aux taux de change de marché, qui pèsent moins les économies émergentes. Sa
+# croissance mondiale est inférieure de 0,4 point en moyenne (23 années sur 25) : la
+# prendre pour référence gonflerait le biais du FMI de ce seul écart de pondération.
+CODE_MONDE = "G001"
+
 # Groupes de revenu de la Banque Mondiale (classification courante)
 GROUPES_REVENU = {
     "HIC": "Revenu élevé",
@@ -280,9 +295,10 @@ def evaluer(df: pd.DataFrame, data_dir: str = "data", indicateur: str = "ngdp_rp
     d'un taux à sa propre valeur donne des rapports aberrants dès qu'il approche de zéro.
     """
     projections = df[df["est_projection"]].copy()
+    realise = realise_selon_fmi(df)
 
     evaluation = (projections
-                  .merge(realise_selon_fmi(df), on=["country_code", "year"], how="left")
+                  .merge(realise, on=["country_code", "year"], how="left")
                   .merge(realise_selon_banque_mondiale(data_dir, indicateur),
                          on=["country_code", "year"], how="left"))
 
@@ -293,10 +309,31 @@ def evaluer(df: pd.DataFrame, data_dir: str = "data", indicateur: str = "ngdp_rp
     poids, groupes = contexte_pays(data_dir)
     evaluation = (evaluation.merge(poids, on=["country_code", "year"], how="left")
                   .merge(groupes, on="country_code", how="left"))
+    evaluation = ajouter_prevision_naive(evaluation, realise)
 
     exploitables = int(evaluation["erreur_vs_fmi"].notna().sum())
     logging.info(f"-> {len(evaluation):,} projections, {exploitables:,} confrontables "
                  "à la ré-estimation du FMI.")
+    return evaluation
+
+
+def ajouter_prevision_naive(evaluation: pd.DataFrame, realise: pd.DataFrame) -> pd.DataFrame:
+    """
+    Ajoute à chaque projection la prévision naïve (`naif`) et son erreur (`erreur_naif`).
+
+    Naïf : pour une édition de l'année v, la moyenne des croissances ré-estimées par le FMI
+    pour les années v−5 à v−2 (au moins trois des quatre), la même pour tous les horizons.
+    Une prévision qui ne fait pas mieux n'apporte rien de plus que le passé récent.
+    """
+    if realise.empty:
+        return evaluation.assign(naif=np.nan, erreur_naif=np.nan)
+    large = realise.pivot_table(index="year", columns="country_code", values="realise_fmi")
+    large = large.reindex(range(int(large.index.min()), int(large.index.max()) + 1))
+    moyenne = large.rolling(ANNEES_NAIF, min_periods=MIN_ANNEES_NAIF).mean()   # années t−3 à t
+    naif = (moyenne.stack().rename("naif").reset_index()
+            .assign(annee_millesime=lambda d: d["year"] + DECALAGE_NAIF)[["country_code", "annee_millesime", "naif"]])
+    evaluation = evaluation.merge(naif, on=["country_code", "annee_millesime"], how="left")
+    evaluation["erreur_naif"] = evaluation["naif"] - evaluation["realise_fmi"]
     return evaluation
 
 
@@ -364,6 +401,62 @@ def synthese_par_horizon(evaluation: pd.DataFrame) -> pd.DataFrame:
                                                     if annees.notna().any() else np.nan),
             })
     return pd.DataFrame(lignes).round(3)
+
+
+def synthese_par_saison(evaluation: pd.DataFrame) -> pd.DataFrame:
+    """
+    Biais par horizon et saison d'édition, contre la ré-estimation du FMI.
+
+    Pour une même année visée, l'édition d'octobre (`F`) dispose de six mois d'information
+    de plus que celle d'avril (`S`) : les mélanger sous un même horizon moyenne deux
+    situations différentes, surtout pour l'année en cours.
+    """
+    valides = evaluation.dropna(subset=["erreur_vs_fmi"])
+    poids = valides["poids_pib"] if "poids_pib" in valides.columns else pd.Series(np.nan, index=valides.index)
+    lignes = [{"horizon": horizon, "saison": saison, "observations": len(g),
+               "biais_moyen": g["erreur_vs_fmi"].mean(), "mediane": g["erreur_vs_fmi"].median(),
+               "erreur_absolue_moyenne": g["erreur_vs_fmi"].abs().mean(),
+               "biais_pondere_pib": _moyenne_ponderee(g["erreur_vs_fmi"], poids.loc[g.index])}
+              for (horizon, saison), g in valides.groupby(["horizon", "saison"])]
+    table = pd.DataFrame(lignes)
+    if table.empty:
+        return table
+    return table.sort_values(["horizon", "saison"], key=lambda c: c.map({"S": 0, "F": 1}) if c.name == "saison" else c,
+                             ignore_index=True).round(3)
+
+
+def comparaison_naive(evaluation: pd.DataFrame) -> pd.DataFrame:
+    """
+    Le FMI face à la prévision naïve, par horizon, sur les mêmes projections : erreurs
+    absolues moyenne et médiane de chacun, rapport des erreurs absolues moyennes (sous 1 :
+    le FMI fait mieux) et part des projections où le FMI est plus proche du réalisé.
+    """
+    if "erreur_naif" not in evaluation.columns:
+        return pd.DataFrame()
+    valides = evaluation.dropna(subset=["erreur_vs_fmi", "erreur_naif"])
+    lignes = []
+    for horizon, g in valides.groupby("horizon"):
+        fmi, naif = g["erreur_vs_fmi"].abs(), g["erreur_naif"].abs()
+        lignes.append({"horizon": horizon, "observations": len(g),
+                       "eam_fmi": fmi.mean(), "eam_naif": naif.mean(), "rapport_eam": fmi.mean() / naif.mean(),
+                       "mediane_abs_fmi": fmi.median(), "mediane_abs_naif": naif.median(),
+                       "part_fmi_meilleur": (fmi < naif).mean() * 100})
+    return pd.DataFrame(lignes).round(3)
+
+
+def evaluer_monde(base: pd.DataFrame) -> pd.DataFrame:
+    """
+    Les prévisions de l'agrégat « World » du FMI, contre sa propre ré-estimation à un an
+    — seule référence comparable (voir `CODE_MONDE`). `base` doit contenir les agrégats :
+    l'évaluation par pays les écarte.
+    """
+    monde = base[base["country_code"] == CODE_MONDE]
+    if monde.empty:
+        return pd.DataFrame()
+    evaluation = monde[monde["est_projection"]].merge(realise_selon_fmi(monde), on=["country_code", "year"], how="left")
+    evaluation["erreur_vs_fmi"] = evaluation["valeur"] - evaluation["realise_fmi"]
+    evaluation["erreur_vs_bm"] = np.nan
+    return evaluation
 
 
 def synthese_par_revenu(evaluation: pd.DataFrame) -> pd.DataFrame:
@@ -547,6 +640,7 @@ def main():
     except (FileNotFoundError, ValueError) as e:
         logging.error(str(e))
         sys.exit(1)
+    base_complete = base      # agrégats compris, pour la croissance mondiale
 
     if not args.garder_agregats:
         base = exclure_agregats(base, args.data_dir)
@@ -569,6 +663,18 @@ def main():
     synthese_par_revenu(evaluation).to_csv(
         os.path.join(processed, f"weo_forecast_bias_by_income_{args.indicateur}.csv"),
         index=False, encoding="utf-8-sig")
+    synthese_par_saison(evaluation).to_csv(
+        os.path.join(processed, f"weo_forecast_bias_by_season_{args.indicateur}.csv"),
+        index=False, encoding="utf-8-sig")
+    naif = comparaison_naive(evaluation)
+    naif.to_csv(os.path.join(processed, f"weo_forecast_vs_naive_{args.indicateur}.csv"), index=False, encoding="utf-8-sig")
+    logging.info("FMI face à la prévision naïve (croissance moyenne des années v−5 à v−2) :\n" + naif.to_string(index=False))
+    monde = synthese_par_horizon(evaluer_monde(base_complete))
+    if not monde.empty:
+        monde.to_csv(os.path.join(processed, f"weo_world_bias_{args.indicateur}.csv"), index=False, encoding="utf-8-sig")
+        logging.info("Agrégat World — biais par horizon :\n"
+                     + monde[["reference", "horizon", "observations", "biais_moyen", "mediane",
+                              "erreur_absolue_moyenne"]].to_string(index=False))
 
     logging.info(f"{INDICATEURS[args.indicateur]} — biais par horizon :\n"
                  + synthese.to_string(index=False))
