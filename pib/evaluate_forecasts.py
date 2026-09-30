@@ -499,9 +499,14 @@ def erreurs_de_niveau(evaluation: pd.DataFrame) -> pd.DataFrame:
 
     Le niveau de départ, commun aux deux, s'élimine. Une année sans croissance réalisée
     interrompt l'enchaînement : les horizons suivants restent sans erreur de niveau.
+
+    `pire_croissance_prevue` et `pire_croissance_realisee` donnent la plus faible croissance
+    des horizons 1 à h, projetée et réalisée : négative, elle signale au moins une année de
+    recul sur la période (voir `risque_de_recession`).
     """
     colonnes = ["country", "country_code", "income_group", "vintage", "saison", "annee_millesime",
-                "year", "horizon", "poids_pib", "croissance_prevue_cumulee_pct"]
+                "year", "horizon", "poids_pib", "croissance_prevue_cumulee_pct",
+                "pire_croissance_prevue", "pire_croissance_realisee"]
     d = evaluation[evaluation["horizon"] >= 0].sort_values(["country_code", "vintage", "horizon"]).copy()
     for c in ("income_group", "poids_pib"):
         if c not in d.columns:
@@ -514,12 +519,17 @@ def erreurs_de_niveau(evaluation: pd.DataFrame) -> pd.DataFrame:
     projete = np.log1p(d["valeur"] / 100)
     rompu = (projete.isna() | (d["horizon"] != attendu)).astype(int).groupby(cles).cummax().astype(bool)
     d["croissance_prevue_cumulee_pct"] = ((np.exp(projete.where(~rompu).groupby(cles).cumsum()) - 1) * 100).where(~rompu)
+    suivantes = d["horizon"] >= 1
+    d["pire_croissance_prevue"] = d["valeur"].where(suivantes).groupby(cles).cummin().where(~rompu & suivantes)
 
     for ref, (realise, _) in REFERENCES.items():
         ecart = np.log1p(d["valeur"] / 100) - np.log1p(d[realise] / 100)
         rompu = (ecart.isna() | (d["horizon"] != attendu)).astype(int).groupby(cles).cummax().astype(bool)
         cumul = ecart.where(~rompu).groupby(cles).cumsum()
         d[f"erreur_niveau_vs_{ref}_pct"] = ((np.exp(cumul) - 1) * 100).where(~rompu)
+        if ref == "fmi":
+            d["pire_croissance_realisee"] = (d[realise].where(suivantes).groupby(cles).cummin()
+                                             .where(~rompu & suivantes))
 
     return d[colonnes + [f"erreur_niveau_vs_{ref}_pct" for ref in REFERENCES]].reset_index(drop=True)
 
@@ -588,11 +598,40 @@ def croissance_projetee_actuelle(base: pd.DataFrame, annee_edition: int, horizon
     return cumul[complet]
 
 
+def _frequence_recul(pire: pd.Series) -> float:
+    """Part (%) des périodes dont la pire année réalisée est un recul, parmi celles connues."""
+    pire = pire.dropna()
+    return (pire < 0).mean() * 100 if len(pire) else np.nan
+
+
+def _statistiques_de_recul(pire: pd.Series) -> dict:
+    """Fréquence d'au moins une année de recul, et pire année médiane quand il en survient une."""
+    return {"recul": _frequence_recul(pire), "pire_recul": pire[pire < 0].median()}
+
+
 def _quantiles_fourchette(cas: pd.DataFrame, cles: list) -> pd.DataFrame:
-    """Quantiles de la fourchette, médiane et effectif des erreurs de niveau, par cellule `cles`."""
+    """
+    Quantiles de la fourchette, médiane et effectif des erreurs de niveau, par cellule
+    `cles` ; avec les pires années réalisées, fréquence et profondeur des reculs.
+    """
     q_bas, q_haut = QUANTILES_FOURCHETTE
-    g = cas.dropna(subset=cles).groupby(cles)["erreur_niveau_vs_fmi_pct"]
-    return pd.DataFrame({"bas": g.quantile(q_bas), "haut": g.quantile(q_haut), "mediane": g.median(), "cas": g.size()})
+    valides = cas.dropna(subset=cles)
+    g = valides.groupby(cles)["erreur_niveau_vs_fmi_pct"]
+    table = pd.DataFrame({"bas": g.quantile(q_bas), "haut": g.quantile(q_haut), "mediane": g.median(), "cas": g.size()})
+    if "pire_croissance_realisee" in valides.columns:
+        table = table.join(valides.groupby(cles)["pire_croissance_realisee"]
+                           .apply(lambda p: pd.Series(_statistiques_de_recul(p))).unstack())
+    return table
+
+
+def _grandes_economies(cas: pd.DataFrame) -> pd.Series:
+    """
+    Vrai pour les `GRANDES_ECONOMIES` premiers PIB de chaque édition et horizon. Le rang
+    se prend par édition : par année visée, chaque pays compterait deux fois (avril et
+    octobre visent la même année au même horizon), et seuls dix pays seraient retenus.
+    """
+    edition = ["vintage"] if "vintage" in cas.columns else ["annee_millesime"]
+    return cas.groupby(["horizon", *edition])["poids_pib"].rank(ascending=False, method="first") <= GRANDES_ECONOMIES
 
 
 def _quantiles_retenus(cas: pd.DataFrame) -> tuple:
@@ -629,6 +668,11 @@ def fourchettes_projections(niveaux: pd.DataFrame, croissance_actuelle: pd.Serie
     Ce n'est pas une prévision corrigée, mais la marge dans laquelle sont tombées 80 % des
     projections comparables. Elle porte sur le volume : en dollars courants s'ajoutent les
     erreurs de change et d'inflation, que la base historique ne mesure pas.
+
+    Des mêmes projections comparables vient `probabilite_recul_pct` : la part où il est
+    survenu au moins une année de recul entre l'année suivant l'édition et `annee_fin`,
+    quand la trajectoire du FMI n'en montre presque jamais ; `pire_annee_mediane_pct` en
+    donne la profondeur typique.
     """
     horizon = annee_fin - annee_edition
     colonne = "erreur_niveau_vs_fmi_pct"
@@ -643,6 +687,8 @@ def fourchettes_projections(niveaux: pd.DataFrame, croissance_actuelle: pd.Serie
     q_bas, q_haut = QUANTILES_FOURCHETTE
     ensemble = pd.Series({"bas": passe[colonne].quantile(q_bas), "haut": passe[colonne].quantile(q_haut),
                           "mediane": passe[colonne].median(), "cas": len(passe)})
+    if "pire_croissance_realisee" in passe.columns:
+        ensemble = pd.concat([ensemble, pd.Series(_statistiques_de_recul(passe["pire_croissance_realisee"]))])
     limites = [-np.inf, *bornes, np.inf]
 
     lignes = []
@@ -668,6 +714,7 @@ def fourchettes_projections(niveaux: pd.DataFrame, croissance_actuelle: pd.Serie
             "erreur_niveau_p10_pct": q["bas"], "erreur_niveau_mediane_pct": q["mediane"],
             "erreur_niveau_p90_pct": q["haut"],
             "borne_basse_pct": borne_basse, "borne_haute_pct": borne_haute,
+            "probabilite_recul_pct": q.get("recul", np.nan), "pire_annee_mediane_pct": q.get("pire_recul", np.nan),
             niveau: pays[niveau],
             f"GDP_Reel_{annee_fin}_Bas": pays[niveau] * (1 + borne_basse / 100),
             f"GDP_Reel_{annee_fin}_Haut": pays[niveau] * (1 + borne_haute / 100),
@@ -688,7 +735,7 @@ def calibration_fourchettes(niveaux: pd.DataFrame, horizon: int,
     colonne = "erreur_niveau_vs_fmi_pct"
     q_bas, q_haut = QUANTILES_FOURCHETTE
     cas = niveaux[niveaux["horizon"] == horizon].dropna(subset=[colonne, "croissance_prevue_cumulee_pct"]).copy()
-    cas["grande"] = cas.groupby("year")["poids_pib"].rank(ascending=False) <= GRANDES_ECONOMIES
+    cas["grande"] = _grandes_economies(cas)
     avant = cas[cas["annee_millesime"] <= coupure].copy()
     apres = cas[cas["annee_millesime"] > coupure].copy()
     if avant.empty or apres.empty:
@@ -758,16 +805,96 @@ def efficience(evaluation: pd.DataFrame) -> pd.DataFrame:
 
 
 def synthese_niveau_par_croissance(niveaux: pd.DataFrame) -> pd.DataFrame:
-    """Erreur de niveau par horizon et classe de croissance cumulée projetée."""
+    """
+    Erreur de niveau par horizon et classe de croissance cumulée projetée ; avec les pires
+    années réalisées, part des périodes où il est survenu au moins une année de recul, sur
+    toutes les éditions, puis jusqu'à `ANNEE_COUPURE_CALIBRATION` et après.
+    """
     colonne = "erreur_niveau_vs_fmi_pct"
     lignes = []
     for horizon, g in niveaux.dropna(subset=[colonne, "croissance_prevue_cumulee_pct"]).groupby("horizon"):
         classes, _ = classes_de_croissance(g["croissance_prevue_cumulee_pct"])
         for classe, c in g.groupby(classes):
-            lignes.append({"horizon": horizon, "classe_de_croissance": int(classe), "observations": len(c),
-                           "croissance_projetee_mediane_pct": c["croissance_prevue_cumulee_pct"].median(),
-                           "mediane": c[colonne].median(), "p10": c[colonne].quantile(0.10),
-                           "p90": c[colonne].quantile(0.90)})
+            ligne = {"horizon": horizon, "classe_de_croissance": int(classe), "observations": len(c),
+                     "croissance_projetee_mediane_pct": c["croissance_prevue_cumulee_pct"].median(),
+                     "mediane": c[colonne].median(), "p10": c[colonne].quantile(0.10),
+                     "p90": c[colonne].quantile(0.90)}
+            if "pire_croissance_realisee" in c.columns:
+                avant = c["annee_millesime"] <= ANNEE_COUPURE_CALIBRATION
+                pire = c["pire_croissance_realisee"]
+                ligne.update(recul_survenu_pct=_frequence_recul(pire),
+                             recul_survenu_avant_coupure_pct=_frequence_recul(pire[avant]),
+                             recul_survenu_apres_coupure_pct=_frequence_recul(pire[~avant]))
+            lignes.append(ligne)
+    return pd.DataFrame(lignes).round(3)
+
+
+def reculs_par_horizon(evaluation: pd.DataFrame) -> pd.DataFrame:
+    """
+    Années de recul (croissance négative), annoncées et survenues, par horizon, contre la
+    ré-estimation du FMI : part des projections en recul, part des croissances réalisées
+    en recul, part des reculs survenus que l'édition annonçait, et part des reculs
+    annoncés qui sont survenus.
+    """
+    valides = evaluation.dropna(subset=["valeur", "realise_fmi"])
+    lignes = []
+    for horizon, g in valides.groupby("horizon"):
+        annonce, survenu = g["valeur"] < 0, g["realise_fmi"] < 0
+        lignes.append({"horizon": horizon, "projections": len(g),
+                       "recul_annonce_pct": annonce.mean() * 100, "recul_survenu_pct": survenu.mean() * 100,
+                       "reculs_survenus": int(survenu.sum()),
+                       "reculs_survenus_annonces_pct": annonce[survenu].mean() * 100 if survenu.any() else np.nan,
+                       "reculs_annonces_survenus_pct": survenu[annonce].mean() * 100 if annonce.any() else np.nan})
+    return pd.DataFrame(lignes).round(3)
+
+
+def risque_de_recession(niveaux: pd.DataFrame) -> pd.DataFrame:
+    """
+    Au moins une année de recul sur les h années suivant l'édition (horizons 1 à h), par
+    horizon h et par groupe — tous les pays, les `GRANDES_ECONOMIES` premières, chaque
+    groupe de revenu :
+
+    - part des éditions qui en annonçaient une (`recul_annonce_pct`) ;
+    - part où il en est survenu une : toutes, pondérées par le PIB, hors des périodes
+      contenant une récession mondiale (`ANNEES_RECESSION_MONDIALE`), puis pour les
+      éditions jusqu'à `ANNEE_COUPURE_CALIBRATION` et après ;
+    - pire année médiane quand il en est survenu une.
+
+    La trajectoire du FMI est lisse : elle ne montre presque jamais le recul qui survient
+    pourtant, dans une période de cinq ans, pour un pays sur deux.
+    """
+    colonnes = ["pire_croissance_prevue", "pire_croissance_realisee"]
+    if not set(colonnes) <= set(niveaux.columns):
+        return pd.DataFrame()
+    cas = niveaux[niveaux["horizon"] >= 1].dropna(subset=colonnes).copy()
+    if cas.empty:
+        return pd.DataFrame()
+    cas["grande"] = _grandes_economies(cas)
+    cas["recul_survenu"] = (cas["pire_croissance_realisee"] < 0).astype(float)
+    debut = cas["annee_millesime"] + 1
+    cas["crise_mondiale"] = np.logical_or.reduce([(debut <= a) & (cas["year"] >= a) for a in ANNEES_RECESSION_MONDIALE])
+    avant = cas["annee_millesime"] <= ANNEE_COUPURE_CALIBRATION
+
+    groupes = [("Tous les pays", None, pd.Series(True, index=cas.index)),
+               (f"{GRANDES_ECONOMIES} premières économies", None, cas["grande"])]
+    groupes += [(libelle, code, cas["income_group"] == code) for code, libelle in GROUPES_REVENU.items()]
+    lignes = []
+    for horizon, g in cas.groupby("horizon"):
+        for libelle, code, masque in groupes:
+            x = g[masque.loc[g.index]]
+            if x.empty:
+                continue
+            pire = x["pire_croissance_realisee"]
+            lignes.append({
+                "horizon": horizon, "groupe": libelle, "income_group": code, "periodes": len(x),
+                "recul_annonce_pct": (x["pire_croissance_prevue"] < 0).mean() * 100,
+                "recul_survenu_pct": _frequence_recul(pire),
+                "recul_survenu_pondere_pib_pct": _moyenne_ponderee(x["recul_survenu"], x["poids_pib"]) * 100,
+                "recul_survenu_hors_crises_mondiales_pct": _frequence_recul(pire[~x["crise_mondiale"]]),
+                "recul_survenu_avant_coupure_pct": _frequence_recul(pire[avant.loc[x.index]]),
+                "recul_survenu_apres_coupure_pct": _frequence_recul(pire[~avant.loc[x.index]]),
+                "pire_annee_mediane_pct": pire[pire < 0].median(),
+            })
     return pd.DataFrame(lignes).round(3)
 
 
@@ -867,6 +994,16 @@ def evaluer_niveaux(evaluation: pd.DataFrame, base: pd.DataFrame, data_dir: str,
         os.path.join(processed, "weo_level_bias_by_projected_growth_ngdp_rpch.csv"), index=False, encoding="utf-8-sig")
     logging.info("Erreur sur le niveau du PIB en volume (prévu / réalisé − 1, en %) :\n"
                  + synthese.to_string(index=False))
+
+    reculs_par_horizon(evaluation).to_csv(
+        os.path.join(processed, "weo_recession_by_horizon_ngdp_rpch.csv"), index=False, encoding="utf-8-sig")
+    risque = risque_de_recession(niveaux)
+    risque.to_csv(os.path.join(processed, "weo_recession_risk_ngdp_rpch.csv"), index=False, encoding="utf-8-sig")
+    if not risque.empty:
+        logging.info("Au moins une année de recul dans les h années suivant l'édition (%) :\n"
+                     + risque[risque["income_group"].isna()][["horizon", "groupe", "periodes", "recul_annonce_pct",
+                                                             "recul_survenu_pct", "pire_annee_mediane_pct"]]
+                     .to_string(index=False))
 
     # Fourchettes autour des projections du rapport, à l'horizon de sa dernière année
     synthese_csv = os.path.join(processed, "gdp_country_summary.csv")

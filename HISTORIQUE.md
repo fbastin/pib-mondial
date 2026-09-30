@@ -5,6 +5,22 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 📉 Risque de Récession ; Révisions d'une Édition à l'Autre (30 Septembre 2026)
+
+**Les récessions que la trajectoire ne montre pas.** Le FMI n'annonce presque jamais de recul du PIB au-delà de l'année en cours : à un an, 2,4 % de ses projections sont négatives, contre 14,2 % des croissances réalisées ; il n'avait annoncé que 10 % de ces reculs. Sur les cinq années suivant une édition, un recul était annoncé dans 3 % des cas et en est survenu un dans 45 % (48 % pondéré par le PIB, 49 % pour les vingt premières économies ; 32 % hors des périodes contenant 2009 ou 2020), la pire année à −3,4 % en médiane. L'erreur de niveau porte désormais la pire année projetée et réalisée des horizons 1 à h (`pire_croissance_*`), d'où deux synthèses (`weo_recession_by_horizon_*`, `weo_recession_risk_*`) et une nouvelle section de la page de résultats.
+
+**Une probabilité par pays.** Chaque fourchette reçoit la probabilité d'au moins une année de recul d'ici son horizon (`probabilite_recul_pct`, 2027-2031 aujourd'hui) et la profondeur typique (`pire_annee_mediane_pct`), tirées des mêmes projections comparables : classe de croissance projetée × groupe de revenu. États-Unis et grandes économies avancées : 65 % ; Chine : 46 % ; Inde : 23 %. Prédicteurs comparés sur les éditions 2008-2019, probabilités calculées sur 1990-2007 (score de Brier) : probabilité unique 0,279 ; groupe de revenu 0,274 ; classe de croissance 0,252 ; classe × groupe 0,250 ; fréquence passée des reculs du pays 0,283 et volatilité passée 0,283, moins bonnes qu'une probabilité unique. Le niveau dépend des crises de la période (38 % des cas avant 2008, 56 % après), l'ordre des classes non.
+
+**Ce que corrige chaque édition.** Nouveau module `pib.revisions_weo`, lancé par `produire_rapports.py` après l'évaluation. Les éditions à deux ans et plus de l'année visée ne révisent presque pas (±0,03 point) ; l'édition d'avril de l'année visée retire 0,61 point en moyenne, celle d'octobre 0,32 : le biais optimiste se résorbe dans les dernières éditions (somme des révisions −1,09 point, biais à 5 ans +0,93). Test de Nordhaus : corrélation entre révisions successives de −0,09 à +0,18, légèrement positive près de l'année visée. Sortie `weo_forecast_revisions_*`.
+
+**Ce que change la dernière édition.** Entre les deux dernières éditions archivées (octobre 2025, avril 2026), la croissance cumulée 2024-2030 — ce que retiennent les projections raccordées — change de plus de 2 % en volume pour 52 pays sur 189, de plus de 5 % en dollars pour 64. Les révisions de l'historique (changement d'année de base des prix constants : Inde, Royaume-Uni et 12 autres ; PIB en dollars révisé de plus de 5 % : 10 pays) sont signalées : le raccord les neutralise. Premier essai contrôlé sur l'année de raccord : pour le rapport le plus récent, 2025, encore estimée par l'édition d'octobre 2025, le test signalait 31 pays, prenant des révisions de l'inflation estimée pour des changements de base. Le contrôle porte désormais sur l'année de l'ancienne édition moins deux. Sortie `weo_edition_revisions.csv`.
+
+**Correction.** La calibration des fourchettes rangeait les économies par année visée ; or avril et octobre visent la même année au même horizon, si bien que chaque pays y comptait deux fois et que les « vingt premières économies » n'en comptaient que dix. Le rang se prend désormais par édition. Couverture des vingt premières : 94,0 % au lieu de 93,8 %, conclusion inchangée.
+
+145 tests ; douze mutations, toutes rattrapées.
+
+---
+
 ## ↩️ Fourchettes Corrigées ; Efficience des Prévisions (29 Septembre 2026)
 
 **Correction.** Les fourchettes livrées plus tôt dans la journée s'appuyaient sur l'historique propre de chaque pays (dès vingt années visées), au motif qu'il décrivait mieux une grande économie que son groupe de revenu. Le test rétrospectif le dément : calculées sur les éditions 1990-2007, elles ne contenaient que 67 % des erreurs des éditions 2008-2019, pour une cible de 80 %. Le biais d'un pays ne se reproduit pas d'une période à l'autre — corrélation de 0,01 ; la Chine passe de −1,9 à +1,0 point, l'Inde de −0,5 à +1,8 —, et la dispersion à peine (0,23). Le constat mis en avant alors (« Japon, France et Italie : fourchette entièrement sous la projection ») ne tenait pas davantage.

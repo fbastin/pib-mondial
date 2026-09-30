@@ -175,7 +175,8 @@ Les niveaux de prévision à parité étant obtenus par chaînage à partir du d
     \item \texttt{fetch\_forecast\_gdp}: collecte des prévisions (FMI, API DataMapper).
     \item \texttt{gdp\_pipeline}: unification, raccord, volumes, synthèse, choix des rapports et export Excel / CSV.
     \item \texttt{update\_weo\_editions}: éditions récentes du WEO, depuis l'API SDMX du FMI.
-    \item \texttt{evaluate\_forecasts}: évaluation des prévisions d'époque du FMI.
+    \item \texttt{evaluate\_forecasts}: évaluation des prévisions d'époque du FMI, risque de récession.
+    \item \texttt{revisions\_weo}: révisions d'une édition du WEO à la suivante.
     \item \texttt{visualize\_gdp}: graphiques PNG et tableau de bord HTML.
     \item \texttt{build\_results\_page}: page HTML de résultats, construite depuis les CSV et les PNG produits.
 \end{itemize}
@@ -292,6 +293,20 @@ Les projections de l'horizon (2031) viennent de l'édition d'avril 2026, à cinq
 
 Ce n'est pas une prévision corrigée, mais la marge d'erreur qu'a connue le FMI; elle porte sur le volume et serait plus large en dollars courants.
 
+\subsection{Les Récessions que la Trajectoire ne Montre Pas}
+Une trajectoire peut atteindre le niveau prévu en passant par un creux. L'erreur de niveau porte donc aussi, pour chaque édition et horizon $h$, la plus faible croissance projetée et réalisée des horizons 1 à $h$: négative, elle signale au moins une année de recul (croissance annuelle en volume négative, selon la ré-estimation du FMI à un an). L'année de l'édition, en partie connue à sa publication, n'en fait pas partie.
+
+Le FMI n'annonce presque jamais de recul au-delà de l'année en cours: à un an, $2{,}4\,\%$ de ses projections sont négatives, contre $14{,}2\,\%$ des croissances réalisées, et il n'avait annoncé que $10\,\%$ de ces reculs ($59\,\%$ dans l'année même). Sur les cinq années suivant une édition, un recul était annoncé dans $3\,\%$ des cas; il en est survenu un dans $45\,\%$ ($48\,\%$ pondéré par le PIB, $49\,\%$ pour les vingt premières économies, $32\,\%$ hors des périodes contenant 2009 ou 2020), la pire année à $-3{,}4\,\%$ en médiane.
+
+\paragraph{Une probabilité par pays.} Le risque dépend surtout de la croissance projetée: sur cinq ans, un recul est survenu dans $64\,\%$ des cas pour les croissances cumulées projetées les plus faibles, dans $27\,\%$ pour les plus fortes. L'ordre des classes tient avant et après 2007; le niveau dépend des crises de la période ($38\,\%$ des cas pour les éditions jusqu'à 2007, $56\,\%$ ensuite). Calculées sur 1990-2007 et éprouvées sur 2008-2019, les probabilités par classe de croissance et groupe de revenu donnent le meilleur score de Brier ($0{,}250$, contre $0{,}279$ pour une probabilité unique); la fréquence passée des reculs du pays et sa volatilité passée font moins bien qu'une probabilité unique ($0{,}283$). Chaque fourchette reçoit donc, de sa cellule, la probabilité d'au moins une année de recul d'ici son horizon et la profondeur typique de la pire année: $65\,\%$ pour les États-Unis et les grandes économies avancées, $46\,\%$ pour la Chine, $23\,\%$ pour l'Inde, entre 2027 et 2031.
+
+\subsection{Révisions d'une Édition à l'Autre}
+Le module \texttt{revisions\_weo} rapproche chaque prévision de celle de l'édition précédente, pour le même pays et la même année visée, les éditions consécutives seulement (avril puis octobre, octobre puis avril suivant). Les éditions à deux ans et plus de l'année visée ne révisent presque pas (au plus $0{,}03$ point en moyenne); l'édition d'avril de l'année visée retire $0{,}61$ point en moyenne ($0{,}29$ hors 2009 et 2020), celle d'octobre $0{,}32$. Mises bout à bout, les révisions font $-1{,}09$ point, à peu de chose près le biais à cinq ans ($+0{,}93$): il se résorbe dans les dernières éditions.
+
+\paragraph{Test de Nordhaus.} Un prévisionniste qui intègre toute l'information disponible produit des révisions imprévisibles; s'il ne l'intègre que par étapes, une révision en annonce une autre de même sens. La pente de la révision sur la précédente, sans le 1\,\% de valeurs extrêmes de chaque côté, et la corrélation entre les deux restent faibles: de $-0{,}09$ à $+0{,}18$, légèrement positives à l'approche de l'année visée. Ce qui se prévoit, c'est le sens des révisions tardives, pas leur enchaînement.
+
+\paragraph{Ce que change la dernière édition.} L'archive des éditions complètes permet de comparer les deux dernières sur les niveaux. Le raccord, $\text{niveau}_y = \text{observé}_{\text{base}} \times \text{FMI}_y / \text{FMI}_{\text{base}}$, ne retient du FMI que la croissance cumulée projetée: c'est sa révision qui passe dans les projections. Entre octobre 2025 et avril 2026, celle de 2024-2030 change de plus de $2\,\%$ en volume pour 52 pays sur 189, de plus de $5\,\%$ en dollars courants pour 64. Les révisions du niveau de l'historique s'éliminent dans le raccord; elles sont signalées, sur une année observée dans les deux éditions (l'année de l'ancienne édition moins deux): changement d'année de base des prix constants quand le rapport du PIB courant au PIB en volume est révisé de plus de $5\,\%$ (14 pays, dont l'Inde et le Royaume-Uni), nouvelle estimation des comptes quand le PIB en dollars l'est (10 pays). Contrôlé sur une année encore estimée, le test confondait révision de l'inflation et changement de base.
+
 \section{Provenance et Reproductibilité}
 
 Chaque exécution écrit \texttt{data/extraction\_metadata.json}: horodatage de l'extraction, bornes du run, indicateurs interrogés, volumes obtenus et couverture par colonne. Ses bornes désignent aussi la série unifiée du dernier run: plusieurs fichiers \texttt{gdp\_unified\_<début>\_<fin>.csv} pouvant coexister, les scripts en aval, les notebooks et les tests lisent celui-là, jamais le plus récemment modifié.
@@ -300,7 +315,7 @@ Le champ \texttt{derniere\_mise\_a\_jour} reprend le \texttt{lastupdated} décla
 
 \section{Tests des Invariants}
 
-Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (129 tests, sans accès réseau) fixe les propriétés correspondantes:
+Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (145 tests, sans accès réseau) fixe les propriétés correspondantes:
 
 \begin{itemize}
     \item les agrégats sont absents des classements par pays;
@@ -323,7 +338,9 @@ Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur si
     \item la fourchette des projections s'appuie sur la classe de croissance projetée et le groupe de revenu, sa calibration est vérifiée sur une période ultérieure, et ses bornes sont dans le bon sens;
     \item la pente d'efficience et la croissance cumulée projetée sont exactes;
     \item la prévision naïve n'utilise que ce que le FMI savait à l'édition, les éditions d'avril et d'octobre restent distinctes, et la croissance mondiale n'est comparée qu'à la ré-estimation du FMI;
-    \item chaque édition archivée l'est une seule fois, telle que servie.
+    \item chaque édition archivée l'est une seule fois, telle que servie;
+    \item la pire année d'une période exclut l'année de l'édition et s'interrompt au premier réalisé manquant; les premières économies sont comptées par édition;
+    \item une révision n'est calculée qu'entre éditions consécutives, et l'historique est contrôlé sur une année observée dans les deux éditions.
 \end{itemize}
 
 Les tests marqués \texttt{donnees} portent sur les fichiers réellement produits et se sautent tant que le pipeline n'a pas été exécuté.

@@ -22,7 +22,9 @@ from datetime import datetime
 import pandas as pd
 
 from pib.gdp_pipeline import unified_csv_path
-from pib.evaluate_forecasts import GROUPES_REVENU, ANNEES_RECESSION_MONDIALE, GRANDES_ECONOMIES
+from pib.evaluate_forecasts import (GROUPES_REVENU, ANNEES_RECESSION_MONDIALE, GRANDES_ECONOMIES,
+                                    ANNEE_COUPURE_CALIBRATION)
+from pib.revisions_weo import SEUIL_REVISION_VOLUME, SEUIL_REVISION_DOLLARS, SEUIL_REVISION_HISTORIQUE
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -138,6 +140,8 @@ def nb(valeur, decimales: int = 0) -> str:
 def signe(valeur, decimales: int = 2) -> str:
     if pd.isna(valeur):
         return "n/d"
+    if round(valeur, decimales) == 0:
+        valeur = 0.0      # un zéro arrondi s'écrit « +0,00 », jamais « −0,00 »
     return f"{valeur:+.{decimales}f}".replace(".", ",").replace("-", MOINS)
 
 
@@ -532,6 +536,224 @@ def section_niveaux(data_dir: str, figure_uri) -> str:
 """
 
 
+def section_recessions(data_dir: str) -> str:
+    """
+    Section « récessions » : les années de recul que la trajectoire lisse du FMI ne montre
+    pas. Omise sans les tables de pib.evaluate_forecasts.
+    """
+    processed = os.path.join(data_dir, "processed")
+    risque_csv = os.path.join(processed, "weo_recession_risk_ngdp_rpch.csv")
+    horizon_csv = os.path.join(processed, "weo_recession_by_horizon_ngdp_rpch.csv")
+    if not (os.path.exists(risque_csv) and os.path.exists(horizon_csv)):
+        return ""
+    risque, par_horizon = pd.read_csv(risque_csv), pd.read_csv(horizon_csv).set_index("horizon")
+    if risque.empty or not {0, 1} <= set(par_horizon.index):
+        return ""
+    horizon = int(risque["horizon"].max())
+    t = risque[risque["horizon"] == horizon].set_index("groupe")
+    if "Tous les pays" not in t.index:
+        return ""
+    tous, h0, h1 = t.loc["Tous les pays"], par_horizon.loc[0], par_horizon.loc[1]
+    grandes = f"{GRANDES_ECONOMIES} premières économies"
+    pour_les_grandes = (f", {nb(t.loc[grandes, 'recul_survenu_pct'])} % pour les {grandes}"
+                        if grandes in t.index else "")
+    hors_crises = nb(tous["recul_survenu_hors_crises_mondiales_pct"])
+    crises = (f"n'en expliquent pas l'essentiel : hors des périodes qui les contiennent, la fréquence est encore de {hors_crises} %"
+              if tous["recul_survenu_hors_crises_mondiales_pct"] >= tous["recul_survenu_pct"] / 2 else
+              f"en expliquent l'essentiel : hors des périodes qui les contiennent, la fréquence tombe à {hors_crises} %")
+
+    par_classe = ""
+    classe_csv = os.path.join(processed, "weo_level_bias_by_projected_growth_ngdp_rpch.csv")
+    if os.path.exists(classe_csv):
+        k = pd.read_csv(classe_csv)
+        k = k[k["horizon"] == horizon].sort_values("classe_de_croissance")
+        if len(k) >= 2 and "recul_survenu_pct" in k.columns:
+            bas, haut = k.iloc[0], k.iloc[-1]
+            tient = all(k[col].iloc[0] > k[col].iloc[-1]
+                        for col in ("recul_survenu_avant_coupure_pct", "recul_survenu_apres_coupure_pct"))
+            par_classe = f"""
+    <p class="col">Le risque dépend surtout de la croissance projetée : il est survenu au moins une
+    année de recul dans {nb(bas["recul_survenu_pct"])} % des cas quand elle était la plus modeste
+    (croissance cumulée médiane de {nb(bas["croissance_projetee_mediane_pct"])} %), dans
+    {nb(haut["recul_survenu_pct"])} % quand elle était la plus forte
+    ({nb(haut["croissance_projetee_mediane_pct"])} %). {"Cet ordre tient" if tient else "Cet ordre ne tient pas"}
+    sur les éditions jusqu'à {ANNEE_COUPURE_CALIBRATION} comme sur les suivantes ; le niveau, lui, dépend
+    de la période : {nb(tous["recul_survenu_avant_coupure_pct"])} % des cas jusqu'à
+    {ANNEE_COUPURE_CALIBRATION}, {nb(tous["recul_survenu_apres_coupure_pct"])} % ensuite, selon les crises
+    qu'elle a connues. Classe de croissance projetée et groupe de revenu donnent à chaque pays sa
+    probabilité, dans la section suivante.</p>"""
+
+    lignes_groupes = [g for g in t.index]
+    corps = [[
+        f'<td class="name">{g}</td>',
+        f'<td class="num">{nb(t.loc[g, "recul_annonce_pct"])} %</td>',
+        f'<td class="num">{nb(t.loc[g, "recul_survenu_pct"])} %</td>',
+        f'<td class="num">{nb(t.loc[g, "recul_survenu_pondere_pib_pct"])} %</td>',
+        f'<td class="num">{nb(t.loc[g, "recul_survenu_hors_crises_mondiales_pct"])} %</td>',
+        f'<td class="num">{signe(t.loc[g, "pire_annee_mediane_pct"], 1)} %</td>',
+        f'<td class="num rank">{nb(t.loc[g, "periodes"])}</td>',
+    ] for g in lignes_groupes]
+
+    return f"""
+  <section>
+    <div class="sec-head col"><h2>Les récessions que la trajectoire ne montre pas</h2></div>
+    <p class="col">Une trajectoire peut atteindre le niveau prévu en passant par un creux. Or une
+    édition du WEO n'annonce presque jamais de recul du PIB au-delà de l'année en cours : à un an,
+    {nb(h1["recul_annonce_pct"], 1)} % de ses projections sont négatives, quand
+    {nb(h1["recul_survenu_pct"], 1)} % des croissances réalisées l'ont été. Le FMI n'avait annoncé que
+    {nb(h1["reculs_survenus_annonces_pct"])} % de ces reculs un an à l'avance, et
+    {nb(h0["reculs_survenus_annonces_pct"])} % dans l'année même.</p>
+    <p class="col">Sur les {horizon} années suivant une édition, au moins une année de recul était
+    annoncée dans {nb(tous["recul_annonce_pct"])} % des cas ; il en est survenu une dans
+    {nb(tous["recul_survenu_pct"])} % ({nb(tous["recul_survenu_pondere_pib_pct"])} % pondéré par le
+    PIB{pour_les_grandes}). La pire année a alors été de {signe(tous["pire_annee_mediane_pct"], 1)} % en
+    médiane. Les récessions mondiales de {et(ANNEES_RECESSION_MONDIALE)} {crises}.</p>
+{bloc_table(["Groupe", "Recul annoncé", "Recul survenu", "Pondéré par le PIB",
+             f"Hors {' et '.join(map(str, ANNEES_RECESSION_MONDIALE))}", "Pire année médiane", "Périodes"], corps)}{par_classe}
+    <p class="col note">Recul : croissance annuelle du PIB en volume négative, selon la
+    ré-estimation du FMI un an après. Période : les {horizon} années suivant l'année de l'édition.
+    Une année de recul n'est pas une récession au sens trimestriel, mais elle en est la trace annuelle.
+    Les {GRANDES_ECONOMIES} premières économies le sont par leur PIB de l'année visée, à chaque édition.
+    Détail : <code>weo_recession_risk_ngdp_rpch.csv</code> et
+    <code>weo_recession_by_horizon_ngdp_rpch.csv</code>.</p>
+  </section>
+"""
+
+
+def nom_edition(edition: str) -> str:
+    """« S2026 » -> « avril 2026 », « F2025 » -> « octobre 2025 »."""
+    return f"{'avril' if edition[0] == 'S' else 'octobre'} {edition[1:]}"
+
+
+def pays_signales(table: pd.DataFrame, colonne: str, maximum: int = 8) -> str:
+    """Pays signalés par `colonne`, des plus grandes économies aux plus petites."""
+    noms = table[table[colonne]].sort_values("taille", ascending=False)["country_name"].dropna().tolist()
+    if len(noms) > maximum:
+        return f"{', '.join(noms[:maximum])} et {len(noms) - maximum} autres"
+    return liste_pays(noms) if noms else ""
+
+
+def section_revisions(data_dir: str, synthese: pd.DataFrame, c: dict) -> str:
+    """
+    Section « révisions » : sens et enchaînement des révisions de croissance d'une édition
+    à la suivante, puis ce que la dernière édition archivée change aux projections.
+    Alimentée par pib.revisions_weo ; omise sans ses tables.
+    """
+    processed = os.path.join(data_dir, "processed")
+    revisions_csv = os.path.join(processed, "weo_forecast_revisions_ngdp_rpch.csv")
+    if not os.path.exists(revisions_csv):
+        return ""
+    r = pd.read_csv(revisions_csv)
+    if r.empty or not {("S", 0), ("F", 0)} <= set(zip(r["saison"], r["horizon"])):
+        return ""
+    etape = r.set_index(["saison", "horizon"])
+    avril, octobre = etape.loc[("S", 0)], etape.loc[("F", 0)]
+    lointaines = r[r["horizon"] >= 2]
+    somme = r["revision_moyenne"].sum()
+
+    biais = ""
+    biais_csv = os.path.join(processed, "weo_forecast_bias_ngdp_rpch.csv")
+    if os.path.exists(biais_csv):
+        b = pd.read_csv(biais_csv)
+        b = b[b["reference"].str.startswith("FMI")].set_index("horizon")
+        if len(b):
+            hmax = int(b.index.max())
+            proche = abs(somme + b.loc[hmax, "biais_moyen"]) <= 0.3
+            biais = (f" Mises bout à bout, les révisions moyennes font {signe(somme)} point"
+                     + (f" : à peu de chose près le biais moyen à {hmax} ans ({signe(b.loc[hmax, 'biais_moyen'])} point),"
+                        " qui se résorbe donc dans les dernières éditions." if proche else "."))
+
+    correlations = r["correlation"].dropna()
+    proches = r[(r["horizon"] <= 0) & r["correlation"].notna()]
+    par_etapes = (" ; légèrement positive à l'approche de l'année visée, où le FMI intègre les nouvelles par étapes"
+                  if len(proches) and (proches["correlation"] > 0).all() else "")
+    enchainement = (f"""
+    <p class="col">Une révision n'en annonce guère une autre : la corrélation entre deux révisions
+    successives va de {signe(correlations.min())} à {signe(correlations.max())} selon l'étape{par_etapes}.
+    Ce qui se prévoit, c'est le sens des révisions tardives, pas leur enchaînement.</p>"""
+                    if len(correlations) else "")
+
+    corps = [[
+        f'<td class="name">{l["etape"]}</td>',
+        f'<td class="num">{signe(l["revision_moyenne"])} pt</td>',
+        f'<td class="num">{signe(l["revision_hors_recessions_mondiales"])} pt</td>',
+        f'<td class="num">{signe(l["revision_ponderee_pib"])} pt</td>',
+        f'<td class="num">{nb(l["part_a_la_baisse_pct"])} %</td>',
+        f'<td class="num">{signe(l.get("correlation"))}</td>',
+    ] for _, l in r.iterrows()]
+
+    return f"""
+  <section>
+    <div class="sec-head col"><h2>Ce que corrige chaque édition</h2></div>
+    <p class="col">Le FMI révise ses prévisions deux fois par an, en avril et en octobre. Ses
+    éditions lointaines, à deux ans et plus de l'année visée, ne révisent presque pas : au plus
+    {nb(lointaines["revision_moyenne"].abs().max(), 2)} point en moyenne. La correction vient tard :
+    l'édition d'avril de l'année visée retire {nb(-avril["revision_moyenne"], 2)} point en moyenne
+    ({nb(-avril["revision_hors_recessions_mondiales"], 2)} hors récessions mondiales), celle d'octobre
+    {nb(-octobre["revision_moyenne"], 2)}.{biais}</p>{enchainement}
+{bloc_table(["Édition qui révise", "Révision moyenne", f"Hors {' et '.join(map(str, ANNEES_RECESSION_MONDIALE))}",
+             "Pondérée par le PIB", "À la baisse", "Corrélation avec la précédente"], corps)}{revisions_de_la_derniere_edition(processed, synthese, c)}
+    <p class="col note">Révision : prévision de croissance d'une édition moins celle de l'édition
+    précédente, pour le même pays et la même année visée ; horizon de l'édition qui révise.
+    Corrélation (test de Nordhaus) : calculée sans le 1 % de valeurs extrêmes de chaque côté ;
+    nulle si chaque édition intègre toute l'information disponible. Détail :
+    <code>weo_forecast_revisions_ngdp_rpch.csv</code> et <code>weo_edition_revisions.csv</code>.</p>
+  </section>
+"""
+
+
+def revisions_de_la_derniere_edition(processed: str, synthese: pd.DataFrame, c: dict) -> str:
+    """Ce que la dernière édition archivée change aux projections, et les révisions de l'historique."""
+    chemin = os.path.join(processed, "weo_edition_revisions.csv")
+    if not os.path.exists(chemin):
+        return ""
+    t = pd.read_csv(chemin)
+    if t.empty:
+        return ""
+    ancienne, nouvelle = nom_edition(t["edition_ancienne"].iloc[0]), nom_edition(t["edition_nouvelle"].iloc[0])
+    base, cible = int(t["annee_base"].iloc[0]), int(t["annee_cible"].iloc[0])
+    controle = int(t["annee_controle"].iloc[0]) if "annee_controle" in t.columns else base
+    t = t.merge(synthese[["country_code", c["gdp_obs"]]].rename(columns={c["gdp_obs"]: "taille"}),
+                on="country_code", how="left")
+    if "country_name" not in t.columns:
+        t["country_name"] = t["country_code"]
+    reel, usd = t["revision_croissance_reelle_pct"].dropna(), t["revision_croissance_usd_pct"].dropna()
+
+    tete = [code for code in synthese.dropna(subset=[c["rang"]]).nsmallest(10, c["rang"])["country_code"]
+            if code in set(t["country_code"])]
+    ti = t.set_index("country_code")
+    corps = [[
+        f'<td class="name">{ti.loc[code, "country_name"]}</td>',
+        f'<td class="num">{signe(ti.loc[code, "revision_croissance_reelle_pct"], 1)} %</td>',
+        f'<td class="num">{signe(ti.loc[code, "revision_croissance_usd_pct"], 1)} %</td>',
+        f'<td class="num">{signe(ti.loc[code, "revision_pib_usd_cible_pct"], 1)} %</td>',
+    ] for code in tete]
+
+    base_changee = pays_signales(t, "changement_annee_de_base")
+    historique = pays_signales(t, "revision_de_l_historique")
+    signalements = []
+    if base_changee:
+        signalements.append(f"les comptes de {int(t['changement_annee_de_base'].sum())} pays ont changé "
+                            f"d'année de base ({base_changee})")
+    if historique:
+        signalements.append(f"le PIB {controle} en dollars de {int(t['revision_de_l_historique'].sum())} pays a été "
+                            f"révisé de plus de {nb(SEUIL_REVISION_HISTORIQUE)} % ({historique})")
+    historique_phrase = (f"""
+    <p class="col">Entre les deux éditions, {" ; ".join(signalements)}. Le rapport raccorde les
+    projections du FMI au dernier niveau observé par la Banque Mondiale et n'en retient que la
+    croissance : ces révisions du niveau n'y passent pas, jusqu'à ce que la Banque Mondiale les
+    reprenne.</p>""" if signalements else "")
+
+    return f"""
+    <p class="col">L'archive des éditions permet de voir ce que change la dernière. Entre l'édition
+    d'{ancienne} et celle d'{nouvelle}, la croissance cumulée {base}-{cible} projetée en volume change de
+    plus de {nb(SEUIL_REVISION_VOLUME)} % pour {int((reel.abs() > SEUIL_REVISION_VOLUME).sum())} pays sur
+    {len(reel)} ; en dollars courants, où s'ajoutent change et inflation, de plus de
+    {nb(SEUIL_REVISION_DOLLARS)} % pour {int((usd.abs() > SEUIL_REVISION_DOLLARS).sum())} pays sur
+    {len(usd)}. C'est cette croissance que retiennent les projections du rapport.</p>
+{bloc_table(["Pays", f"Croissance {base}-{cible} en volume", "En dollars courants", f"Niveau FMI {cible} en dollars"], corps)}{historique_phrase}"""
+
+
 def qualifier_couverture(couverture: float, cible: float) -> str:
     """Une fourchette qui contient bien plus (moins) d'erreurs que visé est prudente (étroite)."""
     if couverture > cible + 5:
@@ -565,13 +787,23 @@ def section_fourchettes(data_dir: str, synthese: pd.DataFrame, c: dict, f: int) 
     penchant = (" Plus la croissance projetée est forte, plus la fourchette penche vers le bas."
                 if len(liees) > 2 and liees["croissance_projetee_pct"].corr(liees["borne_haute_pct"]) < 0 else "")
 
+    avec_recul = "probabilite_recul_pct" in bandes.columns and bandes.loc[tete, "probabilite_recul_pct"].notna().all()
     corps = [[
         f'<td class="name">{bandes.loc[code, "country_name"]}</td>',
         f'<td class="num">{signe(bandes.loc[code, "croissance_projetee_pct"], 1)} %</td>',
         f'<td class="num">{nb(bandes.loc[code, niveau])}</td>',
         f'<td class="num">{nb(bandes.loc[code, bas])} – {nb(bandes.loc[code, haut])}</td>',
         f'<td class="num">{signe(bandes.loc[code, "borne_basse_pct"], 1)} à {signe(bandes.loc[code, "borne_haute_pct"], 1)} %</td>',
+        *([f'<td class="num">{nb(bandes.loc[code, "probabilite_recul_pct"])} %</td>'] if avec_recul else []),
     ] for code in tete]
+    recul = ""
+    if avec_recul:
+        p = bandes.loc[tete, "probabilite_recul_pct"]
+        recul = f"""
+    <p class="col">Des mêmes projections comparables vient la dernière colonne : la part où il est
+    survenu au moins une année de recul entre {edition + 1} et {f}, de {nb(p.min())} % pour
+    {bandes.loc[p.idxmin(), "country_name"]} à {nb(p.max())} % pour {bandes.loc[p.idxmax(), "country_name"]}.
+    Une projection modeste laisse moins de marge avant un recul.</p>"""
 
     calibration = ""
     calibration_csv = os.path.join(processed, "gdp_projection_bands_calibration.csv")
@@ -600,7 +832,8 @@ def section_fourchettes(data_dir: str, synthese: pd.DataFrame, c: dict, f: int) 
     {horizon} ans d'horizon. Appliquer à chacune les erreurs de niveau commises par le passé, au même
     horizon, sur des projections comparables — même ampleur de croissance projetée, même groupe de
     revenu — donne une fourchette : celle où seraient tombés 80 % des cas.{penchant}</p>
-{bloc_table(["Pays", f"Croissance projetée {edition}-{f}", f"PIB {f} projeté", "Fourchette", "Écart à la projection"], corps)}{calibration}
+{bloc_table(["Pays", f"Croissance projetée {edition}-{f}", f"PIB {f} projeté", "Fourchette", "Écart à la projection",
+             *([f"Recul {edition + 1}-{f}"] if avec_recul else [])], corps)}{recul}{calibration}
     <p class="col note">PIB en volume, milliards de dollars constants de 2015. Fourchette : 10ᵉ à 90ᵉ
     centile des erreurs de niveau passées à {horizon} ans, parmi les projections de la même classe de
     croissance cumulée projetée (cinq classes de même effectif) et du même groupe de revenu. Ce n'est
@@ -895,7 +1128,7 @@ def construire(data_dir: str, output_dir: str, pays_detail: str) -> str:
     de 2021 inchangés, ce qui en élargit l'incertitude.</p>
   </section>
 
-{section_previsions(data_dir, figures["exactitude"])}{section_niveaux(data_dir, figures["niveaux"])}{section_fourchettes(data_dir, synthese, c, f)}
+{section_previsions(data_dir, figures["exactitude"])}{section_niveaux(data_dir, figures["niveaux"])}{section_recessions(data_dir)}{section_fourchettes(data_dir, synthese, c, f)}{section_revisions(data_dir, synthese, c)}
   <section>
     <div class="sec-head col"><h2>Détail par pays — {nom_detail}</h2></div>
     <p class="col note">Dix dernières années de la série, prévisions comprises.</p>

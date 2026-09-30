@@ -20,6 +20,11 @@ dollars courants, qui ajoute les erreurs de change et d'inflation. Or l'API ne s
 l'édition courante et la précédente. Archiver chaque édition dès sa parution constitue,
 édition après édition, la base qui permettra de mesurer ces erreurs.
 
+Dès maintenant, `python -m pib.revisions_weo` (lancé par `produire_rapports.py`) compare
+les deux dernières éditions archivées : révision de la croissance cumulée projetée, en
+volume et en dollars, et révisions de l'historique — changement d'année de base, nouvelle
+estimation des comptes (`data/processed/weo_edition_revisions.csv`).
+
 ## Format
 
 `WEO_<édition>.csv.gz` — `S2026` pour avril 2026, `F2025` pour octobre 2025 — en CSV

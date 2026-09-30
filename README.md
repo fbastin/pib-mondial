@@ -33,7 +33,8 @@ pib-mondial/
 │   ├── fetch_forecast_gdp.py     #   Collecte : prévisions FMI (API DataMapper)
 │   ├── gdp_pipeline.py           #   Calcul : unification, raccord, volumes, synthèse, rapports
 │   ├── update_weo_editions.py    #   Évaluation : éditions récentes du WEO (API SDMX du FMI)
-│   ├── evaluate_forecasts.py     #   Évaluation : prévisions d'époque confrontées au réalisé
+│   ├── evaluate_forecasts.py     #   Évaluation : prévisions d'époque confrontées au réalisé, récessions
+│   ├── revisions_weo.py          #   Évaluation : révisions d'une édition du WEO à la suivante
 │   ├── visualize_gdp.py          #   Livrables : graphiques et tableau de bord
 │   └── build_results_page.py     #   Livrables : page de résultats HTML
 ├── notebooks/                    # Analyse interactive (Python et Julia) et générateurs
@@ -87,12 +88,13 @@ python produire_rapports.py [--start-year 2000] [--end-year AAAA] [--fcst-end AA
 | Collecte, séries unifiées, synthèse et Excel | `python -m pib.gdp_pipeline [--start-year …] [--end-year …] [--fcst-start …] [--fcst-end …]` |
 | Éditions récentes du WEO, depuis l'API, et archivage des éditions complètes | `python -m pib.update_weo_editions [--sans-archive]` |
 | Évaluation des prévisions | `python -m pib.evaluate_forecasts [--indicateur pcpi_pch]` |
+| Révisions d'une édition à la suivante | `python -m pib.revisions_weo` |
 | Graphiques et tableau de bord | `python -m pib.visualize_gdp` |
 | Page de résultats | `python -m pib.build_results_page [--pays FRA]` |
 | Collecte seule, historique | `python -m pib.fetch_historical_gdp --start-year 2000 --end-year 2025` |
 | Collecte seule, prévisions | `python -m pib.fetch_forecast_gdp --forecast-start 2025` |
 
-Pour le rapport le plus récent, les trois dernières étapes prennent `--data-dir data/plus_recent` (et `--output-dir outputs/plus_recent`). La page de résultats lit ses tableaux dans `data/processed/` et inline les graphiques de `outputs/` ; aucune valeur n'y est saisie à la main, ses commentaires se déduisent des chiffres.
+Pour le rapport le plus récent, les quatre dernières étapes prennent `--data-dir data/plus_recent` (et `--output-dir outputs/plus_recent`). La page de résultats lit ses tableaux dans `data/processed/` et inline les graphiques de `outputs/` ; aucune valeur n'y est saisie à la main, ses commentaires se déduisent des chiffres.
 
 ### Notebooks
 
@@ -121,7 +123,7 @@ jupyter nbconvert --to html --execute --ExecutePreprocessor.kernel_name=julia-1.
 ### Tests
 
 ```bash
-pytest                      # 129 tests, sans accès réseau
+pytest                      # 145 tests, sans accès réseau
 pytest -m "not donnees"     # sans les contrôles sur les fichiers produits
 ```
 
@@ -298,19 +300,33 @@ Le FMI apporte beaucoup sur l'année en cours ; à 5 ans — l'horizon des proje
 
 **Les projections à l'aune des erreurs passées.** Les projections 2031 des rapports viennent de l'édition d'avril 2026, à 5 ans d'horizon. Appliquer à chacune les erreurs de niveau commises par le passé au même horizon, sur des projections comparables — même classe de croissance cumulée projetée (cinq classes de même effectif) et même groupe de revenu —, donne une fourchette empirique : celle où seraient tombés 80 % des cas (10ᵉ à 90ᵉ centile). Une cellule de moins de 100 cas se replie sur la classe de croissance seule.
 
-| PIB en volume 2031 | Croissance projetée 2026-2031 | Écart à la projection (80 % des cas passés) |
-|---|---|---|
-| États-Unis | +12,5 % | −11,9 à +6,9 % |
-| Chine | +25,0 % | −16,2 à +8,7 % |
-| Allemagne, Japon, France, Royaume-Uni | +4 à +9 % | −11,9 à +6,9 % |
-| Inde | +46,0 % | **−21,8 à +4,8 %** |
-| Indonésie | +35,1 % | −19,3 à +7,4 % |
+| PIB en volume 2031 | Croissance projetée 2026-2031 | Écart à la projection (80 % des cas passés) | Au moins une année de recul 2027-2031 |
+|---|---|---|---|
+| États-Unis | +12,5 % | −11,9 à +6,9 % | 65 % |
+| Chine | +25,0 % | −16,2 à +8,7 % | 46 % |
+| Allemagne, Japon, France, Royaume-Uni | +4 à +9 % | −11,9 à +6,9 % | 65 % |
+| Inde | +46,0 % | **−21,8 à +4,8 %** | 23 % |
+| Indonésie | +35,1 % | −19,3 à +7,4 % | 42 % |
 
-Plus la croissance projetée est forte, plus la fourchette penche vers le bas. **Ces fourchettes sont éprouvées sur le passé** : calculées sur les éditions 1990-2007, elles ont contenu 83 % des erreurs des éditions 2008-2019, pour une cible de 80 % (`gdp_projection_bands_calibration.csv`, refait à chaque exécution). Elles sont prudentes pour les vingt premières économies (94 %) et justes pour les pays à faible revenu (78 %).
+Plus la croissance projetée est forte, plus la fourchette penche vers le bas. **Ces fourchettes sont éprouvées sur le passé** : calculées sur les éditions 1990-2007, elles ont contenu 83 % des erreurs des éditions 2008-2019, pour une cible de 80 % (`gdp_projection_bands_calibration.csv`, refait à chaque exécution). Elles sont prudentes pour les vingt premières économies (94 %) et justes pour les pays à faible revenu (78 %). La dernière colonne vient des mêmes projections comparables : la part où il est survenu au moins une année de recul dans les cinq années suivant l'édition (voir ci-dessous).
 
 Une première version tirait la fourchette de l'historique propre de chaque pays : elle n'aurait contenu que 67 % des erreurs de la période suivante. Le biais d'un pays ne se reproduit pas d'une période à l'autre — corrélation de 0,01 entre 1990-2007 et 2008-2020 ; la Chine passe de −1,9 à +1,0 point, l'Inde de −0,5 à +1,8.
 
 Ce n'est pas une prévision corrigée, mais la marge d'erreur qu'a connue le FMI ; elle porte sur le volume, et serait plus large en dollars courants. Détail pour tous les pays : `data/processed/gdp_projection_bands.csv` et onglet `Fourchettes_2031` du classeur Excel.
+
+**Les récessions que la trajectoire ne montre pas.** Une trajectoire peut atteindre le niveau prévu en passant par un creux. Or le FMI n'annonce presque jamais de recul du PIB au-delà de l'année en cours : à un an, 2,4 % de ses projections sont négatives, quand 14,2 % des croissances réalisées l'ont été ; il n'avait annoncé que 10 % de ces reculs un an à l'avance (59 % dans l'année même). Sur les années suivant une édition :
+
+| Période | Recul annoncé | Recul survenu | Pondéré par le PIB | 20 premières économies | Hors 2009 et 2020 | Pire année médiane |
+|---|---|---|---|---|---|---|
+| 1 an | 2 % | 14 % | 12 % | 13 % | 11 % | −2,8 % |
+| 3 ans | 3 % | 32 % | 32 % | 33 % | 23 % | −3,1 % |
+| 5 ans | 3 % | **45 %** | 48 % | 49 % | 32 % | −3,4 % |
+
+Recul : croissance annuelle en volume négative, selon la ré-estimation du FMI à un an ; « hors 2009 et 2020 » : périodes qui ne contiennent aucune des deux récessions mondiales. Celles-ci n'expliquent pas l'essentiel. Le risque dépend surtout de la croissance projetée : sur cinq ans, un recul est survenu dans 64 % des cas pour les croissances cumulées projetées les plus faibles (11 % en médiane), dans 27 % pour les plus fortes (46 %). Cet ordre tient avant et après 2007 ; le niveau, lui, dépend des crises de la période (38 % des cas pour les éditions jusqu'à 2007, 56 % ensuite). La fréquence par classe de croissance et groupe de revenu donne à chaque pays sa probabilité, dans `gdp_projection_bands.csv` (`probabilite_recul_pct`, et `pire_annee_mediane_pct` pour la profondeur). L'historique propre du pays et sa volatilité passée ont été essayés : sur les éditions 2008-2019, ils ne prévoyaient pas mieux qu'une probabilité unique (score de Brier), quand la classe de croissance l'améliorait. Pour le trafic aérien, qui amplifie les chocs, c'est l'information que la trajectoire médiane ne donne pas.
+
+**Ce que corrige chaque édition.** `pib.revisions_weo` compare chaque prévision à celle de l'édition précédente, pour le même pays et la même année visée. Les éditions à deux ans et plus de l'année visée ne révisent presque pas (au plus 0,03 point en moyenne) ; **la correction vient tard** : l'édition d'avril de l'année visée retire 0,61 point en moyenne (0,29 hors 2009 et 2020), celle d'octobre 0,32. Mises bout à bout, les révisions font −1,09 point : à peu de chose près le biais à 5 ans, qui se résorbe donc dans les dernières éditions. Une révision n'en annonce guère une autre (test de Nordhaus) : la corrélation entre deux révisions successives va de −0,09 à +0,18, légèrement positive à l'approche de l'année visée. Ce qui se prévoit, c'est le sens des révisions tardives, pas leur enchaînement (`weo_forecast_revisions_ngdp_rpch.csv`).
+
+**Ce que change la dernière édition.** L'archive des éditions complètes permet de comparer les deux dernières sur les niveaux. Le rapport raccorde les projections du FMI au dernier niveau observé par la Banque Mondiale, `niveau[y] = observé[base] × FMI[y] / FMI[base]` : ce qui passe dans ses projections est la révision de la croissance cumulée projetée. Entre octobre 2025 et avril 2026, celle de 2024-2030 change de plus de 2 % en volume pour 52 pays sur 189 (médiane 1,0 %), de plus de 5 % en dollars courants pour 64 (médiane 3,2 %) — Russie −9,0 %, Japon −6,3 %, Inde −3,2 %, États-Unis +2,3 % en dollars. Les révisions du niveau de l'historique, elles, s'éliminent dans le raccord ; elles se lisent sur une année observée dans les deux éditions (l'année de l'ancienne édition moins deux, 2023 ici) : 14 pays ont changé d'année de base de leurs prix constants (Inde, Royaume-Uni, Norvège…), et le PIB en dollars de 10 pays a été révisé de plus de 5 %. Contrôlé sur 2025, encore estimée par l'édition d'octobre 2025, le même test signalait 31 pays au lieu de 14 : il prenait des révisions de l'inflation estimée pour des changements d'année de base. Détail : `weo_edition_revisions.csv`.
 
 **Autres indicateurs : lire les médianes.** La référence Banque Mondiale n'existe que pour la croissance du PIB : pour `pcpi_pch` (inflation) et `bca_gdp_bp6` (balance courante), seule la ré-estimation du FMI sert de référence. Pour l'inflation, les moyennes ne décrivent pas l'erreur typique : quelques projections d'hyperinflation (le Venezuela à 10 000 000 %) portent le biais moyen au-delà de 1 600 points à un an, quand la médiane reste à −0,1 point. La synthèse fournit donc aussi `mediane` et `erreur_absolue_mediane`, et le script avertit dès que l'erreur absolue moyenne dépasse dix fois la médiane.
 
@@ -332,11 +348,15 @@ Pour chaque rapport (`data/` et `outputs/` ; `plus_recent/` pour le plus récent
 | `data/processed/weo_forecast_bias_by_season_<indicateur>.csv` | Biais par horizon et saison d'édition (avril, octobre) |
 | `data/processed/weo_forecast_vs_naive_<indicateur>.csv` | Le FMI face à une prévision naïve, par horizon |
 | `data/processed/weo_world_bias_<indicateur>.csv` | Biais de l'agrégat mondial du FMI, par horizon |
-| `data/processed/weo_level_evaluation_ngdp_rpch.csv` | Erreur sur le niveau du PIB, par pays, édition et horizon |
+| `data/processed/weo_level_evaluation_ngdp_rpch.csv` | Erreur sur le niveau du PIB, par pays, édition et horizon ; pire année projetée et réalisée des horizons 1 à h |
 | `data/processed/weo_level_bias_ngdp_rpch.csv`, `weo_level_bias_by_income_ngdp_rpch.csv` | Erreur de niveau par horizon (quantiles, parts), et par groupe de revenu |
 | `data/processed/weo_forecast_efficiency_<indicateur>.csv` | Test d'efficience (pente du réalisé sur le prévu) et biais médian par quintile de prévision |
-| `data/processed/weo_level_bias_by_projected_growth_ngdp_rpch.csv` | Erreur de niveau par classe de croissance projetée |
-| `data/processed/gdp_projection_bands.csv` | Fourchette empirique autour du PIB projeté, par pays |
+| `data/processed/weo_level_bias_by_projected_growth_ngdp_rpch.csv` | Erreur de niveau et fréquence des reculs par classe de croissance projetée |
+| `data/processed/weo_recession_by_horizon_ngdp_rpch.csv` | Années de recul annoncées et survenues, par horizon |
+| `data/processed/weo_recession_risk_ngdp_rpch.csv` | Au moins une année de recul sur les h années suivant l'édition, par groupe |
+| `data/processed/weo_forecast_revisions_ngdp_rpch.csv` | Révisions d'une édition à la suivante : sens, enchaînement (test de Nordhaus) |
+| `data/processed/weo_edition_revisions.csv` | Ce que change la dernière édition archivée, par pays ; changements d'année de base |
+| `data/processed/gdp_projection_bands.csv` | Fourchette empirique autour du PIB projeté, et probabilité d'une année de recul, par pays |
 | `data/processed/gdp_projection_bands_calibration.csv` | Test rétrospectif des fourchettes : part des erreurs contenues |
 | `outputs/gdp_master_dataset.xlsx` | Classeur multi-onglets (voir ci-dessous) |
 | `outputs/resultats_gdp.html` | Page de résultats autonome, commentée |
@@ -366,7 +386,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 
 ## ✅ Tests des invariants
 
-129 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
+145 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
 
 | Invariant | Ce qu'il empêche |
 |---|---|
@@ -391,6 +411,9 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 | Pente d'efficience et croissance cumulée projetée exactes | Un biais mesuré sans tenir compte de l'ampleur de la croissance annoncée |
 | Prévision naïve limitée à ce que le FMI savait ; avril et octobre séparés ; monde contre le seul FMI | Un étalon qui voit l'avenir, deux éditions confondues, ou un biais mondial gonflé par une pondération différente |
 | Archive : chaque édition une seule fois, telle que servie | Une publication d'époque remplacée par une version corrigée après coup |
+| Récessions : pire année des horizons 1 à h, interrompue au premier réalisé manquant ; premières économies comptées par édition | Un recul de l'année de l'édition compté comme imprévu, ou « 20 premières économies » qui n'en comptaient que 10 |
+| Révisions entre éditions consécutives seulement, étapes dans l'ordre ; historique contrôlé sur une année observée | Une révision calculée par-dessus une édition manquante, ou une révision de l'inflation prévue prise pour un changement d'année de base |
+| Commentaires de la page déduits des chiffres | Une conclusion écrite d'avance que la prochaine édition démentirait |
 
 Chaque invariant est **validé par mutation** : le défaut correspondant, réintroduit dans une copie du code, fait bien échouer la suite. Les tests marqués `donnees` contrôlent les CSV réellement produits et se sautent tant que le pipeline n'a pas tourné. Les tests tournent à chaque push (GitHub Actions).
 

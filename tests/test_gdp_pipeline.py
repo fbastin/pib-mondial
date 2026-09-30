@@ -1424,6 +1424,229 @@ class TestEfficience:
         assert table["mediane"].iloc[-1] > table["mediane"].iloc[0]
 
 
+class TestRisqueDeRecession:
+    """
+    La trajectoire du FMI est lisse : elle n'annonce presque jamais le recul qui survient
+    pourtant, sur cinq ans, pour un pays sur deux. Pire année des horizons 1 à h, projetée
+    et réalisée ; fréquence des reculs par groupe et dans les fourchettes.
+    """
+
+    @staticmethod
+    def _evaluation(realise=(-5.0, 1.0, 2.0, -0.5)):
+        return pd.DataFrame([dict(country="France", country_code="FRA", income_group="HIC", vintage="S2020", saison="S",
+                                  annee_millesime=2020, year=2020 + h, horizon=h, poids_pib=1.0, valeur=v,
+                                  realise_fmi=r, realise_bm=1.0)
+                             for h, (v, r) in enumerate(zip((2.0, 2.0, -1.0, 2.0), realise))])
+
+    def test_pire_annee_des_horizons_suivants(self):
+        """L'année de l'édition ne compte pas : son recul de −5 % n'entre dans aucune période."""
+        from pib.evaluate_forecasts import erreurs_de_niveau
+        niveaux = erreurs_de_niveau(self._evaluation()).set_index("horizon")
+        assert niveaux[["pire_croissance_prevue", "pire_croissance_realisee"]].loc[0].isna().all()
+        assert list(niveaux.loc[[1, 2, 3], "pire_croissance_prevue"]) == [2.0, -1.0, -1.0]
+        assert list(niveaux.loc[[1, 2, 3], "pire_croissance_realisee"]) == [1.0, 1.0, -0.5]
+
+    def test_realise_manquant_rompt_la_periode(self):
+        from pib.evaluate_forecasts import erreurs_de_niveau
+        niveaux = erreurs_de_niveau(self._evaluation(realise=(1.0, np.nan, -2.0, -3.0))).set_index("horizon")
+        assert niveaux.loc[[1, 2, 3], "pire_croissance_realisee"].isna().all()
+
+    def test_reculs_par_horizon(self):
+        from pib.evaluate_forecasts import reculs_par_horizon
+        evaluation = pd.DataFrame(dict(horizon=1, valeur=[1.0, -1.0, 1.0, 1.0], realise_fmi=[-1.0, -1.0, -2.0, 1.0]))
+        ligne = reculs_par_horizon(evaluation).iloc[0]
+        assert ligne["recul_annonce_pct"] == pytest.approx(25.0)
+        assert ligne["recul_survenu_pct"] == pytest.approx(75.0)
+        assert ligne["reculs_survenus_annonces_pct"] == pytest.approx(100 / 3, abs=1e-3)
+        assert ligne["reculs_annonces_survenus_pct"] == pytest.approx(100.0)
+
+    def test_risque_par_groupe_et_par_periode(self):
+        """
+        Quatre périodes de deux ans : A recule, B annonce un recul qui ne vient pas, C recule
+        pendant la crise de 2009 (édition 2008), D ne recule pas. Hors crises : A, B, D.
+        """
+        from pib.evaluate_forecasts import risque_de_recession
+        niveaux = pd.DataFrame(dict(
+            country_code=["A", "B", "C", "D"], horizon=2, vintage=["S2000", "S2000", "S2008", "S2003"],
+            annee_millesime=[2000, 2000, 2008, 2003], year=[2002, 2002, 2010, 2005],
+            income_group=["HIC", "LIC", "HIC", "LIC"], poids_pib=[10.0, 1.0, 10.0, 1.0],
+            pire_croissance_prevue=[1.0, -1.0, 1.0, 1.0], pire_croissance_realisee=[-2.0, 1.0, -4.0, 2.0]))
+        table = risque_de_recession(niveaux).set_index("groupe")
+        tous = table.loc["Tous les pays"]
+        assert tous["recul_annonce_pct"] == pytest.approx(25.0)
+        assert tous["recul_survenu_pct"] == pytest.approx(50.0)
+        assert tous["recul_survenu_pondere_pib_pct"] == pytest.approx(2000 / 22, abs=1e-3)
+        assert tous["recul_survenu_hors_crises_mondiales_pct"] == pytest.approx(100 / 3, abs=1e-3)
+        assert tous["recul_survenu_avant_coupure_pct"] == pytest.approx(100 / 3, abs=1e-3)
+        assert tous["recul_survenu_apres_coupure_pct"] == pytest.approx(100.0)
+        assert tous["pire_annee_mediane_pct"] == pytest.approx(-3.0)
+        assert table.loc["Revenu élevé", "recul_survenu_pct"] == pytest.approx(100.0)
+        assert table.loc["Faible revenu", "recul_survenu_pct"] == pytest.approx(0.0)
+
+    def test_grandes_economies_comptees_par_edition(self):
+        """Avril et octobre visent la même année : par année visée, dix pays seulement seraient retenus."""
+        from pib.evaluate_forecasts import _grandes_economies, GRANDES_ECONOMIES
+        cas = pd.DataFrame([dict(country_code=f"P{i}", vintage=v, annee_millesime=2000, year=2005, horizon=5,
+                                 poids_pib=float(100 - i)) for i in range(30) for v in ("S2000", "F2000")])
+        grandes = cas[_grandes_economies(cas)]
+        assert grandes["country_code"].nunique() == GRANDES_ECONOMIES
+        assert (grandes.groupby("vintage").size() == GRANDES_ECONOMIES).all()
+
+    @staticmethod
+    def _niveaux_avec_reculs():
+        """Projections modestes : un recul une fois sur deux ; projections vives : jamais."""
+        niveaux = TestFourchettesDesProjections._niveaux()
+        lente = niveaux["croissance_prevue_cumulee_pct"] < 20
+        niveaux["pire_croissance_realisee"] = np.where(lente, np.where(niveaux.index % 4 == 0, -1.0, 1.0), 2.0)
+        return niveaux
+
+    def test_probabilite_de_recul_dans_les_fourchettes(self):
+        from pib.evaluate_forecasts import fourchettes_projections
+        croissance = pd.Series({"LEN": 10.0, "VIF": 55.0})     # dans les classes des projections passées
+        bandes = fourchettes_projections(self._niveaux_avec_reculs(), croissance,
+                                         TestFourchettesDesProjections._synthese(), 2031, 2026).set_index("country_code")
+        assert bandes.loc["LEN", "projections_de_reference"] == "classe × groupe de revenu"
+        assert bandes.loc["LEN", "probabilite_recul_pct"] == pytest.approx(50.0)
+        assert bandes.loc["LEN", "pire_annee_mediane_pct"] == pytest.approx(-1.0)
+        assert bandes.loc["VIF", "probabilite_recul_pct"] == pytest.approx(0.0)
+        assert pd.isna(bandes.loc["VIF", "pire_annee_mediane_pct"])
+        # Repli sur l'ensemble des projections : un recul dans un quart des cas
+        assert bandes.loc["SAN", "probabilite_recul_pct"] == pytest.approx(25.0)
+
+    def test_recul_par_classe_de_croissance(self):
+        from pib.evaluate_forecasts import synthese_niveau_par_croissance
+        table = synthese_niveau_par_croissance(self._niveaux_avec_reculs())
+        assert table["recul_survenu_pct"].iloc[0] == pytest.approx(50.0)
+        assert table["recul_survenu_pct"].iloc[-1] == pytest.approx(0.0)
+
+    def test_phrase_selon_le_poids_des_crises_mondiales(self, tmp_path):
+        """Le commentaire suit les données : les crises mondiales expliquent l'essentiel ou non."""
+        from pib.build_results_page import section_recessions
+        processed = tmp_path / "processed"
+        processed.mkdir()
+        pd.DataFrame(dict(horizon=[0, 1], projections=100, recul_annonce_pct=[10.0, 2.0], recul_survenu_pct=14.0,
+                          reculs_survenus=14, reculs_survenus_annonces_pct=[60.0, 10.0], reculs_annonces_survenus_pct=50.0)
+                     ).to_csv(processed / "weo_recession_by_horizon_ngdp_rpch.csv", index=False)
+
+        def phrase(hors_crises):
+            pd.DataFrame(dict(horizon=[5], groupe=["Tous les pays"], income_group=[None], periodes=[100],
+                              recul_annonce_pct=[3.0], recul_survenu_pct=[45.0], recul_survenu_pondere_pib_pct=[48.0],
+                              recul_survenu_hors_crises_mondiales_pct=[hors_crises], recul_survenu_avant_coupure_pct=[38.0],
+                              recul_survenu_apres_coupure_pct=[56.0], pire_annee_mediane_pct=[-3.4])
+                         ).to_csv(processed / "weo_recession_risk_ngdp_rpch.csv", index=False)
+            return section_recessions(str(tmp_path))
+
+        assert "n'en expliquent pas l'essentiel" in phrase(32.0)
+        assert "en expliquent l'essentiel" in phrase(10.0)
+
+
+class TestRevisionsDesEditions:
+    """
+    Révisions d'une édition à la suivante : leur sens, leur enchaînement (test de
+    Nordhaus), et ce que change la dernière édition archivée.
+    """
+
+    def test_revisions_entre_editions_consecutives(self):
+        """Octobre 2022 manque : la révision d'avril 2023 n'est pas calculée."""
+        from pib.revisions_weo import revisions_successives
+        base = pd.DataFrame(dict(country_code="FRA", year=2022, vintage=["S2021", "F2021", "S2022", "S2023"],
+                                 saison=["S", "F", "S", "S"], annee_millesime=[2021, 2021, 2022, 2023],
+                                 horizon=[1, 1, 0, -1], valeur=[2.0, 1.5, 1.0, 0.8]))
+        r = revisions_successives(base).set_index("vintage")
+        assert pd.isna(r.loc["S2021", "revision"])
+        assert r.loc["F2021", "revision"] == pytest.approx(-0.5)
+        assert r.loc["S2022", "revision"] == pytest.approx(-0.5)
+        assert r.loc["S2022", "revision_precedente"] == pytest.approx(-0.5)
+        assert pd.isna(r.loc["S2023", "revision"]) and pd.isna(r.loc["S2023", "revision_precedente"])
+
+    def test_test_de_nordhaus(self):
+        """Chaque révision prolonge la moitié de la précédente : pente 0,5, toutes de même sens."""
+        from pib.revisions_weo import synthese_des_revisions
+        precedente = np.linspace(-2, 2, 101)
+        precedente = precedente[precedente != 0]
+        revisions = pd.DataFrame(dict(year=2000 + np.arange(len(precedente)) % 20, horizon=0, saison="S",
+                                      revision_precedente=precedente, revision=0.5 * precedente))
+        ligne = synthese_des_revisions(revisions).iloc[0]
+        assert ligne["pente_nordhaus"] == pytest.approx(0.5, abs=1e-6)
+        assert ligne["correlation"] == pytest.approx(1.0, abs=1e-6)
+        assert ligne["part_meme_sens_pct"] == pytest.approx(100.0)
+        assert ligne["part_a_la_baisse_pct"] == pytest.approx(50.0)
+
+    def test_etapes_dans_l_ordre_chronologique(self):
+        from pib.revisions_weo import synthese_des_revisions
+        revisions = pd.DataFrame(dict(year=2020, horizon=[1, 0, 1, -1], saison=["F", "S", "S", "F"],
+                                      revision=-0.1, revision_precedente=np.nan))
+        assert list(synthese_des_revisions(revisions)["etape"]) == [
+            "avril, horizon 1", "octobre, horizon 1", "avril, horizon 0", "octobre, ré-estimation"]
+
+    @staticmethod
+    def _niveaux(pays: dict) -> pd.DataFrame:
+        """Format de `lire_niveaux` : une ligne par pays, une colonne par (indicateur, année)."""
+        lignes = [dict(country_code=code, indicator=ind, year=annee, value=v)
+                  for code, valeurs in pays.items() for (ind, annee), v in valeurs.items()]
+        return pd.DataFrame(lignes).pivot_table(index="country_code", columns=["indicator", "year"], values="value")
+
+    def test_revisions_de_niveau(self):
+        """
+        L'Inde change d'année de base (volume ×1,6, rien d'autre) ; la Bulgarie change de
+        monnaie (monnaie nationale ÷ 1,95583) ; le Japon révise sa projection en dollars de
+        5 % et en volume de 2 % ; le Nigeria révise tout son PIB en dollars de 20 %.
+        """
+        from pib.revisions_weo import revisions_de_niveau
+        ancien = {("NGDP", 2024): 100.0, ("NGDP_R", 2024): 100.0, ("NGDP_R", 2030): 150.0,
+                  ("NGDPD", 2024): 10.0, ("NGDPD", 2030): 15.0}
+        nouveau = {
+            "IND": {**ancien, ("NGDP_R", 2024): 160.0, ("NGDP_R", 2030): 240.0},
+            "BGR": {**ancien, ("NGDP", 2024): 100 / 1.95583, ("NGDP_R", 2024): 100 / 1.95583,
+                    ("NGDP_R", 2030): 150 / 1.95583},
+            "JPN": {**ancien, ("NGDP_R", 2030): 153.0, ("NGDPD", 2030): 15.75},
+            "NGA": {**ancien, ("NGDPD", 2024): 12.0, ("NGDPD", 2030): 18.0},
+        }
+        table = revisions_de_niveau(self._niveaux({code: ancien for code in nouveau}), self._niveaux(nouveau),
+                                    2024, 2030).set_index("country_code")
+        assert table.loc["IND", "revision_croissance_reelle_pct"] == pytest.approx(0.0)
+        assert table.loc["IND", "changement_annee_de_base"] and not table.loc["IND", "revision_de_l_historique"]
+        assert not table.loc["BGR", ["changement_annee_de_base", "revision_de_l_historique"]].any()
+        assert table.loc["JPN", "revision_croissance_usd_pct"] == pytest.approx(5.0)
+        assert table.loc["JPN", "revision_croissance_reelle_pct"] == pytest.approx(2.0)
+        assert table.loc["NGA", "revision_de_l_historique"] and not table.loc["NGA", "changement_annee_de_base"]
+        assert table.loc["NGA", "revision_croissance_usd_pct"] == pytest.approx(0.0)
+        assert table.loc["NGA", "revision_pib_usd_cible_pct"] == pytest.approx(20.0)
+
+    def test_historique_controle_sur_une_annee_observee(self):
+        """
+        Le raccord du rapport le plus récent se fait sur une année encore estimée par
+        l'ancienne édition : sa révision (ici l'inflation 2025, +10 %) n'est pas un
+        changement d'année de base. Le contrôle porte sur une année observée des deux côtés.
+        """
+        from pib.revisions_weo import revisions_de_niveau
+        ancien = {(ind, annee): 100.0 for ind in ("NGDP", "NGDP_R", "NGDPD") for annee in (2023, 2025, 2030)}
+        nouveau = {**ancien, ("NGDP", 2025): 110.0}
+        a, n = self._niveaux({"EST": ancien}), self._niveaux({"EST": nouveau})
+        assert revisions_de_niveau(a, n, 2025, 2030)["changement_annee_de_base"].iloc[0]
+        assert not revisions_de_niveau(a, n, 2025, 2030, annee_controle=2023)["changement_annee_de_base"].iloc[0]
+
+    def test_editions_archivees_dans_l_ordre(self, tmp_path):
+        from pib.revisions_weo import editions_archivees
+        for nom in ("WEO_S2026.csv.gz", "WEO_F2025.csv.gz", "WEO_F2024.csv.gz", "index.csv", "LISEZ-MOI.md"):
+            (tmp_path / nom).write_text("")
+        assert editions_archivees(str(tmp_path)) == ["F2024", "F2025", "S2026"]
+        assert editions_archivees(str(tmp_path / "absent")) == []
+
+    def test_niveaux_archives_lus_aux_codes_de_la_banque_mondiale(self, tmp_path):
+        from pib.revisions_weo import lire_niveaux
+        pd.DataFrame(dict(country_code=["KOS", "KOS", "FRA"], indicator=["NGDPD", "LP", "NGDPD"],
+                          year=2024, value=[10.0, 1.8, 3000.0])).to_csv(tmp_path / "WEO_S2026.csv.gz", index=False)
+        niveaux = lire_niveaux(str(tmp_path), "S2026")
+        assert niveaux.loc["XKX", ("NGDPD", 2024)] == pytest.approx(10.0)
+        assert "LP" not in niveaux.columns.get_level_values("indicator")
+
+    def test_zero_arrondi_sans_signe_negatif(self):
+        from pib.build_results_page import signe
+        assert signe(-0.001) == "+0,00"
+        assert signe(-0.5) == "−0,50"
+
+
 # ------------------------------------------- fichiers réellement produits
 
 @pytest.mark.donnees

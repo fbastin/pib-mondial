@@ -5,7 +5,8 @@ produire_rapports.py
 Chaîne complète en une commande : collecte et calcul (`pib.gdp_pipeline`), ajout des
 éditions récentes du WEO servies par l'API du FMI (`pib.update_weo_editions`), puis, pour
 chaque rapport produit — la référence, et le cas échéant le plus récent, dans
-`plus_recent/` —, évaluation des prévisions, graphiques et page de résultats.
+`plus_recent/` —, évaluation des prévisions et de leurs révisions, graphiques et page de
+résultats.
 
     python produire_rapports.py
 
@@ -69,6 +70,7 @@ def main():
             if os.path.exists(classeur):
                 lancer("evaluate_forecasts", "--data-dir", data_dir, "--output-dir", output_dir,
                        "--classeur", classeur)
+                lancer("revisions_weo", "--data-dir", data_dir, "--classeur", classeur)
             else:
                 logging.warning(f"{classeur} absent : évaluation des prévisions omise.")
             lancer("visualize_gdp", "--data-dir", data_dir, "--output-dir", output_dir)

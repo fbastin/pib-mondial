@@ -11,7 +11,8 @@ Calcul
 
 Évaluation des prévisions
     update_weo_editions    éditions récentes du WEO (API SDMX du FMI)
-    evaluate_forecasts     prévisions d'époque confrontées au réalisé
+    evaluate_forecasts     prévisions d'époque confrontées au réalisé, risque de récession
+    revisions_weo          révisions d'une édition du WEO à la suivante
 
 Livrables
     visualize_gdp          graphiques et tableau de bord
