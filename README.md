@@ -36,6 +36,7 @@ pib-mondial/
 │   ├── evaluate_forecasts.py     #   Évaluation : prévisions d'époque confrontées au réalisé, récessions
 │   ├── revisions_weo.py          #   Évaluation : révisions d'une édition du WEO à la suivante
 │   ├── cas_de_crise.py           #   Évaluation : une récession mondiale (2009, 2020) dans les prévisions
+│   ├── millesimes_bm.py          #   Évaluation : éditions archivées des WDI, révisions du réalisé
 │   ├── visualize_gdp.py          #   Livrables : graphiques et tableau de bord
 │   └── build_results_page.py     #   Livrables : page de résultats HTML
 ├── notebooks/                    # Analyse interactive (Python et Julia) et générateurs
@@ -43,7 +44,8 @@ pib-mondial/
 ├── docs/                         # Documentation technique (LaTeX et PDF), cas d'étude
 ├── data/
 │   ├── raw/                      # Sources : classeur WEO historique, complément API, LISEZ-MOI
-│   │   └── weo_archive/          # Éditions complètes du WEO, archivées à leur parution
+│   │   ├── weo_archive/          # Éditions complètes du WEO, archivées à leur parution
+│   │   └── wdi_archive/          # Éditions archivées des WDI (non versionné, re-téléchargeable)
 │   ├── processed/                # Rapport de référence : séries, synthèse, évaluation
 │   ├── plus_recent/              # Rapport le plus récent, s'il diffère
 │   └── extraction_metadata.json  # Provenance du rapport de référence
@@ -67,13 +69,14 @@ Toutes les commandes se lancent **depuis la racine du dépôt** : les chemins `d
 ### La chaîne complète
 
 ```bash
-python produire_rapports.py [--start-year 2000] [--end-year AAAA] [--fcst-end AAAA] [--sans-editions-api]
+python produire_rapports.py [--start-year 2000] [--end-year AAAA] [--fcst-end AAAA] [--sans-editions-api] [--sans-millesimes-bm]
 ```
 
 - `--start-year` : première année de l'historique (par défaut : `2000`) ;
 - `--end-year` : dernière année observée. Par défaut, choisie d'après les données, avec un second rapport sur la dernière année publiée si elle diffère ; imposée, elle donne un rapport unique ;
 - `--fcst-end` : dernière année de prévision (par défaut : horizon de l'édition du WEO servie par l'API, 2031 aujourd'hui ; il avance d'un an à chaque édition de printemps) ;
 - `--sans-editions-api` : ne pas interroger l'API du FMI pour les éditions récentes du WEO ;
+- `--sans-millesimes-bm` : ne pas collecter les éditions archivées des WDI de la Banque Mondiale (la première collecte prend une vingtaine de minutes, les suivantes n'ajoutent que les éditions nouvelles) ;
 - `--data-dir` / `--output-dir` : dossiers de sortie (par défaut : `data` et `outputs`).
 
 *Exemple — historique de 30 ans :* `python produire_rapports.py --start-year 1995`
@@ -90,7 +93,8 @@ python produire_rapports.py [--start-year 2000] [--end-year AAAA] [--fcst-end AA
 | Éditions récentes du WEO, depuis l'API, et archivage des éditions complètes | `python -m pib.update_weo_editions [--sans-archive]` |
 | Évaluation des prévisions | `python -m pib.evaluate_forecasts [--indicateur pcpi_pch]` |
 | Révisions d'une édition à la suivante | `python -m pib.revisions_weo` |
-| Cas d'étude d'une récession mondiale (hors chaîne) | `python -m pib.cas_de_crise --annee 2009` |
+| Cas d'étude d'une récession mondiale (hors chaîne) | `python -m pib.cas_de_crise --annee 2009 [--trafic]` |
+| Éditions archivées des WDI : collecte, puis révisions du réalisé | `python -m pib.millesimes_bm --collecter` ; `python -m pib.millesimes_bm --data-dir data` |
 | Graphiques et tableau de bord | `python -m pib.visualize_gdp` |
 | Page de résultats | `python -m pib.build_results_page [--pays FRA]` |
 | Collecte seule, historique | `python -m pib.fetch_historical_gdp --start-year 2000 --end-year 2025` |
@@ -125,13 +129,13 @@ jupyter nbconvert --to html --execute --ExecutePreprocessor.kernel_name=julia-1.
 ### Tests
 
 ```bash
-pytest                      # 150 tests, sans accès réseau
+pytest                      # 167 tests, sans accès réseau
 pytest -m "not donnees"     # sans les contrôles sur les fichiers produits
 ```
 
 ### Documentation technique
 
-`docs/documentation_gdp.pdf` détaille la méthode. Pour la recompiler (les fichiers auxiliaires restent dans `build/`, non versionné) :
+`docs/documentation_gdp.pdf` détaille la méthode. `docs/revue_litterature.md` situe les résultats dans la littérature (évaluation des prévisions du FMI, fourchettes tirées des erreurs passées, PIB et trafic aérien), avec sa bibliographie `docs/references.bib`. Pour la recompiler (les fichiers auxiliaires restent dans `build/`, non versionné) :
 
 ```bash
 mkdir -p build && pdflatex -output-directory=build docs/documentation_gdp.tex \
@@ -145,12 +149,14 @@ mkdir -p build && pdflatex -output-directory=build docs/documentation_gdp.tex \
 1. **Banque Mondiale — World Development Indicators** (API libre, sans clé) :
    - séries annuelles depuis 1960, collectées par défaut depuis 2000 ;
    - prix courants : PIB nominal (USD), croissance annuelle (%), PIB par habitant, PIB à PPA ;
-   - volume : PIB à prix constants 2015 (`NY.GDP.MKTP.KD`), PIB à PPA constante 2021 (`NY.GDP.MKTP.PP.KD`).
-   - métadonnées des pays : distinction pays / agrégats, groupe de revenu (classification courante).
+   - volume : PIB à prix constants 2015 (`NY.GDP.MKTP.KD`), PIB à PPA constante 2021 (`NY.GDP.MKTP.PP.KD`) ;
+   - population (`SP.POP.TOTL`).
+   - métadonnées des pays : distinction pays / agrégats, groupe de revenu (classification courante) ;
+   - éditions archivées des WDI (source « WDI Database Archives », 142 éditions depuis 1989, le PIB à partir de 1994) : croissance réelle et PIB en dollars courants tels que publiés à chaque édition.
 
 2. **FMI — World Economic Outlook, API DataMapper** (libre) :
    - estimations et projections de l'édition en cours, de 1980 à son horizon (cinq ans après l'année de l'édition) ;
-   - `NGDPD` (PIB nominal, milliards USD), `NGDP_RPCH` (croissance réelle, %), `PPPGDP` (PIB à PPA), `NGDPDPC` (PIB par habitant).
+   - `NGDPD` (PIB nominal, milliards USD), `NGDP_RPCH` (croissance réelle, %), `PPPGDP` (PIB à PPA), `NGDPDPC` (PIB par habitant), `LP` (population, millions).
 
 3. **FMI — prévisions d'époque**, pour l'évaluation :
    - *WEO Historical Forecasts Database* (`data/raw/WEOhistorical.xlsx`), téléchargée à la main : toutes les éditions depuis 1990 ;
@@ -186,6 +192,7 @@ Le WEO du FMI couvre **1980 à l'horizon de projection**, pas seulement les ann�
 | `Ecart_Sources_Pct` | (FMI − Banque Mondiale) / Banque Mondiale sur le nominal, années observées seulement |
 | `Facteur_Raccord` | Rapport appliqué aux niveaux nominaux projetés (constant par pays) |
 | `Facteur_Raccord_PPA`, `Facteur_Raccord_Par_Habitant` | Rapports propres à la PPA courante et au PIB par habitant |
+| `Population_FMI_Millions`, `Facteur_Raccord_Population` | Population du FMI en regard, et rapport appliqué à sa projection |
 
 **La Banque Mondiale reste la référence sur les années observées** : les valeurs FMI servent de point de comparaison, jamais de substitution.
 
@@ -218,6 +225,18 @@ Le PIB nominal en USD courants mélange croissance réelle, inflation et mouveme
 Le FMI ne publiant qu'un **taux** de croissance réelle (`NGDP_RPCH`) et non un niveau, les valeurs en volume de l'horizon de prévision sont chaînées à partir du dernier point observé. Une année de croissance manquante interrompt le chaînage plutôt que d'extrapoler.
 
 Quelques écarts sur 2000-2024 : Japon −0,77 % nominal contre +0,65 % en volume (yen déprécié), Russie 9,3 % contre 3,1 %, Chine 12,0 % contre 8,1 %.
+
+**Population et PIB en volume par habitant.** Les modèles de trafic aérien raisonnent par habitant. La population observée vient de la Banque Mondiale ; la population projetée, du FMI (`LP`), raccordée à son dernier niveau comme les autres séries. Les deux sources divergent plus qu'on ne l'attendrait : écart médian de 0,7 % en 2024, plus de 5 % pour 42 pays (Éthiopie −18 %, Chypre −29 %, Yémen −55 % au FMI), d'où le raccord. Le PIB en volume par habitant se calcule sur toute la série, projections comprises : volume chaîné divisé par population raccordée.
+
+| Colonne | Contenu |
+|---|---|
+| `Population_Millions` | Population, millions (série unifiée) |
+| `GDP_Real_Per_Capita_USD_2015` | PIB en volume par habitant, USD constants 2015 |
+| `GDP_Real_PPP_Per_Capita_Intl_2021` | PIB en volume à PPA par habitant, $ internationaux constants 2021 |
+| `Population_2024_Millions`, `CAGR_Population_Prevision_2024_2031_Pct`… | Population aux années de référence et sa croissance (synthèse) |
+| `GDP_Reel_Par_Habitant_2024_USD_2015`, `CAGR_Reel_Par_Habitant_Prevision_2024_2031_Pct`… | PIB en volume par habitant et sa croissance (synthèse) |
+
+La croissance par habitant peut être bien plus faible que celle du PIB : de 2024 à 2031, 2,0 % par an pour le Nigeria contre 4,2 %, 6,6 % pour l'Éthiopie contre 8,4 % ; en Chine, où la population baisse, elle la dépasse (4,2 % contre 4,0 %).
 
 **Comparer des niveaux : la parité de pouvoir d'achat.** Corriger la *croissance* ne suffit pas pour comparer des *niveaux* : le PIB en volume reste converti au taux de change de l'année de base. Le classement par niveau s'appuie donc en parallèle sur `GDP_Real_PPP_Billions_Intl` ($ internationaux constants 2021) :
 
@@ -332,6 +351,23 @@ Recul : croissance annuelle en volume négative, selon la ré-estimation du FMI 
 
 **La crise de 2008, cas d'étude** (`docs/cas_crise_2008.md`, reproduit par `python -m pib.cas_de_crise --annee 2009`). La chute de 2009 n'a été vue que dans l'année même : l'édition d'octobre 2008, trois semaines après la faillite de Lehman Brothers, annonçait encore +3,0 % pour le monde et un recul pour sept pays, quand 89 pays (77 % du PIB mondial) ont reculé. Le rebond de 2010 ne l'a pas été davantage : l'édition d'avril 2009 le sous-estime pour 77 % des pays (−3,0 points pondéré par le PIB). En niveau, le rebond a relevé la croissance, pas la trajectoire : en 2013, le PIB mondial reste 6,4 % sous le niveau projeté en octobre 2008, celui des économies avancées 7,4 %, celui de l'Espagne 17,8 % ; celui des États-Unis, du Royaume-Uni, de l'Italie et de l'Espagne finit même sous la projection d'avril 2009, faute d'avoir prévu la crise de la zone euro.
 
+**Le trafic aérien après 2008** (`--trafic`). Eurostat pour 30 pays européens (trafic par aéroport, homogène depuis 2004), Banque Mondiale pour les États-Unis ; la série mondiale de la Banque Mondiale, rompue en 2010, est écartée. En 2013, le trafic accuse un retard de 35 % sur sa tendance de 2004-2007 en Europe, de 19 % aux États-Unis. L'écart du PIB à la projection d'octobre 2008, multiplié par une élasticité de 1,0 à 1,5, en explique **30 à 45 %** des deux côtés. D'un pays européen à l'autre, en revanche, le PIB n'explique plus le trafic après la crise (R² de 0,06, contre 0,54 en 2004-2007) : compagnies à bas coûts, faillites et fiscalité l'emportent.
+
+**La pandémie de 2020, par contraste** (`docs/cas_crise_2020.md`, `--annee 2020`). La chute n'était pas plus annoncée (octobre 2019 : +3,4 % pour le monde, recul pour 10 pays pesant 1 % du PIB mondial), mais l'édition d'avril 2020 la mesure juste (−3,0 % contre −3,1 %) et prévoit le rebond de 2021 (erreur de −0,4 point pondéré par le PIB, contre −3,0 pour 2010). En 2024, les économies avancées retrouvent leur trajectoire d'avant la crise (+0,7 %, États-Unis +3,8 %), les émergentes non (−5,4 %). Pour le trafic aérien, 2020 ne se compare pas à 2008 : jusqu'en 2022-2023, le trafic était limité par les restrictions de voyage, pas par le revenu, et l'épisode ne teste pas le lien entre PIB et demande.
+
+**Le réalisé aussi se révise.** La Banque Mondiale archive chaque édition de ses indicateurs ; `pib.millesimes_bm` les collecte et mesure, pour les années 1993 et suivantes, les révisions depuis la première publication :
+
+| Depuis la première publication | 1 an après | 5 ans après | Aujourd'hui |
+|---|---|---|---|
+| Croissance : révision absolue médiane | 0,13 pt | 0,46 pt | 0,57 pt |
+| Croissance : révisée de plus d'un point | 15 % | 30 % | 35 % |
+| Niveau en dollars : révision absolue médiane | 0,6 % | 2,8 % | 5,7 % |
+| Niveau en dollars : révisé de plus de 10 % | 7 % | 21 % | 38 % |
+
+Les révisions penchent à la hausse (croissance +0,26 point en moyenne, niveau +4,3 % en médiane à ce jour) : révisions de fond des comptes nationaux et changements d'année de base (Chine +20 % sur 2004, après le recensement économique de 2005), mais aussi, dans les années 1990, conversions en dollars en forte inflation. Le niveau sur lequel se raccordent les projections est donc lui-même incertain : un cinquième des pays le voit révisé de plus de 10 % dans les cinq ans.
+
+**Le biais du FMI ne tient pas à sa propre référence.** Contre la croissance que publiait la Banque Mondiale à la fin de l'année suivante — une référence indépendante du FMI, connue en temps réel —, le biais à un an vaut +0,88 point, contre +0,86 face à la ré-estimation du FMI, sur les mêmes 7 381 projections ; +0,68 face à la série actuelle, révisée à la hausse depuis (`weo_forecast_bias_by_reference_ngdp_rpch.csv`). Une partie de l'optimisme mesuré contre les premières estimations s'efface donc avec les révisions ultérieures des données.
+
 **Autres indicateurs : lire les médianes.** La référence Banque Mondiale n'existe que pour la croissance du PIB : pour `pcpi_pch` (inflation) et `bca_gdp_bp6` (balance courante), seule la ré-estimation du FMI sert de référence. Pour l'inflation, les moyennes ne décrivent pas l'erreur typique : quelques projections d'hyperinflation (le Venezuela à 10 000 000 %) portent le biais moyen au-delà de 1 600 points à un an, quand la médiane reste à −0,1 point. La synthèse fournit donc aussi `mediane` et `erreur_absolue_mediane`, et le script avertit dès que l'erreur absolue moyenne dépasse dix fois la médiane.
 
 ---
@@ -345,7 +381,7 @@ Pour chaque rapport (`data/` et `outputs/` ; `plus_recent/` pour le plus récent
 | `data/processed/gdp_historical_<début>_<fin>.csv` | Extraction Banque Mondiale |
 | `data/processed/gdp_forecast_<début>_<fin>.csv` | Extraction FMI (estimations et prévisions) |
 | `data/processed/gdp_unified_<début>_<horizon>.csv` | Série temporelle unifiée, pays et agrégats |
-| `data/processed/gdp_country_summary.csv` | Synthèse par pays : niveaux, CAGR, rangs |
+| `data/processed/gdp_country_summary.csv` | Synthèse par pays : niveaux, CAGR, rangs, population et PIB en volume par habitant |
 | `data/processed/weo_forecast_evaluation_<indicateur>.csv` | Une ligne par projection d'époque |
 | `data/processed/weo_forecast_bias_<indicateur>.csv` | Biais et erreurs par horizon : moyens, pondérés par le PIB, médians, IC 95 %, hors récessions |
 | `data/processed/weo_forecast_bias_by_income_<indicateur>.csv` | Biais par horizon et groupe de revenu |
@@ -360,8 +396,11 @@ Pour chaque rapport (`data/` et `outputs/` ; `plus_recent/` pour le plus récent
 | `data/processed/weo_recession_risk_ngdp_rpch.csv` | Au moins une année de recul sur les h années suivant l'édition, par groupe |
 | `data/processed/weo_forecast_revisions_ngdp_rpch.csv` | Révisions d'une édition à la suivante : sens, enchaînement (test de Nordhaus) |
 | `data/processed/weo_edition_revisions.csv` | Ce que change la dernière édition archivée, par pays ; changements d'année de base |
+| `data/processed/wdi_growth_revisions.csv`, `wdi_level_revisions.csv` | Révisions de la croissance et du niveau de la Banque Mondiale depuis leur première publication, par délai et groupe de revenu |
+| `data/processed/wdi_largest_level_revisions.csv` | Plus fortes révisions du niveau parmi les 50 premières économies |
+| `data/processed/weo_forecast_bias_by_reference_ngdp_rpch.csv` | Biais du FMI contre sa ré-estimation, la Banque Mondiale en temps réel et sa série actuelle |
 | `data/processed/gdp_projection_bands.csv` | Fourchette empirique autour du PIB projeté, et probabilité d'une année de recul, par pays |
-| `data/processed/weo_cas_<année>_*.csv` | Cas d'étude d'une récession mondiale, sur demande (`pib.cas_de_crise`) : croissance, reculs annoncés, rebond, niveaux |
+| `data/processed/weo_cas_<année>_*.csv` | Cas d'étude d'une récession mondiale, sur demande (`pib.cas_de_crise`) : croissance, reculs annoncés, rebond, niveaux ; avec `--trafic`, trafic aérien face au PIB (par pays, régressions, part expliquée) |
 | `data/processed/gdp_projection_bands_calibration.csv` | Test rétrospectif des fourchettes : part des erreurs contenues |
 | `outputs/gdp_master_dataset.xlsx` | Classeur multi-onglets (voir ci-dessous) |
 | `outputs/resultats_gdp.html` | Page de résultats autonome, commentée |
@@ -375,7 +414,7 @@ Pour chaque rapport (`data/` et `outputs/` ; `plus_recent/` pour le plus récent
 | `outputs/gdp_forecast_level_errors.png` | PIB prévu et PIB réalisé : erreur de niveau par horizon et groupe de revenu |
 | `outputs/gdp_analysis_notebook_julia.html` | Export du notebook Julia (référence seulement) |
 
-Onglets du classeur Excel : `Top30_Economies` ; `Synthese_Pays` (PIB aux années de référence — 2000, 2010, 2024, 2031 —, CAGR historique et prévisionnel, rangs sur le panel décrit plus haut) ; `Series_Temporelles_<début>_<horizon>` ; `Donnees_Historiques_Brutes` et `Previsions_FMI_Brutes` (extractions des API) ; `Fourchettes_<horizon>` (fourchettes empiriques, ajoutées par l'évaluation).
+Onglets du classeur Excel : `Top30_Economies` ; `Synthese_Pays` (PIB aux années de référence — 2000, 2010, 2024, 2031 —, CAGR historique et prévisionnel, rangs sur le panel décrit plus haut, population et PIB en volume par habitant) ; `Series_Temporelles_<début>_<horizon>` ; `Donnees_Historiques_Brutes` et `Previsions_FMI_Brutes` (extractions des API) ; `Fourchettes_<horizon>` (fourchettes empiriques, ajoutées par l'évaluation).
 
 ---
 
@@ -391,7 +430,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 
 ## ✅ Tests des invariants
 
-150 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
+167 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
 
 | Invariant | Ce qu'il empêche |
 |---|---|
@@ -416,9 +455,12 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 | Pente d'efficience et croissance cumulée projetée exactes | Un biais mesuré sans tenir compte de l'ampleur de la croissance annoncée |
 | Prévision naïve limitée à ce que le FMI savait ; avril et octobre séparés ; monde contre le seul FMI | Un étalon qui voit l'avenir, deux éditions confondues, ou un biais mondial gonflé par une pondération différente |
 | Archive : chaque édition une seule fois, telle que servie | Une publication d'époque remplacée par une version corrigée après coup |
+| PIB en volume par habitant = volume / population raccordée, observé comme projeté ; une population manquante laisse la case vide | Un PIB par habitant projeté sur une population d'une autre source, ou inventé |
 | Récessions : pire année des horizons 1 à h, interrompue au premier réalisé manquant ; premières économies comptées par édition | Un recul de l'année de l'édition compté comme imprévu, ou « 20 premières économies » qui n'en comptaient que 10 |
 | Révisions entre éditions consécutives seulement, étapes dans l'ordre ; historique contrôlé sur une année observée | Une révision calculée par-dessus une édition manquante, ou une révision de l'inflation prévue prise pour un changement d'année de base |
 | Commentaires de la page déduits des chiffres | Une conclusion écrite d'avance que la prochaine édition démentirait |
+| Millésimes des WDI : champs lus par nom, chaque édition archivée une fois, première publication réelle seulement, valeur en temps réel à la fin de l'année suivante | Une révision mesurée depuis une édition qui n'était pas la première, ou une référence « en temps réel » qui connaît l'avenir |
+| Trafic et PIB : JSON-stat d'Eurostat décodé dans le bon ordre ; retard du trafic mesuré sur la tendance, écart de PIB réalisé moins projeté | Un trafic attribué au mauvais pays ou à la mauvaise année, ou une part expliquée de signe inversé |
 | Cas d'étude : estimation actuelle tirée de la dernière édition archivée ; reculs annoncés rapportés aux reculs survenus | Un « réalisé » qui n'est que l'estimation d'il y a deux ans, ou une part calculée à l'envers |
 
 Chaque invariant est **validé par mutation** : le défaut correspondant, réintroduit dans une copie du code, fait bien échouer la suite. Les tests marqués `donnees` contrôlent les CSV réellement produits et se sautent tant que le pipeline n'a pas tourné. Les tests tournent à chaque push (GitHub Actions).

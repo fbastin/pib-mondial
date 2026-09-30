@@ -14,6 +14,7 @@ Calcul
     evaluate_forecasts     prévisions d'époque confrontées au réalisé, risque de récession
     revisions_weo          révisions d'une édition du WEO à la suivante
     cas_de_crise           une récession mondiale dans les prévisions (hors chaîne)
+    millesimes_bm          éditions archivées des WDI : révisions du réalisé
 
 Livrables
     visualize_gdp          graphiques et tableau de bord

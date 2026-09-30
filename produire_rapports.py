@@ -3,7 +3,8 @@
 produire_rapports.py
 --------------------
 Chaîne complète en une commande : collecte et calcul (`pib.gdp_pipeline`), ajout des
-éditions récentes du WEO servies par l'API du FMI (`pib.update_weo_editions`), puis, pour
+éditions récentes du WEO servies par l'API du FMI (`pib.update_weo_editions`) et des
+éditions archivées des WDI de la Banque Mondiale (`pib.millesimes_bm`), puis, pour
 chaque rapport produit — la référence, et le cas échéant le plus récent, dans
 `plus_recent/` —, évaluation des prévisions et de leurs révisions, graphiques et page de
 résultats.
@@ -44,6 +45,8 @@ def main():
     parser.add_argument("--fcst-end", type=int, default=None)
     parser.add_argument("--sans-editions-api", action="store_true",
                         help="Ne pas interroger l'API du FMI : ni éditions récentes du WEO, ni archivage")
+    parser.add_argument("--sans-millesimes-bm", action="store_true",
+                        help="Ne pas collecter les éditions archivées des WDI (Banque Mondiale)")
     parser.add_argument("--data-dir", type=str, default="data")
     parser.add_argument("--output-dir", type=str, default="outputs")
     args = parser.parse_args()
@@ -66,6 +69,10 @@ def main():
         classeur = os.path.join(args.data_dir, "raw", "WEOhistorical.xlsx")
         if not args.sans_editions_api:
             lancer("update_weo_editions", "--classeur", classeur)
+        # Éditions des WDI : la première collecte prend une vingtaine de minutes, les
+        # suivantes n'ajoutent que les éditions parues depuis
+        if not args.sans_millesimes_bm:
+            lancer("millesimes_bm", "--collecter")
         for data_dir, output_dir in rapports:
             if os.path.exists(classeur):
                 lancer("evaluate_forecasts", "--data-dir", data_dir, "--output-dir", output_dir,
@@ -73,6 +80,7 @@ def main():
                 lancer("revisions_weo", "--data-dir", data_dir, "--classeur", classeur)
             else:
                 logging.warning(f"{classeur} absent : évaluation des prévisions omise.")
+            lancer("millesimes_bm", "--data-dir", data_dir)
             lancer("visualize_gdp", "--data-dir", data_dir, "--output-dir", output_dir)
             lancer("build_results_page", "--data-dir", data_dir, "--output-dir", output_dir)
     except subprocess.CalledProcessError as e:

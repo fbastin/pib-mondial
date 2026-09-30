@@ -59,16 +59,19 @@ def _historique() -> pd.DataFrame:
             dict(country_code="AAA", country_name="Pays A", year=annee, is_aggregate=False,
                  GDP_Nominal_USD=1e12 * (1.03 ** n), GDP_Growth_Annual_Pct=2.0,
                  GDP_Per_Capita_USD=30000.0, GDP_PPP_USD=1.2e12 * (1.03 ** n),
-                 GDP_Real_USD=1e12 * (1.02 ** n), GDP_Real_PPP_Intl=1.5e12 * (1.02 ** n)),
+                 GDP_Real_USD=1e12 * (1.02 ** n), GDP_Real_PPP_Intl=1.5e12 * (1.02 ** n),
+                 Population=50e6 * (1.01 ** n)),
             # Pays B : plus petit en nominal, plus grand en PPA (monnaie sous-évaluée)
             dict(country_code="BBB", country_name="Pays B", year=annee, is_aggregate=False,
                  GDP_Nominal_USD=5e11 * (1.05 ** n), GDP_Growth_Annual_Pct=4.0,
                  GDP_Per_Capita_USD=8000.0, GDP_PPP_USD=1.4e12 * (1.05 ** n),
-                 GDP_Real_USD=5e11 * (1.04 ** n), GDP_Real_PPP_Intl=2.0e12 * (1.04 ** n)),
+                 GDP_Real_USD=5e11 * (1.04 ** n), GDP_Real_PPP_Intl=2.0e12 * (1.04 ** n),
+                 Population=100e6 * (1.02 ** n)),
             dict(country_code="WLD", country_name="World", year=annee, is_aggregate=True,
                  GDP_Nominal_USD=9e13 * (1.03 ** n), GDP_Growth_Annual_Pct=3.0,
                  GDP_Per_Capita_USD=12000.0, GDP_PPP_USD=1e14 * (1.03 ** n),
-                 GDP_Real_USD=9e13 * (1.02 ** n), GDP_Real_PPP_Intl=1e14 * (1.02 ** n)),
+                 GDP_Real_USD=9e13 * (1.02 ** n), GDP_Real_PPP_Intl=1e14 * (1.02 ** n),
+                 Population=8e9),
         ]
     return pd.DataFrame(lignes)
 
@@ -86,10 +89,12 @@ def _prevision() -> pd.DataFrame:
         lignes += [
             dict(country_code="AAA", country_name="AAA", year=annee, is_forecast=True,
                  is_aggregate=False, GDP_Nominal_Billions_USD=1000 * (1.03 ** 24) * (1.03 ** n),
-                 GDP_Growth_Pct=2.0, GDP_PPP_Billions_USD=1200.0, GDP_Per_Capita_USD=32000.0),
+                 GDP_Growth_Pct=2.0, GDP_PPP_Billions_USD=1200.0, GDP_Per_Capita_USD=32000.0,
+                 Population_Millions=50 * (1.01 ** 24) * (1.01 ** n)),
             dict(country_code="BBB", country_name="BBB", year=annee, is_forecast=True,
                  is_aggregate=False, GDP_Nominal_Billions_USD=500 * (1.05 ** 24) * (1.05 ** n),
-                 GDP_Growth_Pct=4.0, GDP_PPP_Billions_USD=1400.0, GDP_Per_Capita_USD=9000.0),
+                 GDP_Growth_Pct=4.0, GDP_PPP_Billions_USD=1400.0, GDP_Per_Capita_USD=9000.0,
+                 Population_Millions=100 * (1.02 ** 24) * (1.02 ** n)),
             dict(country_code="WLD", country_name="WLD", year=annee, is_forecast=True,
                  is_aggregate=True, GDP_Nominal_Billions_USD=90000 * (1.03 ** n),
                  GDP_Growth_Pct=3.0, GDP_PPP_Billions_USD=100000.0, GDP_Per_Capita_USD=13000.0),
@@ -98,7 +103,7 @@ def _prevision() -> pd.DataFrame:
 
 
 def _fmi_avec_historique(desaccord: float = 1.60, desaccord_ppa: float = 0.50,
-                         desaccord_hab: float = 2.0) -> pd.DataFrame:
+                         desaccord_hab: float = 2.0, desaccord_pop: float = 1.10) -> pd.DataFrame:
     """
     Extraction FMI incluant ses propres estimations des années observées.
 
@@ -110,7 +115,8 @@ def _fmi_avec_historique(desaccord: float = 1.60, desaccord_ppa: float = 0.50,
     La PPA courante (`desaccord_ppa`) et le PIB par habitant (`desaccord_hab`) divergent
     de rapports différents, comme sur données réelles : un facteur unique, calé sur le
     nominal, ne peut pas les raccorder. Le PIB par habitant de Pays B, stable sur
-    l'historique, progresse de 4 %/an en projection.
+    l'historique, progresse de 4 %/an en projection. Sa population est comptée 10 % plus
+    haut par le FMI (`desaccord_pop`), avec la même croissance de 2 %/an.
     """
     lignes = []
     for annee in range(2000, 2031):
@@ -120,11 +126,12 @@ def _fmi_avec_historique(desaccord: float = 1.60, desaccord_ppa: float = 0.50,
             dict(country_code="AAA", country_name="AAA", year=annee, is_forecast=prevision,
                  is_aggregate=False, GDP_Nominal_Billions_USD=1000 * (1.03 ** n),
                  GDP_Growth_Pct=2.0, GDP_PPP_Billions_USD=1200 * (1.03 ** n),
-                 GDP_Per_Capita_USD=30000.0),
+                 GDP_Per_Capita_USD=30000.0, Population_Millions=50 * (1.01 ** n)),
             dict(country_code="BBB", country_name="BBB", year=annee, is_forecast=prevision,
                  is_aggregate=False, GDP_Nominal_Billions_USD=500 * desaccord * (1.05 ** n),
                  GDP_Growth_Pct=4.0, GDP_PPP_Billions_USD=1400 * desaccord_ppa * (1.05 ** n),
-                 GDP_Per_Capita_USD=8000 * desaccord_hab * (1.04 ** max(annee - 2024, 0))),
+                 GDP_Per_Capita_USD=8000 * desaccord_hab * (1.04 ** max(annee - 2024, 0)),
+                 Population_Millions=100 * desaccord_pop * (1.02 ** n)),
             dict(country_code="WLD", country_name="WLD", year=annee, is_forecast=prevision,
                  is_aggregate=True, GDP_Nominal_Billions_USD=90000 * (1.03 ** n),
                  GDP_Growth_Pct=3.0, GDP_PPP_Billions_USD=100000.0, GDP_Per_Capita_USD=12000.0),
@@ -1424,6 +1431,135 @@ class TestEfficience:
         assert table["mediane"].iloc[-1] > table["mediane"].iloc[0]
 
 
+class TestPopulationEtParHabitant:
+    """
+    Population et PIB en volume par habitant, de l'historique à l'horizon : les modèles de
+    trafic aérien raisonnent par habitant. La population projetée du FMI est raccordée au
+    dernier niveau de la Banque Mondiale, comme les autres séries de niveau.
+    """
+
+    def test_population_en_millions(self, unifie):
+        ligne = unifie[(unifie.country_code == "AAA") & (unifie.year == 2024)].iloc[0]
+        assert ligne["Population_Millions"] == pytest.approx(50 * 1.01 ** 24)
+
+    def test_population_projetee_raccordee(self, unifie_recouvrement):
+        """Le FMI compte Pays B 10 % plus haut : le raccord garde sa dynamique, pas son niveau."""
+        b = unifie_recouvrement[unifie_recouvrement.country_code == "BBB"].set_index("year")
+        assert b.loc[2024, "Facteur_Raccord_Population"] == pytest.approx(1 / 1.10)
+        assert b.loc[2030, "Population_Millions"] == pytest.approx(100 * 1.02 ** 30)
+        assert b.loc[2030, "Population_FMI_Millions"] == pytest.approx(110 * 1.02 ** 30)
+
+    def test_pib_reel_par_habitant(self, unifie_recouvrement):
+        from pib.gdp_pipeline import add_per_capita
+        d = add_per_capita(unifie_recouvrement).set_index(["country_code", "year"])
+        for annee in (2010, 2030):     # observé, puis projeté (volume chaîné, population raccordée)
+            ligne = d.loc[("BBB", annee)]
+            assert ligne["GDP_Real_Per_Capita_USD_2015"] == pytest.approx(
+                ligne["GDP_Real_Billions_USD"] * 1e9 / (ligne["Population_Millions"] * 1e6))
+        assert d.loc[("BBB", 2030), "GDP_Real_Per_Capita_USD_2015"] == pytest.approx(5000 * (1.04 / 1.02) ** 30)
+
+    def test_population_manquante_laisse_la_case_vide(self, unifie_recouvrement):
+        from pib.gdp_pipeline import add_per_capita
+        d = unifie_recouvrement.copy()
+        d.loc[(d.country_code == "AAA") & (d.year == 2026), "Population_Millions"] = np.nan
+        d = add_per_capita(d).set_index(["country_code", "year"])
+        assert pd.isna(d.loc[("AAA", 2026), "GDP_Real_Per_Capita_USD_2015"])
+        assert pd.notna(d.loc[("AAA", 2027), "GDP_Real_Per_Capita_USD_2015"])
+
+    def test_synthese_par_habitant(self, unifie_recouvrement):
+        from pib.gdp_pipeline import add_per_capita
+        s = compute_country_summary(add_per_capita(unifie_recouvrement),
+                                    reference_years(2000, 2024, 2030)).set_index("country_code")
+        assert s.loc["BBB", "Population_2030_Millions"] == pytest.approx(100 * 1.02 ** 30)
+        assert s.loc["BBB", "CAGR_Population_Prevision_2024_2030_Pct"] == pytest.approx(2.0)
+        assert s.loc["BBB", "CAGR_Reel_Par_Habitant_Prevision_2024_2030_Pct"] == pytest.approx((1.04 / 1.02 - 1) * 100)
+        assert s.loc["AAA", "GDP_Reel_Par_Habitant_2000_USD_2015"] == pytest.approx(20000.0)
+
+
+class TestMillesimesBanqueMondiale:
+    """
+    Le réalisé se révise aussi : éditions archivées des WDI, révisions depuis la première
+    publication, et croissance telle que publiée à la fin de l'année suivante.
+    """
+
+    @staticmethod
+    def _archive():
+        """
+        Croissance 2000 de Pays A : publiée 2,0 en juillet 2001, révisée 2,5 en juillet 2002,
+        3,0 en juillet 2006. Pays B, année 2000 : 1,0 puis inchangée.
+        """
+        return pd.DataFrame(dict(
+            version=[200107, 200207, 200607, 200107, 200607],
+            country_code=["AAA", "AAA", "AAA", "BBB", "BBB"], year=2000,
+            value=[2.0, 2.5, 3.0, 1.0, 1.0]))
+
+    def test_lecture_d_une_edition(self, monkeypatch):
+        """Champs lus par nom (leur ordre varie), valeurs nulles écartées, pages suivies."""
+        from pib import millesimes_bm
+        pages = {1: [({"Country": "USA", "Time": "YR2008", "Series": "S", "Version": "202607"}, -0.1),
+                     ({"Time": "YR2009", "Country": "USA", "Series": "S", "Version": "202607"}, None)],
+                 2: [({"Series": "S", "Country": "FRA", "Time": "YR2008", "Version": "202607"}, 0.2)]}
+
+        def faux_get_json(url, params=None, **kw):
+            p = params["page"]
+            return {"pages": 2, "source": {"data": [
+                {"variable": [{"concept": k, "id": v} for k, v in champs.items()], "value": valeur}
+                for champs, valeur in pages[p]]}}
+        monkeypatch.setattr(millesimes_bm, "get_json", faux_get_json)
+        t = millesimes_bm.lire_millesime("202607", "S")
+        assert list(zip(t["country_code"], t["year"], t["value"])) == [("USA", 2008, -0.1), ("FRA", 2008, 0.2)]
+
+    def test_archivage_unique(self, tmp_path, monkeypatch):
+        from pib import millesimes_bm
+        appels = []
+        monkeypatch.setattr(millesimes_bm, "lire_millesime", lambda v, s: appels.append((v, s)) or
+                            pd.DataFrame(dict(country_code=["USA"], year=[2008], value=[1.0])))
+        assert millesimes_bm.archiver_millesimes(str(tmp_path), ["200107", "200207"]) == ["200107", "200207"]
+        assert millesimes_bm.archiver_millesimes(str(tmp_path), ["200107", "200207", "200607"]) == ["200607"]
+        assert len(appels) == 3 * len(millesimes_bm.SERIES)
+        assert len(pd.read_csv(tmp_path / "index.csv")) == 3
+        assert set(millesimes_bm.charger_archive(str(tmp_path))["version"]) == {200107, 200207, 200607}
+
+    def test_revisions_depuis_la_premiere_publication(self):
+        from pib.millesimes_bm import revisions_depuis_publication
+        r = revisions_depuis_publication(self._archive(), delais=(1, 5, 10)).set_index(["country_code", "delai"])
+        assert r.loc[("AAA", "1"), "premiere"] == 2.0 and r.loc[("AAA", "1"), "valeur"] == 2.5
+        assert r.loc[("AAA", "5"), "valeur"] == 3.0
+        assert r.loc[("AAA", "actuelle"), "valeur"] == 3.0
+        assert ("AAA", "10") not in r.index        # au-delà de la dernière édition
+        assert r.loc[("BBB", "1"), "valeur"] == 1.0
+
+    def test_annees_anterieures_a_l_archive_ecartees(self):
+        """1990, déjà ancienne à la première édition archivée (2001), n'a pas de vraie première publication."""
+        from pib.millesimes_bm import revisions_depuis_publication
+        archive = pd.concat([self._archive(), pd.DataFrame(dict(version=[200107, 200607], country_code="AAA",
+                                                                year=1990, value=[1.0, 4.0]))])
+        r = revisions_depuis_publication(archive, delais=(5,))
+        assert set(r["year"]) == {2000}
+
+    def test_synthese_des_revisions(self):
+        from pib.millesimes_bm import revisions_depuis_publication, synthese_croissance
+        t = synthese_croissance(revisions_depuis_publication(self._archive(), delais=(5,))).set_index("delai")
+        assert t.loc["5", "revision_moyenne"] == pytest.approx(0.5)       # (1,0 + 0) / 2
+        assert t.loc["5", "part_au_dela_du_seuil_pct"] == pytest.approx(0.0)
+
+    def test_croissance_en_temps_reel(self):
+        """Pour 2000 : dernière édition parue au plus tard en décembre 2001."""
+        from pib.millesimes_bm import croissance_en_temps_reel
+        t = croissance_en_temps_reel(self._archive()).set_index("country_code")
+        assert t.loc["AAA", "realise_bm_temps_reel"] == 2.0
+
+    def test_biais_selon_la_reference(self):
+        from pib.millesimes_bm import biais_selon_la_reference
+        evaluation = pd.DataFrame(dict(country_code="AAA", year=2000, horizon=1, valeur=4.0,
+                                       realise_fmi=2.2, realise_bm=3.0, poids_pib=1.0), index=[0])
+        temps_reel = pd.DataFrame(dict(country_code=["AAA"], year=[2000], realise_bm_temps_reel=[2.0]))
+        ligne = biais_selon_la_reference(evaluation, temps_reel).iloc[0]
+        assert ligne["biais_moyen_fmi_un_an"] == pytest.approx(1.8)
+        assert ligne["biais_moyen_bm_temps_reel"] == pytest.approx(2.0)
+        assert ligne["biais_moyen_bm_actuelle"] == pytest.approx(1.0)
+
+
 class TestRisqueDeRecession:
     """
     La trajectoire du FMI est lisse : elle n'annonce presque jamais le recul qui survient
@@ -1696,6 +1832,67 @@ class TestCasDeCrise:
         niveau = indice_de_niveau(pd.Series({2008: 10.0, 2009: -10.0}), 2008, 2009)
         assert list(niveau.round(6)) == [110.0, 99.0]
 
+    def test_lecture_jsonstat_eurostat(self):
+        """Indice linéaire du JSON-stat : la dernière dimension (le temps) varie le plus vite ; valeurs absentes omises."""
+        from pib.cas_de_crise import decoder_jsonstat
+        donnees = {"id": ["unit", "geo", "time"], "size": [1, 2, 3],
+                   "dimension": {"unit": {"category": {"index": {"PAS": 0}}},
+                                 "geo": {"category": {"index": {"DE": 0, "FR": 1}}},
+                                 "time": {"category": {"index": {"2007": 0, "2008": 1, "2009": 2}}}},
+                   "value": {"0": 10.0, "2": 12.0, "4": 21.0}}
+        t = decoder_jsonstat(donnees).set_index(["geo", "year"])["value"]
+        assert t[("DE", 2007)] == 10.0 and t[("DE", 2009)] == 12.0 and t[("FR", 2008)] == 21.0
+        assert ("DE", 2008) not in t.index
+
+    @staticmethod
+    def _trafic_et_pib():
+        """
+        Choc de 2009, base 2007, tendance 2004-2007. Pays E (Eurostat) : trafic +10 %/an
+        avant (log), puis +20 % de 2007 à 2013 ; PIB réalisé +1 %/an, projeté en octobre
+        2008 à +3 %/an. Les États-Unis : trafic et PIB plats, projeté à +2 %/an.
+        """
+        trafic = pd.DataFrame([dict(country_code=c, year=a, passagers=v, source=s)
+                               for c, s, serie in (("EEE", "Eurostat", {2004: 100.0, 2007: 100 * np.exp(0.3),
+                                                                       2010: 100 * np.exp(0.3), 2013: 100 * np.exp(0.5)}),
+                                                   ("USA", "Banque Mondiale (OACI)", {2004: 50.0, 2007: 50.0, 2010: 50.0, 2013: 50.0}))
+                               for a, v in serie.items()])
+        base = pd.DataFrame([dict(country_code=c, vintage="F2008", year=a, valeur=g)
+                             for c, g in (("EEE", 3.0), ("USA", 2.0)) for a in range(2008, 2014)])
+        actuel = pd.Series({(c, a): g for c, g in (("EEE", 1.0), ("USA", 0.0)) for a in range(2003, 2014)})
+        return trafic, base, actuel
+
+    def test_trafic_et_pib(self):
+        from pib.cas_de_crise import trafic_et_pib
+        t = trafic_et_pib(*self._trafic_et_pib(), 2009).set_index("country_code")
+        assert t.loc["EEE", "croissance_trafic_avant"] == pytest.approx(0.3)
+        assert t.loc["EEE", "croissance_trafic_2013"] == pytest.approx(0.2)
+        assert t.loc["EEE", "croissance_pib_2013"] == pytest.approx(6 * np.log(1.01))
+        assert t.loc["EEE", "ecart_pib_2013"] == pytest.approx(6 * (np.log(1.01) - np.log(1.03)))
+
+    def test_part_du_retard_du_trafic_expliquee_par_le_pib(self):
+        """Retard du trafic sur sa tendance : 0,2 − 6 × 0,1 = −0,4 ; part expliquée : ε × écart de PIB / −0,4."""
+        from pib.cas_de_crise import trafic_et_pib, synthese_trafic
+        table = trafic_et_pib(*self._trafic_et_pib(), 2009)
+        s = synthese_trafic(table, pd.Series({"EEE": 1.0, "USA": 1.0}), 2009).set_index(["groupe", "annee"])
+        europe = s.loc[("Europe (Eurostat)", 2013)]
+        ecart_pib = 6 * (np.log(1.01) - np.log(1.03)) * 100
+        assert europe["ecart_trafic"] == pytest.approx(-40.0, abs=1e-2)
+        assert europe["ecart_pib"] == pytest.approx(ecart_pib, abs=1e-2)
+        assert europe["part_expliquee_1.5_pct"] == pytest.approx(1.5 * ecart_pib / -40.0 * 100, abs=1e-1)
+        assert s.loc[("États-Unis", 2013), "ecart_trafic"] == pytest.approx(0.0, abs=1e-2)
+        assert pd.isna(s.loc[("États-Unis", 2013), "part_expliquee_1_pct"])    # pas de retard à expliquer
+
+    def test_regression_du_trafic_sur_le_pib(self):
+        from pib.cas_de_crise import regressions_trafic
+        pib = np.linspace(-0.1, 0.2, 8)
+        table = pd.DataFrame(dict(country_code=[f"P{i}" for i in range(8)], source="Eurostat",
+                                  croissance_pib_avant=pib, croissance_trafic_avant=0.05 + 2 * pib,
+                                  croissance_pib_2010=pib, croissance_trafic_2010=0.05 + 2 * pib,
+                                  croissance_pib_2013=pib, croissance_trafic_2013=0.05 + 2 * pib))
+        r = regressions_trafic(table, 2009).set_index("periode")
+        assert r.loc["2007-2013", "pente"] == pytest.approx(2.0)
+        assert r.loc["2004-2007", "r2"] == pytest.approx(1.0)
+
     def test_estimation_actuelle_tiree_de_la_derniere_edition(self, tmp_path):
         """Le classeur ne ré-estime que deux ans en arrière : l'estimation actuelle vient de l'archive."""
         from pib.cas_de_crise import estimation_actuelle
@@ -1795,3 +1992,16 @@ class TestFichiersProduits:
             pytest.skip("run sur d'autres bornes")
         tete = synthese.nsmallest(3, "Rank_2024")["country_code"].tolist()
         assert tete == ["USA", "CHN", "DEU"]
+
+    def test_pib_par_habitant_coherent(self, fichiers):
+        """PIB en volume par habitant = volume / population, observé comme projeté ; ordres de grandeur."""
+        unifie, _ = fichiers
+        if "GDP_Real_Per_Capita_USD_2015" not in unifie.columns:
+            pytest.skip("série produite avant l'ajout de la population")
+        d = unifie.dropna(subset=["GDP_Real_Per_Capita_USD_2015"])
+        attendu = d["GDP_Real_Billions_USD"] / d["Population_Millions"] * 1000
+        assert np.allclose(d["GDP_Real_Per_Capita_USD_2015"], attendu, rtol=1e-9)
+        assert d["is_forecast"].astype(bool).any()
+        derniere = d[~d["is_forecast"].astype(bool)]["year"].max()
+        hab = d[d["year"] == derniere].set_index("country_code")["GDP_Real_Per_Capita_USD_2015"]
+        assert 40_000 < hab["USA"] < 90_000 and 1_000 < hab["IND"] < 5_000

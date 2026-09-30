@@ -36,7 +36,8 @@ WB_INDICATORS = {
     "NY.GDP.PCAP.CD": "GDP_Per_Capita_USD",
     "NY.GDP.MKTP.PP.CD": "GDP_PPP_USD",
     "NY.GDP.MKTP.KD": "GDP_Real_USD",          # USD constants 2015
-    "NY.GDP.MKTP.PP.KD": "GDP_Real_PPP_Intl"   # $ internationaux constants 2021
+    "NY.GDP.MKTP.PP.KD": "GDP_Real_PPP_Intl",  # $ internationaux constants 2021
+    "SP.POP.TOTL": "Population",               # habitants, au milieu de l'année
 }
 
 

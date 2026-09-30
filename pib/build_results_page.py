@@ -233,8 +233,11 @@ def table_pays(unifie, code: str):
             f'<td class="num">{nb(r.GDP_Real_Billions_USD)}</td>',
             f'<td class="num">{nb(r.GDP_Growth_Pct, 2)}</td>',
             f'<td class="num">{nb(r.GDP_Per_Capita_USD)}</td>',
+            f'<td class="num">{nb(r.get("GDP_Real_Per_Capita_USD_2015"))}</td>',
+            f'<td class="num">{nb(r.get("Population_Millions"), 1)}</td>',
         ])
-    return ["Année", "Type", "PIB courant", "PIB volume", "Croissance réelle", "PIB / hab."], corps
+    return ["Année", "Type", "PIB courant", "PIB volume", "Croissance réelle", "PIB / hab.",
+            "PIB volume / hab.", "Population (M)"], corps
 
 
 def bloc_table(entetes, corps) -> str:
@@ -692,14 +695,71 @@ def section_revisions(data_dir: str, synthese: pd.DataFrame, c: dict) -> str:
     ({nb(-avril["revision_hors_recessions_mondiales"], 2)} hors récessions mondiales), celle d'octobre
     {nb(-octobre["revision_moyenne"], 2)}.{biais}</p>{enchainement}
 {bloc_table(["Édition qui révise", "Révision moyenne", f"Hors {' et '.join(map(str, ANNEES_RECESSION_MONDIALE))}",
-             "Pondérée par le PIB", "À la baisse", "Corrélation avec la précédente"], corps)}{revisions_de_la_derniere_edition(processed, synthese, c)}
+             "Pondérée par le PIB", "À la baisse", "Corrélation avec la précédente"], corps)}{revisions_de_la_derniere_edition(processed, synthese, c)}{revisions_du_realise(processed, synthese)}
     <p class="col note">Révision : prévision de croissance d'une édition moins celle de l'édition
     précédente, pour le même pays et la même année visée ; horizon de l'édition qui révise.
     Corrélation (test de Nordhaus) : calculée sans le 1 % de valeurs extrêmes de chaque côté ;
     nulle si chaque édition intègre toute l'information disponible. Détail :
-    <code>weo_forecast_revisions_ngdp_rpch.csv</code> et <code>weo_edition_revisions.csv</code>.</p>
+    <code>weo_forecast_revisions_ngdp_rpch.csv</code>, <code>weo_edition_revisions.csv</code> ; révisions
+    du réalisé : <code>wdi_growth_revisions.csv</code>, <code>wdi_level_revisions.csv</code>,
+    <code>weo_forecast_bias_by_reference_ngdp_rpch.csv</code>.</p>
   </section>
 """
+
+
+def revisions_du_realise(processed: str, synthese: pd.DataFrame) -> str:
+    """
+    Le réalisé aussi se révise : croissance et niveau de la Banque Mondiale depuis leur
+    première publication (éditions archivées des WDI), et biais du FMI selon la référence.
+    Alimenté par pib.millesimes_bm ; vide sans ses tables.
+    """
+    croissance_csv = os.path.join(processed, "wdi_growth_revisions.csv")
+    niveau_csv = os.path.join(processed, "wdi_level_revisions.csv")
+    if not (os.path.exists(croissance_csv) and os.path.exists(niveau_csv)):
+        return ""
+    cr = pd.read_csv(croissance_csv, dtype={"delai": str})
+    nv = pd.read_csv(niveau_csv, dtype={"delai": str})
+    cr, nv = cr[cr["income_group"].isna()].set_index("delai"), nv[nv["income_group"].isna()].set_index("delai")
+    if not {"1", "actuelle"} <= set(cr.index) or "actuelle" not in nv.index:
+        return ""
+    un_an, actuelle, niveau = cr.loc["1"], cr.loc["actuelle"], nv.loc["actuelle"]
+
+    exemples = ""
+    grandes_csv = os.path.join(processed, "wdi_largest_level_revisions.csv")
+    if os.path.exists(grandes_csv):
+        # Depuis 2000 : dans les années 1990, conversions en dollars en forte inflation
+        # (Russie, Brésil) et révisions de fond se mêlent
+        g = pd.read_csv(grandes_csv)
+        g = g[g["year"] >= 2000].head(3)
+        noms = synthese.set_index("country_code")["country_name"]
+        if len(g):
+            exemples = " Parmi les grandes économies, les plus fortes révisions depuis 2000 : " + et([
+                f"{noms.get(r.country_code, r.country_code)} ({signe(r.revision_pct, 0)} % sur {int(r.year)})"
+                for r in g.itertuples()]) + "."
+
+    reference = ""
+    biais_csv = os.path.join(processed, "weo_forecast_bias_by_reference_ngdp_rpch.csv")
+    if os.path.exists(biais_csv):
+        b = pd.read_csv(biais_csv).set_index("horizon")
+        if 1 in b.index:
+            h = b.loc[1]
+            reference = f"""
+    <p class="col">Le biais du FMI ne tient pas à sa propre référence. Sur les mêmes projections à
+    un an, il vaut {signe(h["biais_moyen_fmi_un_an"])} point contre sa ré-estimation,
+    {signe(h["biais_moyen_bm_temps_reel"])} contre la croissance que publiait la Banque Mondiale à la
+    fin de l'année suivante, et {signe(h["biais_moyen_bm_actuelle"])} contre sa série actuelle
+    (médianes : {signe(h["biais_median_fmi_un_an"])}, {signe(h["biais_median_bm_temps_reel"])} et
+    {signe(h["biais_median_bm_actuelle"])}).</p>"""
+
+    return f"""
+    <p class="col">Le réalisé se révise aussi. D'après les éditions archivées des World Development
+    Indicators, la croissance publiée par la Banque Mondiale change de {nb(un_an["revision_absolue_mediane"], 2)}
+    point en médiane dans l'année qui suit sa première publication, et de
+    {nb(actuelle["revision_absolue_mediane"], 2)} point jusqu'à aujourd'hui ; de plus d'un point dans
+    {nb(actuelle["part_au_dela_du_seuil_pct"])} % des cas. Le niveau du PIB en dollars, sur lequel se
+    raccordent les projections, a été révisé depuis de plus de 10 % dans
+    {nb(niveau["part_au_dela_du_seuil_pct"])} % des cas (révisions de fond des comptes nationaux,
+    changements d'année de base, conversions en dollars en période de forte inflation).{exemples}</p>{reference}"""
 
 
 def revisions_de_la_derniere_edition(processed: str, synthese: pd.DataFrame, c: dict) -> str:
@@ -1131,7 +1191,9 @@ def construire(data_dir: str, output_dir: str, pays_detail: str) -> str:
 {section_previsions(data_dir, figures["exactitude"])}{section_niveaux(data_dir, figures["niveaux"])}{section_recessions(data_dir)}{section_fourchettes(data_dir, synthese, c, f)}{section_revisions(data_dir, synthese, c)}
   <section>
     <div class="sec-head col"><h2>Détail par pays — {nom_detail}</h2></div>
-    <p class="col note">Dix dernières années de la série, prévisions comprises.</p>
+    <p class="col note">Dix dernières années de la série, prévisions comprises. PIB en milliards
+    de dollars (courants, puis constants de 2015 pour le volume) ; par habitant, en dollars ;
+    population en millions, projetée par le FMI et raccordée au dernier niveau de la Banque Mondiale.</p>
 {bloc_table(*table_pays(unifie, pays_detail))}
   </section>
 

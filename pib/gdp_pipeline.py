@@ -37,6 +37,15 @@ RACCORDS = {
     "GDP_Nominal_Billions_USD": ("GDP_Nominal_FMI_Billions_USD", "Facteur_Raccord"),
     "GDP_PPP_Billions_USD": ("GDP_PPP_FMI_Billions_USD", "Facteur_Raccord_PPA"),
     "GDP_Per_Capita_USD": ("GDP_Per_Capita_FMI_USD", "Facteur_Raccord_Par_Habitant"),
+    "Population_Millions": ("Population_FMI_Millions", "Facteur_Raccord_Population"),
+}
+
+# PIB en volume par habitant, calculé sur toute la série (historique et projections) à
+# partir du PIB en volume et de la population raccordée : colonne en volume -> colonne
+# par habitant. Les modèles de trafic aérien raisonnent par habitant.
+PAR_HABITANT = {
+    "GDP_Real_Billions_USD": "GDP_Real_Per_Capita_USD_2015",
+    "GDP_Real_PPP_Billions_Intl": "GDP_Real_PPP_Per_Capita_Intl_2021",
 }
 
 # Deux rapports, quand la dernière année publiée est encore incomplète. La Banque Mondiale
@@ -73,6 +82,9 @@ def build_unified_dataset(hist_df: pd.DataFrame, fcst_df: pd.DataFrame) -> pd.Da
     ]:
         if src in hist_clean.columns:
             hist_clean[dest] = hist_clean[src] / 1e9
+    # Population : habitants à la Banque Mondiale, millions au FMI
+    if "Population" in hist_clean.columns:
+        hist_clean["Population_Millions"] = hist_clean["Population"] / 1e6
 
     hist_clean["data_type"] = "Historique"
     hist_clean["is_forecast"] = False
@@ -95,7 +107,7 @@ def build_unified_dataset(hist_df: pd.DataFrame, fcst_df: pd.DataFrame) -> pd.Da
         "country_code", "country_name", "year", "data_type", "is_forecast", "is_aggregate", "income_group",
         "GDP_Nominal_Billions_USD", "GDP_Growth_Pct",
         "GDP_PPP_Billions_USD", "GDP_Per_Capita_USD",
-        "GDP_Real_Billions_USD", "GDP_Real_PPP_Billions_Intl"
+        "GDP_Real_Billions_USD", "GDP_Real_PPP_Billions_Intl", "Population_Millions"
     ]
 
     # Filtrer les colonnes existantes
@@ -259,6 +271,24 @@ def extend_real_series(unified_df: pd.DataFrame, base_year: int = 2024) -> pd.Da
     return df
 
 
+def add_per_capita(unified_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    PIB en volume par habitant (`PAR_HABITANT`), en dollars : volume en milliards divisé
+    par la population en millions. Sur l'horizon de prévision, le volume chaîné et la
+    population raccordée donnent la projection par habitant ; une valeur manquante de
+    l'un ou de l'autre laisse la case vide.
+    """
+    if "Population_Millions" not in unified_df.columns:
+        logging.warning("Population absente : PIB par habitant en volume non calculé.")
+        return unified_df
+    df = unified_df.copy()
+    population = df["Population_Millions"].where(df["Population_Millions"] > 0)
+    for volume, par_habitant in PAR_HABITANT.items():
+        if volume in df.columns:
+            df[par_habitant] = df[volume] / population * 1000.0
+    return df
+
+
 def reference_years(start_year: int, end_year: int, fcst_end: int) -> dict:
     """
     Détermine les années de référence de la synthèse à partir des bornes du run.
@@ -275,7 +305,8 @@ def reference_years(start_year: int, end_year: int, fcst_end: int) -> dict:
 def compute_country_summary(unified_df: pd.DataFrame, years: dict) -> pd.DataFrame:
     """
     Calcule les métriques de synthèse par pays : niveaux de PIB aux années de référence,
-    CAGR historique et prévisionnel, rangs mondiaux nominaux et à parité de pouvoir d'achat.
+    CAGR historique et prévisionnel, rangs mondiaux nominaux et à parité de pouvoir d'achat,
+    population et PIB en volume par habitant (voir `add_per_capita`).
 
     `years` fixe les années de référence (voir `reference_years`) ; les noms de colonnes
     en portent la trace, afin qu'un run sur d'autres bornes reste lisible sans ambiguïté.
@@ -316,6 +347,18 @@ def compute_country_summary(unified_df: pd.DataFrame, years: dict) -> pd.DataFra
         values="GDP_Real_PPP_Billions_Intl"
     ) if "GDP_Real_PPP_Billions_Intl" in df_countries.columns else pd.DataFrame()
 
+    # Population et PIB en volume par habitant, aux mêmes années de référence
+    par_habitant = {
+        colonne: df_countries.pivot_table(index="country_code", columns="year", values=colonne)
+        for colonne in ("Population_Millions", *PAR_HABITANT.values()) if colonne in df_countries.columns
+    }
+
+    def valeur(colonne: str, code: str, annee: int) -> float:
+        table = par_habitant.get(colonne)
+        if table is None or code not in table.index or annee not in table.columns:
+            return np.nan
+        return table.at[code, annee]
+
     names = df_countries.drop_duplicates(subset=["country_code"]).set_index("country_code")["country_name"]
     groupes = (df_countries.dropna(subset=["income_group"]).drop_duplicates(subset=["country_code"])
                .set_index("country_code")["income_group"]) if "income_group" in df_countries.columns else pd.Series(dtype=object)
@@ -354,6 +397,10 @@ def compute_country_summary(unified_df: pd.DataFrame, years: dict) -> pd.DataFra
         ppp_end = ppp.get(y_end, np.nan) if len(ppp) else np.nan
         ppp_fcst = ppp.get(y_fcst, np.nan) if len(ppp) else np.nan
 
+        pop_start, pop_end, pop_fcst = (valeur("Population_Millions", ccode, y) for y in (y_start, y_end, y_fcst))
+        hab_start, hab_end, hab_fcst = (valeur("GDP_Real_Per_Capita_USD_2015", ccode, y)
+                                        for y in (y_start, y_end, y_fcst))
+
         summary_rows.append({
             "country_code": ccode,
             "country_name": cname,
@@ -373,7 +420,19 @@ def compute_country_summary(unified_df: pd.DataFrame, years: dict) -> pd.DataFra
             f"Ecart_Nominal_Reel_{y_start}_{y_end}_Pts": ecart_hist,
             f"GDP_PPA_{y_start}_Billion_Intl_2021": ppp_start,
             f"GDP_PPA_{y_end}_Billion_Intl_2021": ppp_end,
-            f"GDP_PPA_{y_fcst}_Billion_Intl_2021": ppp_fcst
+            f"GDP_PPA_{y_fcst}_Billion_Intl_2021": ppp_fcst,
+            f"Population_{y_start}_Millions": pop_start,
+            f"Population_{y_end}_Millions": pop_end,
+            f"Population_{y_fcst}_Millions": pop_fcst,
+            f"CAGR_Population_Historique_{y_start}_{y_end}_Pct": calculate_cagr(pop_start, pop_end, n_hist),
+            f"CAGR_Population_Prevision_{y_end}_{y_fcst}_Pct": calculate_cagr(pop_end, pop_fcst, n_fcst),
+            f"GDP_Reel_Par_Habitant_{y_start}_USD_2015": hab_start,
+            f"GDP_Reel_Par_Habitant_{y_end}_USD_2015": hab_end,
+            f"GDP_Reel_Par_Habitant_{y_fcst}_USD_2015": hab_fcst,
+            f"CAGR_Reel_Par_Habitant_Historique_{y_start}_{y_end}_Pct": calculate_cagr(hab_start, hab_end, n_hist),
+            f"CAGR_Reel_Par_Habitant_Prevision_{y_end}_{y_fcst}_Pct": calculate_cagr(hab_end, hab_fcst, n_fcst),
+            f"GDP_PPA_Par_Habitant_{y_end}_Intl_2021": valeur("GDP_Real_PPP_Per_Capita_Intl_2021", ccode, y_end),
+            f"GDP_PPA_Par_Habitant_{y_fcst}_Intl_2021": valeur("GDP_Real_PPP_Per_Capita_Intl_2021", ccode, y_fcst),
         })
 
     summary_df = pd.DataFrame(summary_rows)
@@ -439,7 +498,8 @@ def write_extraction_metadata(data_dir: str, years: dict, fcst_start: int,
     couverture = {
         col: int(df_unified[col].notna().sum())
         for col in ("GDP_Nominal_Billions_USD", "GDP_Real_Billions_USD",
-                    "GDP_Real_PPP_Billions_Intl", "GDP_Growth_Pct")
+                    "GDP_Real_PPP_Billions_Intl", "GDP_Growth_Pct", "Population_Millions",
+                    *PAR_HABITANT.values())
         if col in df_unified.columns
     }
 
@@ -601,6 +661,7 @@ def compute_report(df_hist: pd.DataFrame, df_fcst: pd.DataFrame,
     unified = build_unified_dataset(hist, fcst)
     unified = splice_forecast_levels(unified, base_year=end_year)
     unified = extend_real_series(unified, base_year=end_year)
+    unified = add_per_capita(unified)
 
     years = reference_years(start_year, end_year, fcst_end)
     # Une année de référence absente viderait silencieusement toute une colonne

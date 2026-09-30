@@ -58,6 +58,7 @@ La Banque Mondiale fournit une API REST libre d'accès sans clé d'API.
         \item \texttt{NY.GDP.MKTP.PP.CD}: PIB en Parité de Pouvoir d'Achat (PPA) en USD internationaux.
         \item \texttt{NY.GDP.MKTP.KD}: PIB à prix constants de 2015, en USD.
         \item \texttt{NY.GDP.MKTP.PP.KD}: PIB à PPA, en dollars internationaux constants de 2021.
+        \item \texttt{SP.POP.TOTL}: population totale.
     \end{enumerate}
 \end{itemize}
 
@@ -71,6 +72,7 @@ Le FMI met à disposition l'API \textit{DataMapper} (World Economic Outlook - WE
         \item \texttt{NGDP\_RPCH}: Croissance réelle du PIB (\%).
         \item \texttt{PPPGDP}: PIB PPA en Milliards d'USD internationaux.
         \item \texttt{NGDPDPC}: PIB par habitant en USD.
+        \item \texttt{LP}: population, en millions.
     \end{enumerate}
 \end{itemize}
 
@@ -127,6 +129,9 @@ Les facteurs appliqués sont conservés dans les colonnes:
     \item \texttt{Facteur\_Raccord\_Par\_Habitant} (PIB par habitant).
 \end{itemize}
 
+\subsection{Population et PIB par Habitant}
+Les modèles de trafic aérien raisonnent par habitant. La population observée vient de la Banque Mondiale (\texttt{SP.POP.TOTL}); la population projetée, du FMI (\texttt{LP}), raccordée à son dernier niveau observé par son propre facteur, comme les autres séries de niveau: les deux sources divergent de plus de $5\,\%$ pour 42 pays. Le PIB en volume par habitant (\texttt{GDP\_Real\_Per\_Capita\_USD\_2015}, et à parité \texttt{GDP\_Real\_PPP\_Per\_Capita\_Intl\_2021}) est le volume chaîné divisé par la population raccordée, sur toute la série; la synthèse en donne les niveaux et les croissances aux années de référence. La croissance par habitant peut être bien plus faible que celle du PIB: de 2024 à 2031, $2{,}0\,\%$ par an au Nigeria pour $4{,}2\,\%$ de PIB.
+
 \subsection{Comparaison de Niveaux: la Parité de Pouvoir d'Achat}
 Neutraliser le change sur la \emph{croissance} ne suffit pas à comparer des \emph{niveaux}: la série en volume reste convertie en dollars au taux de l'année de base. Or le taux de change de marché est déterminé par les flux financiers et les biens échangeables, non par ce qu'une unité de production permet d'acheter localement.
 
@@ -177,6 +182,7 @@ Les niveaux de prévision à parité étant obtenus par chaînage à partir du d
     \item \texttt{update\_weo\_editions}: éditions récentes du WEO, depuis l'API SDMX du FMI.
     \item \texttt{evaluate\_forecasts}: évaluation des prévisions d'époque du FMI, risque de récession.
     \item \texttt{revisions\_weo}: révisions d'une édition du WEO à la suivante.
+    \item \texttt{millesimes\_bm}: éditions archivées des WDI de la Banque Mondiale, révisions du réalisé.
     \item \texttt{cas\_de\_crise}: une récession mondiale dans les prévisions du FMI, sur demande (\texttt{-{}-annee 2009}, \texttt{-{}-annee 2020}).
     \item \texttt{visualize\_gdp}: graphiques PNG et tableau de bord HTML.
     \item \texttt{build\_results\_page}: page HTML de résultats, construite depuis les CSV et les PNG produits.
@@ -308,8 +314,13 @@ Le module \texttt{revisions\_weo} rapproche chaque prévision de celle de l'édi
 
 \paragraph{Ce que change la dernière édition.} L'archive des éditions complètes permet de comparer les deux dernières sur les niveaux. Le raccord, $\text{niveau}_y = \text{observé}_{\text{base}} \times \text{FMI}_y / \text{FMI}_{\text{base}}$, ne retient du FMI que la croissance cumulée projetée: c'est sa révision qui passe dans les projections. Entre octobre 2025 et avril 2026, celle de 2024-2030 change de plus de $2\,\%$ en volume pour 52 pays sur 189, de plus de $5\,\%$ en dollars courants pour 64. Les révisions du niveau de l'historique s'éliminent dans le raccord; elles sont signalées, sur une année observée dans les deux éditions (l'année de l'ancienne édition moins deux): changement d'année de base des prix constants quand le rapport du PIB courant au PIB en volume est révisé de plus de $5\,\%$ (14 pays, dont l'Inde et le Royaume-Uni), nouvelle estimation des comptes quand le PIB en dollars l'est (10 pays). Contrôlé sur une année encore estimée, le test confondait révision de l'inflation et changement de base.
 
+\subsection{Le Réalisé aussi se Révise}
+La Banque Mondiale archive chaque édition de ses World Development Indicators (142 éditions depuis 1989, le PIB à partir de 1994). Le module \texttt{millesimes\_bm} les collecte et mesure les révisions depuis la première publication, pour les années 1993 et suivantes: la croissance change de $0{,}13$ point en médiane dans l'année, de $0{,}57$ point à ce jour, et de plus d'un point dans $35\,\%$ des cas; le niveau en dollars est révisé de plus de $10\,\%$ dans $21\,\%$ des cas en cinq ans et $38\,\%$ à ce jour, surtout à la hausse. Contre la croissance que publiait la Banque Mondiale à la fin de l'année suivante, référence indépendante du FMI et connue en temps réel, le biais à un an vaut $+0{,}88$ point, contre $+0{,}86$ face à la ré-estimation du FMI sur les mêmes projections, et $+0{,}68$ face à la série actuelle.
+
 \subsection{Cas d'Étude: la Crise de 2008}
 Le module \texttt{cas\_de\_crise} suit une récession mondiale à travers les éditions qui l'encadrent; le détail de 2009 est dans \texttt{docs/cas\_crise\_2008.md}. La chute n'a été vue que dans l'année même: l'édition d'octobre 2008, trois semaines après la faillite de Lehman Brothers, annonçait encore $+3{,}0\,\%$ pour le monde et un recul pour sept pays, quand 89 pays ($77\,\%$ du PIB mondial) ont reculé. Le rebond de 2010 ne l'a pas été davantage: l'édition d'avril 2009 le sous-estime pour $77\,\%$ des pays ($-3{,}0$ points pondéré par le PIB). En niveau, le rebond a relevé la croissance, pas la trajectoire: en 2013, le PIB mondial reste $6{,}4\,\%$ sous le niveau projeté en octobre 2008, celui des économies avancées $7{,}4\,\%$. Le réalisé des niveaux est l'estimation actuelle, tirée de la dernière édition archivée: le classeur ne ré-estime chaque année que deux ans après.
+
+\paragraph{Le trafic aérien.} Avec l'option \texttt{-{}-trafic}, le module confronte le PIB au trafic passagers: Eurostat pour 30 pays européens (trafic par aéroport, homogène depuis 2004), Banque Mondiale pour les États-Unis; la série mondiale de la Banque Mondiale, rompue en 2010 par un changement de couverture, est écartée. En 2013, le trafic accuse un retard de $35\,\%$ sur sa tendance de 2004-2007 en Europe, de $19\,\%$ aux États-Unis; l'écart du PIB à la projection d'octobre 2008, multiplié par une élasticité de $1{,}0$ à $1{,}5$, en explique $30$ à $45\,\%$ des deux côtés. Entre pays européens, la relation entre trafic et PIB, forte avant la crise ($R^2 = 0{,}54$ en 2004-2007), disparaît après ($R^2 = 0{,}06$ en 2007-2013).
 
 \section{Provenance et Reproductibilité}
 
@@ -319,7 +330,7 @@ Le champ \texttt{derniere\_mise\_a\_jour} reprend le \texttt{lastupdated} décla
 
 \section{Tests des Invariants}
 
-Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (150 tests, sans accès réseau) fixe les propriétés correspondantes:
+Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (167 tests, sans accès réseau) fixe les propriétés correspondantes:
 
 \begin{itemize}
     \item les agrégats sont absents des classements par pays;
@@ -344,7 +355,10 @@ Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur si
     \item la prévision naïve n'utilise que ce que le FMI savait à l'édition, les éditions d'avril et d'octobre restent distinctes, et la croissance mondiale n'est comparée qu'à la ré-estimation du FMI;
     \item chaque édition archivée l'est une seule fois, telle que servie;
     \item la pire année d'une période exclut l'année de l'édition et s'interrompt au premier réalisé manquant; les premières économies sont comptées par édition;
-    \item une révision n'est calculée qu'entre éditions consécutives, et l'historique est contrôlé sur une année observée dans les deux éditions.
+    \item une révision n'est calculée qu'entre éditions consécutives, et l'historique est contrôlé sur une année observée dans les deux éditions;
+    \item le PIB en volume par habitant est le volume divisé par la population raccordée, observé comme projeté, et reste vide faute de population;
+    \item une révision du réalisé se mesure depuis la vraie première publication, et la référence en temps réel ne connaît que les éditions parues à la fin de l'année suivante;
+    \item le trafic d'Eurostat est attribué au bon pays et à la bonne année, et la part du retard du trafic expliquée par le PIB a le bon signe.
 \end{itemize}
 
 Les tests marqués \texttt{donnees} portent sur les fichiers réellement produits et se sautent tant que le pipeline n'a pas été exécuté.

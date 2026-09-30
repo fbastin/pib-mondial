@@ -5,6 +5,53 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## ✈️ Trafic Aérien et PIB après 2008 (30 Septembre 2026)
+
+Test de l'hypothèse : le retard du trafic aérien après 2008 s'explique-t-il en partie par l'écart du PIB aux projections d'avant la crise ? Option `--trafic` de `pib.cas_de_crise`.
+
+- **Données.** La première piste, le trafic de la Banque Mondiale (données de l'OACI, par pays d'immatriculation des compagnies), a été écartée pour l'essentiel : sa série est rompue en 2010 (+15 % pour l'Union européenne, +31 % pour l'Asie de l'Est en un an, quand l'IATA donnait +5 % pour les compagnies européennes), et un premier test sur 80 pays avec cette série ne disait rien (R² de 0,02). Retenu : Eurostat (`avia_paoc`, trafic par aéroport, homogène depuis 2004) pour 30 pays européens, et la Banque Mondiale pour les seuls États-Unis, dont la série est cohérente.
+- **Résultat agrégé.** En 2013, retard du trafic sur sa tendance de 2004-2007 : −35 % en Europe, −19 % aux États-Unis. L'écart du PIB à la projection d'octobre 2008, multiplié par une élasticité de 1,0 à 1,5, en explique 30 à 45 % des deux côtés.
+- **Entre pays européens.** La relation entre trafic et PIB, forte avant la crise (pente 2,9, R² 0,54 en 2004-2007), disparaît après (pente 0,5, R² 0,06 en 2007-2013). Le PIB n'explique pas les différences de trafic entre pays.
+- **Réserves.** La tendance de 2004-2007 inclut l'essor des compagnies à bas coûts ; l'élasticité est une hypothèse ; passagers et non passagers-kilomètres.
+
+167 tests ; quatre mutations du volet trafic, toutes rattrapées.
+
+---
+
+## 🗃️ Le Réalisé aussi se Révise : Millésimes des WDI (30 Septembre 2026)
+
+La Banque Mondiale archive chaque édition de ses World Development Indicators (source « WDI Database Archives » de son API : 142 éditions depuis avril 1989, le PIB à partir de 1994). Nouveau module `pib.millesimes_bm`, dans la chaîne : collecte des éditions manquantes dans `data/raw/wdi_archive/` (non versionné, 31 Mo ; première collecte d'une vingtaine de minutes), puis, pour chaque rapport, révisions depuis la première publication et biais du FMI selon la référence.
+
+- **Croissance :** révision absolue médiane de 0,13 point un an après la première publication, 0,57 point à ce jour ; plus d'un point dans 35 % des cas.
+- **Niveau en dollars :** révisé de plus de 10 % dans 21 % des cas en cinq ans, 38 % à ce jour, surtout à la hausse (+4,3 % en médiane) ; le niveau de raccord des projections est lui-même incertain.
+- **Robustesse du biais :** à un an, +0,88 point contre la croissance publiée par la Banque Mondiale à la fin de l'année suivante, +0,86 contre la ré-estimation du FMI, +0,68 contre la série actuelle. Le biais ne tient pas à la référence propre du FMI ; une partie s'efface avec les révisions ultérieures des données.
+
+**Corrections en cours de route.** Les éditions de 1989 à 1993, sans PIB, faussaient le type des colonnes au chargement ; elles sont écartées. Les années antérieures à la première édition archivée n'ont pas de vraie première publication (la Chine 1980 « publiée » en 1994) : elles sont exclues des révisions.
+
+163 tests ; quatre mutations du module, toutes rattrapées.
+
+---
+
+## 👥 Population et PIB par Habitant (30 Septembre 2026)
+
+Les modèles de trafic aérien raisonnent par habitant (le modèle de long terme de l'OACI relie les passagers-kilomètres par habitant au PIB par habitant). La collecte ajoute la population : `SP.POP.TOTL` à la Banque Mondiale, `LP` au FMI jusqu'à l'horizon. La population projetée est raccordée au dernier niveau observé, avec son propre facteur (`Facteur_Raccord_Population`) : les deux sources divergent de plus de 5 % pour 42 pays (Éthiopie −18 %, Yémen −55 % au FMI). Nouvelles colonnes : `Population_Millions`, `GDP_Real_Per_Capita_USD_2015` et `GDP_Real_PPP_Per_Capita_Intl_2021` dans la série ; population, PIB en volume par habitant et leurs croissances dans la synthèse ; population et PIB par habitant en volume dans le détail par pays de la page de résultats.
+
+De 2024 à 2031, la croissance par habitant est de 2,0 % par an au Nigeria pour 4,2 % de PIB, de 6,6 % en Éthiopie pour 8,4 % ; en Chine, où la population baisse, elle dépasse celle du PIB.
+
+À plus long terme, les projections probabilistes de l'ONU (*World Population Prospects*) serviront quand les horizons du chantier 3 dépasseront celui du FMI.
+
+156 tests.
+
+---
+
+## 📚 Revue de Littérature (30 Septembre 2026)
+
+`docs/revue_litterature.md` et `docs/references.bib` (94 références, vérifiées en ligne ; BibTeX tiré de Crossref pour les 72 qui ont un DOI). Établi : biais optimiste du WEO et son origine dans les récessions non prévues, échec à prévoir les récessions, avantage sur la prévision naïve qui s'efface avec l'horizon, fourchettes tirées des erreurs passées (y compris autour du WEO pour le G7 à court terme, Becker, Krüger et Schienle 2025), perte de niveau après 2008 (Fatás et Summers 2018). Apparemment nouveau : fourchettes de niveau à 5 ans conditionnelles pour environ 190 pays, probabilité de récession conditionnelle à la projection, propagation de l'erreur calibrée du FMI aux prévisions de trafic aérien.
+
+**Vérification suggérée par la revue.** Hors années de recul de chaque pays, le biais de croissance disparaît presque : à un an, −0,11 point en moyenne, +0,02 pondéré par le PIB (contre +1,00 et +0,58) ; hors 2009 et 2020 seulement, il reste de +0,62. L'optimisme du FMI tient aux reculs qu'il n'annonce pas, comme l'avait conclu son Bureau indépendant d'évaluation (2014). Exclure selon le résultat étant en partie mécanique, c'est une lecture, pas une preuve.
+
+---
+
 ## 🏦 Cas d'Étude : la Crise de 2008 (30 Septembre 2026)
 
 Question posée : la chute du PIB de 2009 avait-elle été prévue, et le rebond qui a suivi ? Nouveau module `pib.cas_de_crise` (hors chaîne, `--annee 2009` ou `2020`), résultats consignés dans `docs/cas_crise_2008.md`.
@@ -18,6 +65,8 @@ Question posée : la chute du PIB de 2009 avait-elle été prévue, et le rebond
 Le lien avec la demande de trafic aérien fait l'objet d'une note dans le dossier *Transport Aérien* du Google Drive. Au niveau mondial, le trafic a rebondi plus vite que le PIB en 2010 (+7,5 % contre +5,1 %, IATA) ; les marchés restés sous leur pic d'avant la récession fin 2010, intérieurs américain et japonais, sont ceux d'économies dont le PIB a fini sous la projection d'après-choc.
 
 150 tests ; trois mutations du cas d'étude, toutes rattrapées.
+
+**2020, par contraste** (`docs/cas_crise_2020.md`). Chute non annoncée avant l'année (octobre 2019 : recul pour 10 pays, 1 % du PIB mondial ; survenu : 162 pays, 79 %), mais mesurée juste en avril 2020 (−3,0 % contre −3,1 %) ; rebond de 2021 prévu (−0,4 point pondéré par le PIB) ; en 2024, économies avancées revenues sur leur trajectoire d'avant la crise (+0,7 %), émergentes non (−5,4 %). Pour le trafic aérien, l'épisode ne teste pas le lien entre PIB et demande : jusqu'en 2022-2023, le trafic était limité par les restrictions de voyage, pas par le revenu. Une première conclusion en sens contraire (« le PIB n'explique qu'une faible part du retard ») a été retirée.
 
 ---
 

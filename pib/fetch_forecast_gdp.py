@@ -10,6 +10,7 @@ Indicateurs extraits :
 - NGDP_RPCH: Taux de croissance réel du PIB (%)
 - PPPGDP: PIB en PPA (Milliards d'USD internationaux)
 - NGDPDPC: PIB par habitant (USD)
+- LP: Population (millions d'habitants)
 """
 
 import os
@@ -28,7 +29,8 @@ IMF_INDICATORS = {
     "NGDPD": "GDP_Nominal_Billions_USD",
     "NGDP_RPCH": "GDP_Growth_Pct",
     "PPPGDP": "GDP_PPP_Billions_USD",
-    "NGDPDPC": "GDP_Per_Capita_USD"
+    "NGDPDPC": "GDP_Per_Capita_USD",
+    "LP": "Population_Millions",
 }
 
 BASE_URL = "https://www.imf.org/external/datamapper/api/v1"

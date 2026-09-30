@@ -11,6 +11,10 @@ data/extraction_metadata.json
 # `data/raw/WEOhistorical.xlsx` est en revanche versionné : le serveur du FMI répond
 # 403 aux requêtes automatisées, il ne peut donc pas être re-téléchargé par script.
 
+# Millésimes des WDI : l'API de la Banque Mondiale sert toutes ses éditions archivées,
+# qui se re-téléchargent par `python -m pib.millesimes_bm --collecter`
+data/raw/wdi_archive/
+
 # Compilation LaTeX (le PDF, lui, reste versionné : lisible sans installation LaTeX)
 build/
 *.aux

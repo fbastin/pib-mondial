@@ -77,8 +77,54 @@ PIB en volume, base 100 en 2007 :
 - **Deux ans plus tard, beaucoup d'économies avancées finissent sous la projection d'après-choc.** En 2013, le niveau réalisé est inférieur à celui projeté en avril 2009 de 2,4 % pour les États-Unis, 2,3 % pour le Royaume-Uni, 6,7 % pour l'Italie et 8,7 % pour l'Espagne. La crise de la zone euro de 2011-2013 n'était pas prévue.
 - **Pour le monde, la projection d'avril 2009 tombe juste en 2013 (119,0 contre 120,1), mais par compensation** : rebond émergent sous-estimé d'un côté, rechute européenne ignorée de l'autre.
 
+## 4. Le test sur le trafic aérien
+
+`python -m pib.cas_de_crise --annee 2009 --trafic`, tableaux `weo_cas_2009_trafic*.csv`.
+
+**Question.** Le retard du trafic aérien sur sa tendance d'avant la crise s'explique-t-il par l'écart du PIB à la projection du FMI d'octobre 2008 ?
+
+**Données.**
+- **Europe :** trafic passagers d'Eurostat (`avia_paoc`), compté par aéroport, homogène depuis 2004, pour 30 pays.
+- **États-Unis :** série de la Banque Mondiale (données de l'OACI).
+- **Donnée écartée :** la série mondiale de la Banque Mondiale est rompue en 2010, par un changement de couverture des déclarations (+15 % pour l'Union européenne, +31 % pour l'Asie de l'Est en un an). Elle est aussi comptée par pays d'immatriculation des compagnies, ce qui déforme les grandes plateformes de correspondance.
+
+**Au niveau agrégé, le PIB explique à peu près un tiers du retard.**
+
+| | Europe (29 pays), 2013 | États-Unis, 2013 |
+|---|---|---|
+| Croissance du trafic depuis 2007 | +7,0 % | −0,2 % |
+| Tendance d'avant la crise (2004-2007) | +7,0 %/an | +3,1 %/an |
+| Retard sur la tendance | −35,0 % | −18,8 % |
+| PIB réalisé / projeté en octobre 2008, depuis 2007 | +0,3 % / +10,9 % | +6,1 % / +11,7 % |
+| Écart de PIB | −10,6 % | −5,6 % |
+| Traduit en trafic (élasticité 1,0 à 1,5) | −10,6 % à −15,9 % | −5,6 % à −8,4 % |
+| **Part du retard du trafic expliquée** | **30 à 45 %** | **30 à 45 %** |
+
+Écarts en log × 100. En 2010, la part est de 22 à 32 % en Europe et de 28 à 41 % aux États-Unis. Le trafic américain de 2013 (743 millions de passagers) n'a toujours pas retrouvé celui de 2007 (744 millions).
+
+**D'un pays européen à l'autre, en revanche, le PIB n'explique plus les écarts de trafic après la crise.** La relation, forte avant, disparaît :
+
+| Période | Pente du trafic sur le PIB | IC 95 % | R² |
+|---|---|---|---|
+| 2004-2007 | 2,88 | 1,87 à 3,90 | 0,54 |
+| 2007-2010 | 0,01 | −0,64 à 0,66 | 0,00 |
+| 2007-2013 | 0,50 | −0,21 à 1,21 | 0,06 |
+
+- La Grèce perd 31 % de PIB mais 4 % de trafic.
+- La Lettonie et la Lituanie gagnent plus de 40 % de trafic avec un PIB 20 à 22 % sous sa projection.
+- La Slovaquie et l'Irlande, avec des écarts de PIB comparables (−23 % et −17 %), en perdent 36 % et 19 %.
+
+Compagnies à bas coûts, faillites (SkyEurope en 2009), fiscalité et intégration européenne pèsent plus, pays par pays, que la surprise sur le PIB.
+
+**Réserves.**
+- **La tendance de 2004-2007** inclut l'essor des compagnies à bas coûts et l'élargissement de l'Union : la prolonger surestime sans doute le trafic « attendu », et donc le retard.
+- **L'élasticité est une hypothèse** (1,0 à 1,5, autour des 1,19 de Gallet et Doucouliagos, 2014). Plus faible pendant les reprises (Hanson et al., 2022), elle réduirait la part expliquée.
+- **Les séries sont en passagers**, pas en passagers-kilomètres.
+- **Pour 2020**, le module tourne aussi (`--annee 2020 --trafic`), mais les restrictions de voyage empêchent d'y lire le lien avec le revenu.
+
 ## Ce qu'on en retient
 
 - **Le constat général sur les récessions** (voir le README) : un choc n'est vu que dans l'année même, et la prévision suivante devient trop pessimiste. Les années qui suivent une crise sont donc celles où le biais optimiste moyen décrit le plus mal l'erreur.
 - **Une projection faite avant un choc surestime le niveau pour des années, même quand la croissance rebondit vite.** Une projection faite juste après le choc peut encore surestimer le niveau des économies avancées quelques années plus loin.
-- **Le lien avec la demande de trafic aérien** fait l'objet d'une note distincte, dans le dossier du projet *Transport Aérien* sur Google Drive.
+- **Le trafic aérien a pris un retard dont le PIB explique environ un tiers.** C'est vrai en Europe comme aux États-Unis, mais pas les différences entre pays. La note du dossier *Transport Aérien* sur Google Drive en tire les conséquences pour le projet trafic.
+- **La comparaison avec la pandémie de 2020** est dans `docs/cas_crise_2020.md`.
