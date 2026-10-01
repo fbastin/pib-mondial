@@ -12,7 +12,20 @@ Produit par `python produire_rapports.py`, ou seul par `python -m pib.scenarios 
 | `scenarios_pib_tirages.csv` | 60 trajectoires conjointes de tous les pays, PIB par habitant et population, de 2026 à 2050 (`python -m pib.tirages`) |
 | `scenarios_pib_tirages_controle.csv` | Contrôle des tirages : part sous `bas` et au-dessus de `haut` par pays ; quantiles de quelques agrégats contre la somme des bornes |
 
-**Le nom ne change pas avec l'horizon** : lire ces fichiers plutôt que `gdp_unified_<début>_<fin>.csv`, dont le nom suit les bornes du run.
+**Le nom ne change pas avec l'horizon** : lire ces fichiers plutôt que `gdp_unified_<début>_<fin>.csv`, dont le nom suit les bornes du run. Ils sont mis à jour sous le même nom à chaque édition du WEO (avril et octobre).
+
+## En bref : quoi utiliser
+
+| Besoin | Où le prendre |
+|---|---|
+| Trajectoire centrale du PIB par habitant | `scenarios_pib_population.csv`, scénario `central_fmi` : `pib_reel_par_habitant_usd_2015` (volume, à préférer), ou `pib_par_habitant_usd_courants` (jusqu'en 2031, comme l'ancien fichier) |
+| Fourchette à 80 % du PIB par habitant d'un pays | Scénarios `bas` et `haut`. Pour un pays riche après 2031, `bas_elargi` et `haut_elargi`, dont le haut ne suppose pas que l'optimisme passé du FMI continue de s'accumuler |
+| Population | `population_millions_centrale` ; fourchette : `population_millions_basse_calibree` et `…_haute_calibree` (celles de l'ONU sont trop étroites) |
+| Une crise mondiale | Scénario `crise_mondiale` ; la forme de la trajectoire dans `docs/cas_crise_2008.md` |
+| Probabilité d'une année de recul d'ici 2031 | `scenarios_pib_population_pays.csv`, `probabilite_recul_pct` (et si une récession mondiale survient, ou non) |
+| Plusieurs marchés à la fois | `scenarios_pib_tirages.csv` : faire passer chacun des 60 tirages (PIB par habitant, population) dans le modèle, puis lire les quantiles du trafic total, plutôt qu'additionner les bornes |
+
+Le détail de chaque choix suit.
 
 ## Pour la chaîne du projet trafic : de `gdp_unified_2000_2030.csv` au fichier stable
 
@@ -155,8 +168,8 @@ Les bornes `bas` et `haut` sont calculées **pays par pays**. Additionner la bor
 | Tous les pays | 2031 | 90,2 (89,2 à 93,3) – 100,7 | 85,2 – 105,5 |
 | Tous les pays | 2050 | 70,1 (66,9 à 78,4) – 105,8 | 55,6 – 116,7 |
 | Canada, États-Unis, France, Royaume-Uni | 2031 | 87,7 (84,3 à 94,2) – 104,4 | 88,7 – 105,1 |
-| Canada, États-Unis, France, Royaume-Uni | 2050 | 57,4 (50,6 à 71,3) – 99,3 | 58,8 – 101,0 |
-| G7 | 2050 | 59,6 (56,5 à 74,6) – 94,1 | 58,8 – 101,0 |
+| Canada, États-Unis, France, Royaume-Uni | 2050 | 57,5 (50,6 à 71,3) – 99,3 | 58,8 – 101,0 |
+| G7 | 2050 | 59,5 (56,5 à 74,6) – 94,1 | 58,8 – 101,0 |
 
 - **Pour le monde entier,** sommer les bornes exagère nettement l'incertitude : les erreurs des pays se compensent en partie.
 - **Pour quelques marchés riches,** la somme des bornes reste dans l'incertitude des tirages. Les États-Unis y pèsent environ 60 %, et les pires tirages rejouent pour tous les éditions de 2005 à 2008, prises de court par la crise financière.

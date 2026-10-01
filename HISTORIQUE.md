@@ -5,6 +5,16 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 🔁 Préparer les Relances : Chiffres Clés Suivis (1er Octobre 2026)
+
+La documentation cite en clair des dizaines de chiffres tirés des sorties ; chaque édition du WEO les change, et deux séries de corrections à la main le même jour en ont laissé passer. Nouveau module `pib.chiffres_cles` : 19 chiffres suivis (fourchettes et population du Canada, Inde, tirages conjoints, calibration en temps réel, couverture des bornes de l'ONU), mis en forme comme dans le texte. Après une relance, il liste ceux qui ont changé, avec les fichiers et lignes où l'ancienne valeur apparaît encore ; `--enregistrer` publie les nouvelles valeurs (`docs/chiffres_cles.json`). Dernière étape de `produire_rapports.py`. Procédure de relance dans le README.
+
+- **Dès son premier passage,** il a trouvé deux chiffres périmés : les tirages du G7 et des quatre marchés de Montréal en 2050 (59,5 et 57,5 % du central, et non 59,6 et 57,4).
+- **`test_documentation_a_jour`** (données) échoue tant qu'un chiffre suivi manque à la documentation.
+- **« En bref »** en tête de `docs/scenarios_trafic.md` : quoi utiliser pour quel besoin.
+
+222 tests ; trois mutations (LaTeX non normalisé, chiffres inchangés signalés, milliers mal formés), rattrapées.
+
 ## 📏 Population : un Multiplicateur par Tiers de Largeur des Bornes de l'ONU (1er Octobre 2026)
 
 Le multiplicateur des bornes de l'ONU, commun à une classe de taille, élargissait trop les pays dont ces bornes sont déjà larges (Hong Kong 2050 : −33 à +207 %) et pas assez les autres : à 10 ans, pour les grands pays, il fallait 2,5 côté haut aux bornes étroites, 1,6 aux larges. Deux corrections essayées :

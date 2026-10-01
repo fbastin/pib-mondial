@@ -1669,6 +1669,40 @@ class TestScenariosPourLeTrafic:
         assert pib[(2028, "bas")] == pytest.approx(104.0 * 1.01 ** 2 * 0.8 * 1.10 / 1.14)
 
 
+class TestChiffresCles:
+    """Chiffres cités dans la documentation : mis en forme comme dans le texte, retrouvés après une relance."""
+
+    def test_mise_en_forme_francaise(self):
+        from pib.chiffres_cles import fr, normaliser
+        assert fr(37852.4) == "37 852" and fr(4513.0) == "4513" and fr(1234567) == "1 234 567"
+        assert fr(57.04, 1) == "57,0" and fr(-9.66, 1) == "-9,7"
+        assert normaliser(r"de $59$ à $101\,\%$ en 2050, soit 42{,}1") == "de 59 à 101 % en 2050, soit 42,1"
+
+    def test_anciennes_valeurs_retrouvees_dans_les_documents(self):
+        from pib.chiffres_cles import Figure, comparer
+        f = Figure("canada", "Canada 2050", lambda s: s, 0, ["| 2050 | {bas} % | {haut} % |", "de {bas} à {haut} % en 2050"])
+        documents = {"docs/a.md": ["Titre", "| 2050 | 59 % | 101 % |"],
+                     "docs/b.tex": [r"pour le Canada, de $59$ à $101\,\%$ en 2050."],
+                     "docs/c.md": ["| 2050 | 60 % | 117 % |"]}
+        changes = comparer({"canada": {"bas": "59", "haut": "101"}}, {"canada": {"bas": "58", "haut": "99"}}, documents, [f])
+        assert len(changes) == 1
+        nom, ancien, nouveau, ou = changes[0]
+        assert nouveau == {"bas": "58", "haut": "99"}
+        assert [(fichier, n) for fichier, n, _ in ou] == [("docs/a.md", 2), ("docs/b.tex", 1)]
+        assert comparer({"canada": {"bas": "59", "haut": "101"}}, {"canada": {"bas": "59", "haut": "101"}}, documents, [f]) == []
+
+    @pytest.mark.donnees
+    def test_documentation_a_jour(self):
+        """Après une relance, ce test échoue tant que la documentation cite les anciens chiffres."""
+        from pib import chiffres_cles as cc
+        sorties = cc.lire_sorties("data")
+        if len(sorties) < 4:
+            pytest.skip("pipeline non exécuté")
+        actuels, documents = cc.calculer(sorties), cc.lire_documents()
+        absents = [f.nom for f in cc.FIGURES if f.nom in actuels and not cc.occurrences(f.motifs, actuels[f.nom], documents)]
+        assert absents == [], f"chiffres absents de la documentation : {absents} (python -m pib.chiffres_cles)"
+
+
 class TestMiroir:
     """Copie vers un dossier partagé : seulement ce qui a changé, jamais de suppression."""
 

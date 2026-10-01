@@ -1,0 +1,114 @@
+{
+ "canada_pib_hab_2031": {
+  "bas": "43 340",
+  "haut": "51 379",
+  "central": "48 883"
+ },
+ "canada_pib_hab_2050": {
+  "bas": "37 852",
+  "haut": "65 010",
+  "central": "64 344"
+ },
+ "canada_bande_2031": {
+  "bas": "89",
+  "haut": "105"
+ },
+ "canada_bande_2040": {
+  "bas": "72",
+  "haut": "104"
+ },
+ "canada_bande_2050": {
+  "bas": "59",
+  "haut": "101"
+ },
+ "canada_elargi_2050": {
+  "bas": "60",
+  "haut": "117"
+ },
+ "inde_bande_2050": {
+  "bas": "47",
+  "haut": "122"
+ },
+ "canada_population_2031": {
+  "centrale": "42,8",
+  "basse": "41,8",
+  "haute": "44,0",
+  "basse_calibree": "40,9",
+  "haute_calibree": "46,2"
+ },
+ "canada_population_2040": {
+  "centrale": "44,9",
+  "basse": "42,4",
+  "haute": "47,7",
+  "basse_calibree": "41,9",
+  "haute_calibree": "51,1"
+ },
+ "canada_population_2050": {
+  "centrale": "46,6",
+  "basse": "42,1",
+  "haute": "51,5",
+  "basse_calibree": "42,1",
+  "haute_calibree": "57,0"
+ },
+ "tirages_tous_2031": {
+  "p10": "90,2",
+  "p10_bas": "89,2",
+  "p10_haut": "93,3",
+  "p90": "100,7",
+  "somme_bas": "85,2",
+  "somme_hauts": "105,5"
+ },
+ "tirages_tous_2050": {
+  "p10": "70,1",
+  "p10_bas": "66,9",
+  "p10_haut": "78,4",
+  "p90": "105,8",
+  "somme_bas": "55,6",
+  "somme_hauts": "116,7"
+ },
+ "tirages_tous_2050_arrondis": {
+  "p10": "70",
+  "p10_bas": "67",
+  "p10_haut": "78",
+  "p90": "106",
+  "somme_bas": "56",
+  "somme_hauts": "117"
+ },
+ "tirages_quatre_2031": {
+  "p10": "87,7",
+  "p10_bas": "84,3",
+  "p10_haut": "94,2",
+  "p90": "104,4",
+  "somme_bas": "88,7",
+  "somme_hauts": "105,1"
+ },
+ "tirages_quatre_2050": {
+  "p10": "57,5",
+  "p10_bas": "50,6",
+  "p10_haut": "71,3",
+  "p90": "99,3",
+  "somme_bas": "58,8",
+  "somme_hauts": "101,0"
+ },
+ "tirages_g7_2050": {
+  "p10": "59,5",
+  "p10_bas": "56,5",
+  "p10_haut": "74,6",
+  "p90": "94,1",
+  "somme_bas": "58,8",
+  "somme_hauts": "101,0"
+ },
+ "temps_reel": {
+  "couverture": "78,7",
+  "bas": "76",
+  "haut": "81",
+  "score": "55,6",
+  "score_pondere": "31,9"
+ },
+ "population_onu_1an": {
+  "part": "19"
+ },
+ "population_onu_20ans": {
+  "part": "54"
+ }
+}

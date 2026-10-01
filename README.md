@@ -42,6 +42,7 @@ pib-mondial/
 │   ├── population.py             #   Évaluation : erreurs passées des projections de population de l'ONU, bornes calibrées
 │   ├── scenarios.py              #   Export : scénarios de PIB et de population jusqu'en 2050, pour le trafic
 │   ├── tirages.py                #   Export : trajectoires conjointes de tous les pays, pour agréger des marchés
+│   ├── chiffres_cles.py          #   Documentation : chiffres cités qui ont changé après une relance, et où
 │   ├── cas_de_crise.py           #   Évaluation : une récession mondiale (2009, 2020) dans les prévisions
 │   ├── millesimes_bm.py          #   Évaluation : éditions archivées des WDI, révisions du réalisé
 │   ├── visualize_gdp.py          #   Livrables : graphiques et tableau de bord
@@ -91,6 +92,15 @@ python produire_rapports.py [--start-year 2000] [--end-year AAAA] [--fcst-end AA
 
 **Les bornes se propagent partout.** Le nom du fichier unifié (`gdp_unified_1995_2031.csv`), les colonnes de synthèse (`CAGR_Historique_1995_2024_Pct`), l'onglet Excel des séries, la frontière historique/prévision des graphiques et les titres suivent les années du run. Les étapes en aval et les deux notebooks lisent la série du dernier run d'après `extraction_metadata.json` (voir *Provenance*) ; aucune n'a d'année codée en dur.
 
+**Après une nouvelle édition du WEO** (avril et octobre), dans l'ordre :
+
+1. `python produire_rapports.py` : la chaîne entière, sur la nouvelle édition. Sa dernière étape liste les chiffres cités dans la documentation qui ont changé, avec les fichiers et lignes où l'ancienne valeur apparaît (`pib.chiffres_cles`).
+2. Corriger ces passages (README, `docs/scenarios_trafic.md`, `docs/documentation_gdp.tex`, à recompiler), puis publier les nouvelles valeurs : `python -m pib.chiffres_cles --enregistrer`.
+3. `pytest` : le contrôle `test_documentation_a_jour` échoue tant qu'un chiffre suivi manque à la documentation.
+4. Ajouter une entrée à `HISTORIQUE.md`, valider, puis copier vers le dossier partagé : `python miroir.py --destination DOSSIER`.
+
+Les chiffres suivis (`docs/chiffres_cles.json`) ne couvrent pas tout : les autres chiffres des sections touchées sont à relire.
+
 **Un échec interrompt tout.** Chaque requête est retentée trois fois. Si une source ou un indicateur reste injoignable, ou si les bornes sont incohérentes (prévision qui ne suit pas immédiatement l'historique), l'étape s'arrête avec un code de sortie non nul, sans rien écrire, et la chaîne s'interrompt : elle n'enchaîne jamais sur des données partielles ou sur celles d'un run précédent.
 
 ### Étape par étape
@@ -110,6 +120,7 @@ python produire_rapports.py [--start-year 2000] [--end-year AAAA] [--fcst-end AA
 | Éditions archivées des WDI : collecte, puis révisions du réalisé | `python -m pib.millesimes_bm --collecter` ; `python -m pib.millesimes_bm --data-dir data` |
 | Graphiques et tableau de bord | `python -m pib.visualize_gdp` |
 | Page de résultats | `python -m pib.build_results_page [--pays FRA]` |
+| Chiffres cités dans la documentation qui ont changé, et où les corriger ; puis publication des nouvelles valeurs | `python -m pib.chiffres_cles [--enregistrer]` |
 | Copie du dépôt et de ses sorties vers un dossier partagé (seulement ce qui a changé, sans rien supprimer) | `python miroir.py --destination DOSSIER [--simulation]` |
 | Collecte seule, historique | `python -m pib.fetch_historical_gdp --start-year 2000 --end-year 2025` |
 | Collecte seule, prévisions | `python -m pib.fetch_forecast_gdp --forecast-start 2025` |
@@ -143,7 +154,7 @@ jupyter nbconvert --to html --execute --ExecutePreprocessor.kernel_name=julia-1.
 ### Tests
 
 ```bash
-pytest                      # 219 tests, sans accès réseau
+pytest                      # 222 tests, sans accès réseau
 pytest -m "not donnees"     # sans les contrôles sur les fichiers produits
 ```
 
@@ -499,7 +510,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 
 ## ✅ Tests des invariants
 
-219 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
+222 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
 
 | Invariant | Ce qu'il empêche |
 |---|---|
@@ -535,6 +546,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 | Variante élargie des pays riches : identique aux bornes retenues jusqu'en 2031, milieu figé au-delà du dernier horizon ajusté, largeur jamais sous le plancher, autres groupes inchangés | Une variante qui saute en 2032, ou qui touche les pays qu'elle ne vise pas |
 | PIB par habitant des tirages : PIB total du tirage divisé par sa population | Une population surprise sans effet sur le revenu par habitant |
 | Population des tirages : bornes calibrées de chaque pays gardées exactement, rang parmi tous les cas passés de la classe de taille (le choc commun d'une révision reste commun), position relative constante d'une année à l'autre | Une population tirée qui sort de sa fourchette, ou des surprises communes effacées |
+| Chiffres clés : mis en forme comme dans le texte, LaTeX compris ; les anciennes valeurs d'un chiffre changé sont retrouvées ligne par ligne ; la documentation cite les valeurs des sorties | Une relance qui laisse la documentation citer les chiffres de l'édition précédente |
 | Trajectoires conjointes : chaque pays garde exactement sa fourchette, le choc commun d'une édition touche tous les pays, la position relative tient au-delà de 2031, le bootstrap tire ensemble avril et octobre | Des tirages qui reprennent le biais propre d'un pays, ou un agrégat dont la précision est surestimée |
 | Crises mondiales à part : récessions et historique mondial connus à la date de l'édition ; repli sans période en crise ; mélange pondéré dans le bon sens | Une probabilité qui connaît les crises à venir, ou vide faute d'exemple |
 | Calibration en temps réel : aucune erreur encore inconnue à la date de l'édition ; score d'intervalle, CRPS et compétence de Brier exacts ; méthodes comparées sur les mêmes cas | Une calibration flatteuse parce qu'elle voit l'avenir, ou des méthodes comparées sur des échantillons différents |

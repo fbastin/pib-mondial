@@ -347,7 +347,7 @@ Le champ \texttt{derniere\_mise\_a\_jour} reprend le \texttt{lastupdated} décla
 
 \section{Tests des Invariants}
 
-Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (219 tests, sans accès réseau) fixe les propriétés correspondantes:
+Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur silencieusement fausse: une colonne vide, un classement trié sur le mauvais indicateur, un taux extrapolé au travers d'une année manquante. La suite \texttt{test\_gdp\_pipeline.py} (222 tests, sans accès réseau) fixe les propriétés correspondantes:
 
 \begin{itemize}
     \item les agrégats sont absents des classements par pays;
@@ -383,6 +383,7 @@ Le mode de défaillance de ce traitement n'est pas l'exception mais la valeur si
     \item les cas passés sont classés selon le groupe de revenu publié avant leur édition, le groupe actuel à défaut;
     \item la variante élargie des pays riches reprend les bornes retenues jusqu'à l'horizon du FMI, fige ensuite le milieu de la fourchette et ne descend pas sous son plancher, sans toucher les autres groupes;
     \item les erreurs de population portent sur les années postérieures à la révision, la taille du pays est celle que donnait la révision, le multiplicateur suit le tiers de largeur des bornes de l'ONU du pays, et les bornes calibrées ne sont jamais plus étroites que celles de l'ONU ni appliquées au passé observé;
+    \item les chiffres cités dans la documentation sont mis en forme comme dans le texte et retrouvés ligne par ligne quand une relance les change;
     \item les trajectoires conjointes gardent exactement la fourchette de chaque pays, conservent le choc commun d'une édition, gardent leur position relative au-delà de 2031, et leur bootstrap tire ensemble les éditions d'une même année; leur population garde les bornes calibrées de chaque pays et le choc commun d'une révision.
 \end{itemize}
 

@@ -88,6 +88,8 @@ def main():
             lancer("millesimes_bm", "--data-dir", data_dir)
             lancer("visualize_gdp", "--data-dir", data_dir, "--output-dir", output_dir)
             lancer("build_results_page", "--data-dir", data_dir, "--output-dir", output_dir)
+        # Chiffres cités dans la documentation : ce qui a changé, et où le corriger
+        lancer("chiffres_cles", "--data-dir", args.data_dir)
     except subprocess.CalledProcessError as e:
         logging.error(f"Étape en échec : {e.cmd[2]}. Chaîne interrompue.")
         sys.exit(1)
