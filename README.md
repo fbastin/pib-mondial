@@ -141,7 +141,7 @@ jupyter nbconvert --to html --execute --ExecutePreprocessor.kernel_name=julia-1.
 ### Tests
 
 ```bash
-pytest                      # 207 tests, sans accès réseau
+pytest                      # 210 tests, sans accès réseau
 pytest -m "not donnees"     # sans les contrôles sur les fichiers produits
 ```
 
@@ -403,7 +403,7 @@ Les révisions penchent à la hausse (croissance +0,26 point en moyenne, niveau 
 
 **Scénarios pour le projet trafic** (`pib.scenarios`, détail dans `docs/scenarios_trafic.md`). Export de PIB en volume par habitant et de population, par pays, de 2000 à 2050, sous un nom qui ne change pas avec l'horizon (`scenarios_pib_population.csv`) :
 - **jusqu'en 2031**, cinq scénarios autour de la trajectoire du FMI, tirés des fourchettes calculées à chaque horizon : central du FMI, central corrigé de l'erreur médiane, bas et haut (bornes à 80 %), crise mondiale (erreur médiane des périodes passées en crise mondiale). S'y ajoutent, pour comparaison, les bornes du seul groupe de revenu (`bas_groupe_seul`, `haut_groupe_seul`) ;
-- **ensuite**, pour les scénarios centraux et de crise, la croissance du PIB potentiel par habitant du scénario de référence de l'OCDE (pays, sinon région). Les bornes `bas` et `haut` s'élargissent comme les erreurs passées des trajectoires du FMI prolongées, par groupe de revenu (`pib.long_terme`, ci-dessous) ;
+- **ensuite**, pour les scénarios centraux et de crise, la croissance du PIB potentiel par habitant du scénario de référence de l'OCDE (pays, sinon région). Les bornes `bas` et `haut` s'élargissent comme les erreurs passées des trajectoires du FMI prolongées, par groupe de revenu (`pib.long_terme`, ci-dessous). Pour les pays à revenu élevé, une variante élargie (`bas_elargi`, `haut_elargi`) cesse d'extrapoler le décalage sous la trajectoire centrale au-delà de 16 ans et impose une largeur minimale tirée de Müller, Stock et Watson (2022) : Canada 2050, de 61 à 118 % du central au lieu de 59 à 103 % ;
 - **population :** celle du pipeline jusqu'en 2031, puis la croissance médiane de l'ONU (*World Population Prospects* 2024), avec les bornes de son intervalle à 80 %.
 
 Pour le Canada, le PIB par habitant de 2031 va de 43 340 $ (bas) à 51 379 $ (haut) autour de 48 883 $ ; en 2050, de 37 730 à 66 449 $ autour de 64 344 $.
@@ -496,7 +496,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 
 ## ✅ Tests des invariants
 
-207 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
+210 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
 
 | Invariant | Ce qu'il empêche |
 |---|---|
@@ -529,6 +529,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 | Au-delà de l'horizon du FMI : dérive tirée des seules années connues à la date de l'édition ; loi ajustée sur les horizons assez fournis, y compris quand un quantile change de signe ; fourchette du pays conservée à l'horizon du FMI puis élargie, bornes basse et haute dans le bon sens | Une dérive qui connaît l'année en cours, une loi tirée de deux éditions, ou une fourchette qui saute en 2032 |
 | Fourchettes : cas passés classés selon le groupe de revenu publié avant leur édition (avril : exercice v ; octobre : v + 1), groupe actuel à défaut | Des pays devenus riches en dépassant les prévisions comptés parmi les riches dès 1999 |
 | Population : erreur projetée / estimée − 1 après la révision, jusqu'à la dernière année estimée ; taille du pays donnée par la révision pour son année ; bornes calibrées jamais plus étroites que celles de l'ONU, absentes du passé observé | Des bornes calibrées sur des pays rangés selon leur taille future, ou une population « haute » qui modifie le passé |
+| Variante élargie des pays riches : identique aux bornes retenues jusqu'en 2031, milieu figé au-delà du dernier horizon ajusté, largeur jamais sous le plancher, autres groupes inchangés | Une variante qui saute en 2032, ou qui touche les pays qu'elle ne vise pas |
 | Trajectoires conjointes : chaque pays garde exactement sa fourchette, le choc commun d'une édition touche tous les pays, la position relative tient au-delà de 2031, le bootstrap tire ensemble avril et octobre | Des tirages qui reprennent le biais propre d'un pays, ou un agrégat dont la précision est surestimée |
 | Crises mondiales à part : récessions et historique mondial connus à la date de l'édition ; repli sans période en crise ; mélange pondéré dans le bon sens | Une probabilité qui connaît les crises à venir, ou vide faute d'exemple |
 | Calibration en temps réel : aucune erreur encore inconnue à la date de l'édition ; score d'intervalle, CRPS et compétence de Brier exacts ; méthodes comparées sur les mêmes cas | Une calibration flatteuse parce qu'elle voit l'avenir, ou des méthodes comparées sur des échantillons différents |

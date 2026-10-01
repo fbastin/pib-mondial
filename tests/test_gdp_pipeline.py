@@ -1599,6 +1599,47 @@ class TestScenariosPourLeTrafic:
         assert pib[(2028, "bas_groupe_seul")] == pytest.approx(pib[(2028, "bas")])
         assert pib[(2028, "haut_groupe_seul")] == pytest.approx(pib[(2028, "haut")])
 
+    def test_elargir_fige_le_milieu_et_impose_un_plancher(self):
+        from pib.scenarios import elargir, Z80, ECART_TYPE_ANNUEL_MSW
+        h = np.array([6, 7, 8, 9])
+        lb, lh = np.array([-0.30, -0.40, -0.50, -0.60]), np.array([0.30, 0.30, 0.30, 0.30])
+        bas, haut = elargir(lb, lh, h, h_ajuste=7)
+        milieu, demi = (bas + haut) / 2, (haut - bas) / 2
+        assert milieu.tolist() == pytest.approx([0.0, -0.05, -0.05, -0.05])     # figé au-delà de 7
+        assert demi.tolist() == pytest.approx([0.30, 0.35, 0.40, 0.45])          # largeurs conservées
+        # Fourchette étroite : le plancher l'emporte
+        bas, haut = elargir(np.array([-0.01]), np.array([0.01]), np.array([20]), h_ajuste=None)
+        assert ((haut - bas) / 2)[0] == pytest.approx(Z80 * ECART_TYPE_ANNUEL_MSW * 20)
+        assert ECART_TYPE_ANNUEL_MSW == pytest.approx(0.0108, abs=1e-4)
+
+    def test_variante_elargie_des_pays_riches(self):
+        """Identique aux bornes retenues jusqu'à l'horizon du FMI, élargie ensuite pour un pays riche."""
+        from pib.scenarios import construire_scenarios, elargir
+        bandes_lt = self._bandes_long_terme().assign(annees_edition=lambda d: np.where(d["horizon"] <= 6, 12, 5))
+        table, fiches = construire_scenarios(*self._entrees(), regions={}, annee_fin=2028, bandes_long_terme=bandes_lt)
+        pib = table.set_index(["year", "scenario"])["pib_reel_par_habitant_usd_2015"]
+        assert pib[(2026, "bas_elargi")] == pytest.approx(pib[(2026, "bas")])
+        assert pib[(2026, "haut_elargi")] == pytest.approx(pib[(2026, "haut")])
+        central = np.array([pib[(a, "central_fmi")] for a in (2027, 2028)])
+        bas, haut = elargir(np.log(np.array([pib[(a, "bas")] for a in (2027, 2028)]) / central),
+                            np.log(np.array([pib[(a, "haut")] for a in (2027, 2028)]) / central), np.array([6, 7]), 6)
+        assert [pib[(a, "bas_elargi")] for a in (2027, 2028)] == pytest.approx(list(central * np.exp(bas)))
+        assert [pib[(a, "haut_elargi")] for a in (2027, 2028)] == pytest.approx(list(central * np.exp(haut)))
+        # Le milieu de 2028 reprend celui de 2027, dernier horizon ajusté
+        milieu = [np.log(pib[(a, "bas_elargi")] * pib[(a, "haut_elargi")]) / 2 - np.log(pib[(a, "central_fmi")]) for a in (2027, 2028)]
+        assert milieu[1] == pytest.approx(milieu[0])
+        assert bool(fiches.iloc[0]["bornes_elargies"])
+
+    def test_variante_elargie_reprend_les_bornes_hors_pays_riches(self):
+        from pib.scenarios import construire_scenarios
+        unifie, bandes, ocde, wpp = self._entrees()
+        table, fiches = construire_scenarios(unifie.assign(income_group="LIC"), bandes, ocde, wpp, regions={},
+                                             annee_fin=2028, bandes_long_terme=self._bandes_long_terme("tous"))
+        pib = table.set_index(["year", "scenario"])["pib_reel_par_habitant_usd_2015"]
+        assert pib[(2028, "bas_elargi")] == pytest.approx(pib[(2028, "bas")])
+        assert pib[(2028, "haut_elargi")] == pytest.approx(pib[(2028, "haut")])
+        assert not bool(fiches.iloc[0]["bornes_elargies"])
+
     def test_variantes_de_population_calibrees(self):
         """Bornes calibrées de `pib.population` appliquées à la centrale ; le passé observé n'en a pas."""
         from pib.scenarios import construire_scenarios

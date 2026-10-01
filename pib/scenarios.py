@@ -28,6 +28,23 @@ trajectoires du FMI prolongées, pour son groupe de revenu (`pib.long_terme`). S
 fourchettes de long terme, ils suivent à défaut le scénario de l'OCDE le moins et le plus
 favorable pour la zone, qui ne diffèrent que par le climat et la transition énergétique.
 
+`bas_elargi`, `haut_elargi` : pour les pays à revenu élevé, une variante de ces bornes au-delà
+de l'horizon du FMI (`elargir`), publiée à côté. Deux ajustements, en logarithme du rapport
+à `central_fmi` :
+
+- **le milieu de la fourchette est figé** au-delà du dernier horizon où la loi de long terme
+  est ajustée (16 ans) : le décalage sous la trajectoire centrale, l'optimisme passé du FMI
+  prolongé, n'est plus extrapolé. Il venait des éditions 1999-2009, toutes traversées par la
+  crise de 2008 ; les éditions 2010-2014 montrent un biais plus faible ;
+- **la demi-largeur ne descend pas sous un plancher** tiré de Müller, Stock et Watson
+  (2022) : leur intervalle à 67 % pour la croissance moyenne des États-Unis sur 50 ans, de
+  0,6 à 2,7 % par an, donne un écart-type de la croissance moyenne d'environ 1,1 point,
+  soit, à l'horizon h, un écart-type du logarithme du niveau d'au moins 0,011 · h. Ce
+  plancher suppose la croissance moyenne au moins aussi incertaine sur moins de 50 ans que
+  sur 50, comme dans leur modèle entre 50 et 100 ans.
+
+Pour les autres pays, la variante reprend `bas` et `haut`.
+
 Population : celle du pipeline (Banque Mondiale, puis FMI jusqu'à son horizon), prolongée
 par la croissance de la variante médiane de l'ONU (World Population Prospects 2024) ;
 variantes basse et haute tirées de ses intervalles de prédiction à 80 %. Ces intervalles
@@ -53,13 +70,15 @@ import time
 import logging
 import argparse
 
+from statistics import NormalDist
+
 import numpy as np
 import pandas as pd
 import requests
 
 from pib.gdp_pipeline import unified_csv_path
 from pib.http_utils import get_json
-from pib.long_terme import FICHIER_BANDES, H_FMI, TOUS, elargissement
+from pib.long_terme import ANNEES_MIN, FICHIER_BANDES, H_FMI, TOUS, elargissement
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -81,8 +100,18 @@ FICHIER_BORNES_POPULATION = "population_calibrated_bounds.csv"
 REGIONS_OCDE = {"NAC": "A2", "LCN": "A9", "ECS": "E_S4", "SSF": "F6", "MEA": "F98", "EAS": "O_S2_S8", "SAS": "S7"}
 MONDE_OCDE = "W"
 
-SCENARIOS = ("central_fmi", "central_corrige", "bas", "haut", "crise_mondiale", "bas_groupe_seul", "haut_groupe_seul")
-BORNES = {"bas": "bas", "haut": "haut", "bas_groupe_seul": "bas", "haut_groupe_seul": "haut"}
+SCENARIOS = ("central_fmi", "central_corrige", "bas", "haut", "crise_mondiale", "bas_groupe_seul", "haut_groupe_seul",
+             "bas_elargi", "haut_elargi")
+BORNES = {"bas": "bas", "haut": "haut", "bas_groupe_seul": "bas", "haut_groupe_seul": "haut",
+          "bas_elargi": "bas", "haut_elargi": "haut"}
+ELARGIS = {"bas_elargi": "bas", "haut_elargi": "haut"}
+
+# Variante élargie, pour les pays à revenu élevé : plancher de l'écart-type du logarithme du
+# niveau, par année d'horizon, tiré de l'intervalle à 67 % de Müller, Stock et Watson (2022)
+# pour la croissance moyenne des États-Unis sur 50 ans (0,6 à 2,7 % par an)
+GROUPE_ELARGI = "HIC"
+ECART_TYPE_ANNUEL_MSW = (0.027 - 0.006) / (2 * NormalDist().inv_cdf(0.835))
+Z80 = NormalDist().inv_cdf(0.9)
 
 
 # ------------------------------------------------------------------ sources
@@ -176,7 +205,32 @@ def facteurs_par_scenario(bandes: pd.DataFrame) -> pd.DataFrame:
         "crise_mondiale": 1 / (1 + crise / 100),
         "bas_groupe_seul": 1 + b["borne_basse_pct_groupe_seul"] / 100,
         "haut_groupe_seul": 1 + b["borne_haute_pct_groupe_seul"] / 100,
+        "bas_elargi": 1 + b["borne_basse_pct"] / 100,
+        "haut_elargi": 1 + b["borne_haute_pct"] / 100,
     })
+
+
+def horizon_ajuste(bandes_long_terme: pd.DataFrame, groupe: str):
+    """Dernier horizon où la loi de long terme du groupe est ajustée (assez d'années d'édition), ou None."""
+    if bandes_long_terme is None or "annees_edition" not in bandes_long_terme.columns:
+        return None
+    b = bandes_long_terme[(bandes_long_terme["groupe"] == groupe) & (bandes_long_terme["annees_edition"] >= ANNEES_MIN)]
+    return int(b["horizon"].max()) if not b.empty else None
+
+
+def elargir(log_bas: np.ndarray, log_haut: np.ndarray, horizons: np.ndarray, h_ajuste) -> tuple:
+    """
+    Variante élargie de bornes (logarithme du rapport à la trajectoire centrale), aux
+    horizons croissants `horizons` comptés depuis l'édition : au-delà de `h_ajuste`, milieu
+    figé à sa valeur au dernier horizon qui ne le dépasse pas ; demi-largeur d'au moins
+    Z80 · ECART_TYPE_ANNUEL_MSW · h. Rend (log_bas, log_haut).
+    """
+    log_bas, log_haut, horizons = (np.asarray(x, dtype=float) for x in (log_bas, log_haut, horizons))
+    milieu, demi = (log_bas + log_haut) / 2, (log_haut - log_bas) / 2
+    if h_ajuste is not None and (horizons <= h_ajuste).any() and (horizons > h_ajuste).any():
+        milieu = np.where(horizons > h_ajuste, milieu[horizons <= h_ajuste][-1], milieu)
+    demi = np.maximum(demi, Z80 * ECART_TYPE_ANNUEL_MSW * horizons)
+    return milieu - demi, milieu + demi
 
 
 def construire_scenarios(unifie: pd.DataFrame, bandes: pd.DataFrame, ocde: pd.DataFrame, wpp: pd.DataFrame,
@@ -238,12 +292,23 @@ def construire_scenarios(unifie: pd.DataFrame, bandes: pd.DataFrame, ocde: pd.Da
         central = pd.Series({horizon_fmi: float(hab[horizon_fmi])})
         for a in range(horizon_fmi + 1, annee_fin + 1):
             central[a] = central[a - 1] * croissance["central"].get(a, np.nan)
+        elargie = groupe == GROUPE_ELARGI and bandes_long_terme is not None
+        trajectoires = {}
         for scenario in SCENARIOS:
             niveau = hab.copy().astype(float)
             for a in range(derniere_obs + 1, horizon_fmi + 1):
                 f = facteurs[scenario].get((code, a), 1.0)
                 niveau[a] = hab[a] * (1.0 if pd.isna(f) else f)
-            if scenario in BORNES and bandes_long_terme is not None:
+            if scenario in ELARGIS and elargie:
+                # Bornes retenues au-delà de l'horizon du FMI, élargies (voir `elargir`)
+                annees_lt = np.arange(horizon_fmi + 1, annee_fin + 1)
+                c = central.reindex(annees_lt).to_numpy()
+                lb, lh = elargir(np.log(trajectoires["bas"].reindex(annees_lt).to_numpy() / c),
+                                 np.log(trajectoires["haut"].reindex(annees_lt).to_numpy() / c),
+                                 H_FMI + annees_lt - horizon_fmi, horizon_ajuste(bandes_long_terme, groupe))
+                for a, x in zip(annees_lt, c * np.exp(lb if ELARGIS[scenario] == "bas" else lh)):
+                    niveau[a] = x
+            elif scenario in BORNES and bandes_long_terme is not None:
                 # Fourchette du pays à l'horizon du FMI, élargie comme les erreurs passées
                 ecart = niveau[horizon_fmi] / hab[horizon_fmi]
                 for a in range(horizon_fmi + 1, annee_fin + 1):
@@ -253,6 +318,7 @@ def construire_scenarios(unifie: pd.DataFrame, bandes: pd.DataFrame, ocde: pd.Da
                 voie = {"bas": croissance["bas"], "haut": croissance["haut"]}.get(BORNES.get(scenario), croissance["central"])
                 for a in range(horizon_fmi + 1, annee_fin + 1):
                     niveau[a] = niveau[a - 1] * voie.get(a, np.nan)
+            trajectoires[scenario] = niveau
             for a in annees:
                 periode = ("observé" if a <= derniere_obs else "projection du FMI" if a <= horizon_fmi else "long terme")
                 lignes.append({"country_code": code, "country_name": serie["country_name"].iloc[0],
@@ -273,6 +339,7 @@ def construire_scenarios(unifie: pd.DataFrame, bandes: pd.DataFrame, ocde: pd.Da
         fiches.append({"country_code": code, "country_name": serie["country_name"].iloc[0],
                        "zone_croissance_long_terme": zone, "niveau_zone": niveau_zone,
                        "bornes_long_terme": source_bornes,
+                       "bornes_elargies": bool(elargie),
                        "population_onu_disponible": onu is not None,
                        "population_bornes_calibrees": calibree is not None})
     table = pd.DataFrame(lignes)
@@ -340,6 +407,13 @@ def main():
                         "fichier": FICHIER_BANDES}
                        if long_terme is not None else
                        {"methode": "scénarios de l'OCDE le moins et le plus favorables pour la zone"}),
+                   "bornes_elargies": {
+                       "groupe": GROUPE_ELARGI,
+                       "methode": "au-delà de l'horizon du FMI, milieu de la fourchette figé au dernier horizon "
+                                  "ajusté de la loi de long terme, demi-largeur d'au moins Z80 · σ · h",
+                       "ecart_type_annuel": round(ECART_TYPE_ANNUEL_MSW, 5),
+                       "source": "Müller, Stock et Watson (2022), intervalle à 67 % de la croissance moyenne "
+                                 "des États-Unis sur 50 ans, 0,6 à 2,7 % par an"},
                    "annee_fin": args.annee_fin}, f, indent=2, ensure_ascii=False)
     apercu = table[(table["country_code"].isin(["CAN", "USA"])) & (table["year"].isin([2024, 2031, 2040, args.annee_fin]))]
     logging.info(f"Scénarios pour {table['country_code'].nunique()} pays, jusqu'en {args.annee_fin} :\n"

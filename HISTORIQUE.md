@@ -5,6 +5,16 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## ↕️ Variante Élargie des Fourchettes de Long Terme des Pays Riches (1er Octobre 2026)
+
+Pour le Canada, la fourchette de 2050 allait de 59 à 103 % de la trajectoire centrale : un haut presque collé au central. Elle est pourtant à peu près symétrique autour de son milieu, en logarithme (78 % du central en 2050) : c'est le décalage, l'optimisme passé du FMI prolongé, qui écrase le haut. Le biais est solide (chacune des 31 éditions de 1999 à 2014 a surestimé le Canada à 10 ans), mais son extrapolation jusqu'en 2050 repose sur les éditions 1999-2009, toutes traversées par 2008 ; celles de 2010-2014 montrent un biais plus faible (+9 % à 10 ans pour les pays riches, contre +12 à +15 %). Et face à Müller, Stock et Watson (2022), la fourchette est un peu étroite.
+
+- **Variante publiée à côté** (`bas_elargi`, `haut_elargi`, `scenarios.elargir`), pour les pays à revenu élevé, au-delà de 2031 : milieu figé au-delà du dernier horizon ajusté de la loi (16 ans), demi-largeur d'au moins 1,28 × 0,011 × h en logarithme (écart-type tiré de leur intervalle pour les États-Unis).
+- **Canada 2050 :** de 61 à 118 % du central, au lieu de 59 à 103 %. Le haut gagne 15 points, le bas bouge à peine.
+- Les bornes retenues ne changent pas ; les autres groupes de revenu non plus.
+
+210 tests ; quatre mutations (milieu non figé, plancher retiré, variante appliquée à tous les groupes, horizon mal compté), rattrapées.
+
 ## 👥 Population : les Bornes de l'ONU Calibrées sur ses Erreurs Passées (30 Septembre 2026)
 
 Les scénarios prolongeaient la population par la variante médiane de l'ONU, avec ses bornes à 80 %. Nouveau module `pib.population` : les révisions de 1998 à 2022, relues dans les archives de l'ONU (fichier de la population totale seulement, par lecture partielle des archives), confrontées aux estimations de la révision 2024.
