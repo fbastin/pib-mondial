@@ -1960,6 +1960,19 @@ class TestFourchettesDeLongTerme:
         assert e.loc[9, "erreur_fmi_puis_derive"] == pytest.approx(100 * ((1.03 / 1.01) ** 6 - 1))
         assert e.loc[9, "erreur_fmi_prolonge"] == pytest.approx(100 * ((1.03 / 1.01) ** 10 - 1))
 
+    def test_derive_negative_ecartee_des_fourchettes(self):
+        """Une dérive négative extrapole un effondrement : la trajectoire sort des fourchettes."""
+        from pib.long_terme import erreurs_prolongees, cas_pour_les_fourchettes
+        lignes = []
+        for code, passe in (("AAA", 1.0), ("BBB", -3.0)):
+            lignes += [dict(country_code=code, income_group="LMC", vintage="F2010", annee_millesime=2010, horizon=h,
+                            year=2010 + h, valeur=3.0, realise_fmi=1.0) for h in range(6)]
+            lignes += [dict(country_code=code, income_group="LMC", vintage="X", annee_millesime=1900, horizon=9,
+                            year=a, valeur=np.nan, realise_fmi=passe) for a in range(1995, 2010)]
+        e = erreurs_prolongees(pd.DataFrame(lignes), h_max=5)
+        assert e.groupby("country_code")["derive_pct"].first().to_dict() == pytest.approx({"AAA": 1.0, "BBB": -3.0})
+        assert set(cas_pour_les_fourchettes(e)["country_code"]) == {"AAA"}
+
     def test_loi_lissee_retrouvee_et_lissage(self):
         from pib.long_terme import ajuster_loi, lisser
         h = np.arange(1, 17)

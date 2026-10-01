@@ -5,6 +5,17 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 🧭 Fourchettes de Long Terme : sans les Trajectoires qui Prolongent un Effondrement (1er Octobre 2026)
+
+Pour vérifier si les fourchettes de long terme des pays non riches étaient trop larges (Inde 2050 : 49 à 193 % du central), on a comparé la loi prolongée au-delà de 16 ans aux quelques observations disponibles, puis découpé la queue haute par période d'édition. La loi n'était pas trop large par elle-même. En revanche, sa queue haute venait des premières éditions, et surtout de trajectoires qui prolongeaient un effondrement : la Géorgie, le Turkménistan, le Kazakhstan et l'Ukraine, projetés en 1999-2003 par une croissance passée négative, ont réalisé jusqu'à 16 fois la trajectoire prolongée.
+
+- **Correction :** les fourchettes écartent les trajectoires dont la dérive est négative (450 sur 8 930, `long_terme.cas_pour_les_fourchettes`). Les scénarios suivent après 2031 la croissance de l'OCDE, qui ne prolonge aucun effondrement : ces erreurs ne représentent pas leur incertitude. La synthèse des prolongements les garde.
+- **Effet en 2050, en % du central :** Inde, 47 à 122 au lieu de 49 à 193 ; Nigeria, 52 à 125 au lieu de 55 à 197 ; Éthiopie, 64 à 173 au lieu de 66 à 253 ; Chine, 53 à 136 au lieu de 54 à 144. Canada, 59 à 101 au lieu de 59 à 103 (variante élargie : 60 à 117 au lieu de 61 à 118). Le haut baisse de 8 points en médiane, le bas de 3 points au plus.
+- **Tirages conjoints, tous pays, 2050 :** 70 à 106 % du central, au lieu de 73 à 113 %.
+- **Reste un effet de période :** à 10 ans, le haut du revenu intermédiaire inférieur passe de 140 % du prévu (éditions 1999-2004) à 106 % (2010-2014).
+
+213 tests ; une mutation (filtre retiré), rattrapée.
+
 ## ↕️ Variante Élargie des Fourchettes de Long Terme des Pays Riches (1er Octobre 2026)
 
 Pour le Canada, la fourchette de 2050 allait de 59 à 103 % de la trajectoire centrale : un haut presque collé au central. Elle est pourtant à peu près symétrique autour de son milieu, en logarithme (78 % du central en 2050) : c'est le décalage, l'optimisme passé du FMI prolongé, qui écrase le haut. Le biais est solide (chacune des 31 éditions de 1999 à 2014 a surestimé le Canada à 10 ans), mais son extrapolation jusqu'en 2050 repose sur les éditions 1999-2009, toutes traversées par 2008 ; celles de 2010-2014 montrent un biais plus faible (+9 % à 10 ans pour les pays riches, contre +12 à +15 %). Et face à Müller, Stock et Watson (2022), la fourchette est un peu étroite.

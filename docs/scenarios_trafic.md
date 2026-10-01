@@ -89,26 +89,33 @@ Pour le Canada (revenu élevé), en % de `central_fmi` :
 | | `bas` | `haut` |
 |---|---|---|
 | 2031 | 89 % | 105 % |
-| 2040 | 72 % | 105 % |
-| 2050 | 59 % | 103 % |
+| 2040 | 72 % | 104 % |
+| 2050 | 59 % | 101 % |
 
-Soit, en 2050, de 37 730 $ à 66 449 $ autour de 64 344 $, contre 54 183 $ à 68 790 $ quand les bornes suivaient les scénarios extrêmes de l'OCDE.
+Soit, en 2050, de 37 852 $ à 65 010 $ autour de 64 344 $, contre 54 183 $ à 68 790 $ quand les bornes suivaient les scénarios extrêmes de l'OCDE.
 
-**La variante élargie des pays riches** (`bas_elargi`, `haut_elargi`). La fourchette ci-dessus est à peu près symétrique autour de son propre milieu, en logarithme : 97 % du central en 2031, 78 % en 2050. Ce n'est donc pas sa largeur qui écrase le haut, c'est ce décalage, l'optimisme passé du FMI prolongé. Le biais lui-même est solide : chacune des 31 éditions de 1999 à 2014 a surestimé le niveau du Canada à 10 ans, de 2 à 18 %. Son extrapolation jusqu'en 2050 l'est moins, d'où deux ajustements, au-delà de 2031 :
+**La variante élargie des pays riches** (`bas_elargi`, `haut_elargi`). La fourchette ci-dessus est à peu près symétrique autour de son propre milieu, en logarithme : 97 % du central en 2031, 77 % en 2050. Ce n'est donc pas sa largeur qui écrase le haut, c'est ce décalage, l'optimisme passé du FMI prolongé. Le biais lui-même est solide : chacune des 31 éditions de 1999 à 2014 a surestimé le niveau du Canada à 10 ans, de 2 à 18 %. Son extrapolation jusqu'en 2050 l'est moins, d'où deux ajustements, au-delà de 2031 :
 - **Le milieu de la fourchette est figé** au-delà de 16 ans, dernier horizon où la loi de long terme est ajustée (2042). Le décalage venait des éditions 1999-2009, toutes traversées par la crise de 2008. Pour les pays riches, l'erreur médiane à 10 ans des éditions 2010-2014 est de +9 %, contre +12 à +15 % avant, et leur 10e centile de −6 % montre une vraie possibilité de hausse.
 - **La largeur ne descend pas sous un plancher** tiré de Müller, Stock et Watson (2022). Leur intervalle à 67 % pour la croissance moyenne des États-Unis sur 50 ans, de 0,6 à 2,7 % par an, donne un écart-type du logarithme du niveau d'au moins 0,011 par année d'horizon. Le plancher suppose la croissance moyenne au moins aussi incertaine sur moins de 50 ans que sur 50, comme dans leur modèle entre 50 et 100 ans. Il joue dès 2040.
 
 | Canada, % de `central_fmi` | `bas` | `haut` | `bas_elargi` | `haut_elargi` |
 |---|---|---|---|---|
 | 2031 | 89 % | 105 % | 89 % | 105 % |
-| 2040 | 72 % | 105 % | 71 % | 105 % |
-| 2050 | 59 % | 103 % | 61 % | 118 % |
+| 2040 | 72 % | 104 % | 71 % | 105 % |
+| 2050 | 59 % | 101 % | 60 % | 117 % |
 
-Le bas bouge à peine ; le haut gagne 15 points en 2050. Pour un aéroport, le haut compte autant que le bas : il dimensionne la capacité. Au prix normalisé du Canada, la loi de Kenza amortit toutefois l'effet du PIB sur le trafic (élasticité au revenu d'environ 0,4). Le haut de la population calibrée (+23 % en 2050, ci-dessous) pèse alors davantage.
+Le bas bouge à peine ; le haut gagne 16 points en 2050. Pour un aéroport, le haut compte autant que le bas : il dimensionne la capacité. Au prix normalisé du Canada, la loi de Kenza amortit toutefois l'effet du PIB sur le trafic (élasticité au revenu d'environ 0,4). Le haut de la population calibrée (+23 % en 2050, ci-dessous) pèse alors davantage.
 
 **La fourchette est très asymétrique.** Pour les pays déjà riches à la date de l'édition, le réalisé n'a presque jamais dépassé de beaucoup les trajectoires prolongées : le haut de la fourchette reste près de `central_fmi`. Le bas s'éloigne, lui, d'environ 1,5 point de `central_fmi` par an.
 
-**Le groupe de revenu compte.** Classés selon leur groupe actuel, les cas passés auraient compté parmi les riches des pays devenus riches depuis, en dépassant les prévisions (Chili, Pologne, pays baltes). Cela donnait au Canada un haut de 128 % en 2050. Pour les pays à revenu intermédiaire, les rattrapages passés laissent au contraire une large marge à la hausse : Inde, 49 % à 193 % de `central_fmi` en 2050.
+**Le groupe de revenu compte.** Classés selon leur groupe actuel, les cas passés auraient compté parmi les riches des pays devenus riches depuis, en dépassant les prévisions (Chili, Pologne, pays baltes). Cela donnait au Canada un haut de 128 % en 2050. Pour les pays à revenu intermédiaire, la marge à la hausse est plus large : Inde, 47 à 122 % de `central_fmi` en 2050.
+
+**Les trajectoires qui prolongent un effondrement sont écartées des fourchettes.** Pour 5 % des trajectoires, la croissance des dix années passées était négative : la prolonger, c'est extrapoler un effondrement. Les éditions de 1999 à 2003 l'ont fait pour les économies issues de l'URSS, dont le réalisé a ensuite atteint jusqu'à 16 fois la trajectoire prolongée (Géorgie, Kazakhstan, Turkménistan, Ukraine). Les scénarios, eux, suivent après 2031 la croissance de l'OCDE, qui ne prolonge aucun effondrement : ces erreurs ne disent rien de leur incertitude. Elles gonflaient le haut des fourchettes des pays non riches, et d'autant plus que l'horizon est long, puisque seules les premières éditions y sont évaluables :
+- **Inde 2050 :** 47 à 122 % du central, au lieu de 49 à 193 % ; Nigeria, 52 à 125 % au lieu de 55 à 197 % ; Éthiopie, 64 à 173 % au lieu de 66 à 253 %.
+- **Pays riches :** à peine touchés (Canada 2050 : 59 à 101 %, au lieu de 59 à 103 %).
+- **Le bas** bouge de 3 points au plus.
+
+Même sans ces cas, la queue haute des pays non riches reste portée par les premières éditions : à 10 ans, le 90e centile du réalisé passe, pour le revenu intermédiaire inférieur, de 140 % du prévu pour les éditions 1999-2004 à 106 % pour celles de 2010-2014.
 
 **Ce que dit l'évaluation des prolongements** (`gdp_long_horizon_errors.csv`) :
 - **Prolonger la croissance de moyen terme du FMI** (médiane de ses horizons 3 à 5) surestime le niveau de 12 % en médiane à 10 ans, de 28 % à 20 ans. La trajectoire centrale suit donc l'OCDE après 2031, pas le FMI.
@@ -141,10 +148,10 @@ Les bornes `bas` et `haut` sont calculées **pays par pays**. Additionner la bor
 | Agrégat | Année | Tirages : 10e – 90e centile | Somme des `bas` – somme des `haut` |
 |---|---|---|---|
 | Tous les pays | 2031 | 90,2 (89,2 à 93,3) – 100,7 | 85,2 – 105,5 |
-| Tous les pays | 2050 | 73,4 (68,9 à 81,8) – 112,7 | 56,0 – 129,8 |
+| Tous les pays | 2050 | 70,1 (66,9 à 78,4) – 105,8 | 55,6 – 116,7 |
 | Canada, États-Unis, France, Royaume-Uni | 2031 | 87,7 (84,3 à 94,2) – 104,4 | 88,7 – 105,1 |
-| Canada, États-Unis, France, Royaume-Uni | 2050 | 57,3 (50,2 à 71,8) – 101,5 | 58,6 – 103,3 |
-| G7 | 2050 | 59,4 (56,2 à 75,2) – 96,0 | 58,6 – 103,3 |
+| Canada, États-Unis, France, Royaume-Uni | 2050 | 57,4 (50,6 à 71,3) – 99,3 | 58,8 – 101,0 |
+| G7 | 2050 | 59,6 (56,5 à 74,6) – 94,1 | 58,8 – 101,0 |
 
 - **Pour le monde entier,** sommer les bornes exagère nettement l'incertitude : les erreurs des pays se compensent en partie.
 - **Pour quelques marchés riches,** la somme des bornes reste dans l'incertitude des tirages. Les États-Unis y pèsent environ 60 %, et les pires tirages rejouent pour tous les éditions de 2005 à 2008, prises de court par la crise financière.
@@ -174,7 +181,7 @@ Les bornes `bas` et `haut` sont calculées **pays par pays**. Additionner la bor
 | 2040 | 44,9 | 42,4 – 47,7 | 42,2 – 51,3 |
 | 2050 | 46,6 | 42,1 – 51,5 | 42,1 – 57,2 |
 
-À comparer au PIB par habitant : en 2050, de 59 à 103 % du central pour le Canada. L'incertitude de la population est plus faible, mais elle va dans l'autre sens : vers le haut.
+À comparer au PIB par habitant : en 2050, de 59 à 101 % du central pour le Canada. L'incertitude de la population est plus faible, mais elle va dans l'autre sens : vers le haut.
 
 **Limites :**
 - **Les horizons de 20 à 25 ans** ne reposent que sur les révisions de 1998 à 2004, toutes prises de court par l'immigration des années 2000 et 2010.
@@ -194,7 +201,7 @@ Les bornes `bas` et `haut` sont calculées **pays par pays**. Additionner la bor
 - **Au-delà de 2031, les fourchettes sont tirées des erreurs passées, avec trois réserves :**
   - **Extrapolation au-delà de 16 ans.** Les lois sont ajustées jusqu'à 16 ans, dernier horizon qui compte au moins 10 années d'édition. Au-delà, donc de 2043 à 2050, elles sont extrapolées. Les quantiles observés à 20 ans, sur 6 années d'édition seulement, toutes traversées par 2009 et 2020, sont un peu plus étroits que la loi (90e centile de 60 % contre 66 % pour les pays à revenu élevé). Les bornes de ces années-là sont à lire comme indicatives.
   - **Groupe de revenu, pas pays.** Les quantiles sont ceux du groupe connu à la date de chaque édition : le Canada reçoit ceux des pays alors à revenu élevé, dont la Grèce de 2010 ou l'Irlande de 2015.
-  - **Un échantillon dominé par 2008-2009.** Pour les pays riches, les éditions évaluables au-delà de 10 ans (1999 à 2009) n'avaient pas vu venir la perte de niveau de 2008-2009. Un haut de fourchette proche de la trajectoire centrale reflète cet épisode ; une période plus favorable l'aurait relevé. Le modèle de long terme de Müller, Stock et Watson (2022) va dans ce sens. Leur intervalle à 67 % pour la croissance moyenne des États-Unis sur 50 ans, de 0,6 à 2,7 % par an, correspond à un écart-type du logarithme du niveau de 0,54, contre 0,39 pour notre loi des pays riches prolongée jusque-là, sans hausse possible. À 25 ans, il correspond à au moins 0,27, contre 0,24 pour la nôtre. Le haut de la fourchette des pays riches est donc probablement trop bas : d'où la variante élargie.
+  - **Un échantillon dominé par 2008-2009.** Pour les pays riches, les éditions évaluables au-delà de 10 ans (1999 à 2009) n'avaient pas vu venir la perte de niveau de 2008-2009. Un haut de fourchette proche de la trajectoire centrale reflète cet épisode ; une période plus favorable l'aurait relevé. Le modèle de long terme de Müller, Stock et Watson (2022) va dans ce sens. Leur intervalle à 67 % pour la croissance moyenne des États-Unis sur 50 ans, de 0,6 à 2,7 % par an, correspond à un écart-type du logarithme du niveau de 0,54, contre 0,34 pour notre loi des pays riches prolongée jusque-là, sans hausse possible. À 25 ans, il correspond à au moins 0,27, contre 0,23 pour la nôtre. Le haut de la fourchette des pays riches est donc probablement trop bas : d'où la variante élargie.
   - **PIB total, appliqué au PIB par habitant.** Les erreurs portent sur le PIB en volume ; l'incertitude de la population est traitée à part, par les variantes de l'ONU.
 - **La dérive tient lieu de croissance de long terme** dans la mesure des erreurs : les scénarios passés de l'OCDE ne sont pas archivés.
 - **La croissance de long terme de l'OCDE** porte sur le PIB potentiel en parité de pouvoir d'achat ; seule sa croissance est utilisée, appliquée au niveau en dollars de 2015.

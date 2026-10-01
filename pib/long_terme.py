@@ -32,6 +32,16 @@ horizons qui comptent au moins `ANNEES_MIN` années d'édition, puis extrapolée
 fourchette de l'horizon du FMI, propre à chaque pays, s'élargit ensuite comme ces quantiles
 entre l'horizon 5 et l'horizon h (`elargissement`).
 
+Les fourchettes écartent les trajectoires dont la dérive est négative (`cas_pour_les_fourchettes`).
+Prolonger une croissance passée négative, c'est extrapoler un effondrement : les éditions de
+1999-2003 l'ont fait pour les économies issues de l'URSS (Géorgie, Kazakhstan, Turkménistan,
+Ukraine), dont le réalisé a ensuite atteint jusqu'à 16 fois la trajectoire prolongée. Les
+scénarios, eux, suivent au-delà de l'horizon du FMI la croissance de long terme de l'OCDE, qui
+ne prolonge aucun effondrement : ces erreurs ne représentent pas leur incertitude. Écartées
+(5 % des trajectoires), elles gonflaient le haut des fourchettes des pays non riches (facteur
+d'élargissement de 2031 à 2050 de 1,84 au lieu de 1,17 pour le revenu intermédiaire
+inférieur). La synthèse des prolongements (`gdp_long_horizon_errors.csv`) les garde.
+
 Sorties dans `data/processed/` :
 
 - `gdp_long_horizon_errors.csv` : par horizon, quantiles et erreurs absolues des trois
@@ -58,6 +68,8 @@ H_FMI = 5
 FENETRE = 10
 PART_MIN = 0.8
 PREMIERE_EDITION = 1999
+# Les fourchettes ne retiennent que les trajectoires dont la dérive atteint ce seuil (%/an)
+DERIVE_MIN = 0.0
 PROLONGEMENTS = ("fmi_puis_derive", "fmi_prolonge", "derive")
 
 # Horizons qui servent à ajuster la loi : au moins autant d'années d'édition distinctes
@@ -126,9 +138,14 @@ def erreurs_prolongees(evaluation: pd.DataFrame, h_max: int = H_MAX,
         realisees = reel[code].reindex(range(int(annee), int(annee) + h_max + 1)).to_numpy()
         resultats = {nom: erreurs_cumulees(p, realisees) for nom, p in croissances_prevues(fmi, d, h_max).items()}
         for h in range(len(resultats["derive"])):
-            lignes.append((code, groupes.get(code), vintage, int(annee), h, *(resultats[n][h] for n in PROLONGEMENTS)))
-    return pd.DataFrame(lignes, columns=["country_code", "income_group", "vintage", "annee_millesime", "horizon"]
-                        + [f"erreur_{n}" for n in PROLONGEMENTS])
+            lignes.append((code, groupes.get(code), vintage, int(annee), h, d, *(resultats[n][h] for n in PROLONGEMENTS)))
+    return pd.DataFrame(lignes, columns=["country_code", "income_group", "vintage", "annee_millesime", "horizon",
+                                         "derive_pct"] + [f"erreur_{n}" for n in PROLONGEMENTS])
+
+
+def cas_pour_les_fourchettes(erreurs: pd.DataFrame, derive_min: float = DERIVE_MIN) -> pd.DataFrame:
+    """Trajectoires retenues pour les fourchettes : dérive d'au moins `derive_min` (voir le module)."""
+    return erreurs[erreurs["derive_pct"] >= derive_min]
 
 
 def synthese(erreurs: pd.DataFrame) -> pd.DataFrame:
@@ -240,11 +257,14 @@ def main():
     # Groupe de revenu connu à la date de l'édition : le groupe actuel introduirait un biais de sélection
     erreurs = groupes_revenu.a_l_edition(erreurs_prolongees(evaluation), groupes_revenu.charger())
     synthese(erreurs).to_csv(os.path.join(processed, FICHIER_ERREURS), index=False, encoding="utf-8-sig")
-    bandes, lois = lisser(quantiles_par_groupe(erreurs))
+    retenues = cas_pour_les_fourchettes(erreurs)
+    bandes, lois = lisser(quantiles_par_groupe(retenues))
     bandes.to_csv(os.path.join(processed, FICHIER_BANDES), index=False, encoding="utf-8-sig")
     lois.to_csv(os.path.join(processed, FICHIER_LOIS), index=False, encoding="utf-8-sig")
-    logging.info(f"-> {erreurs[['country_code', 'vintage']].drop_duplicates().shape[0]:,} trajectoires prolongées ; "
-                 f"fourchettes de long terme dans {processed}")
+    n = erreurs[["country_code", "vintage"]].drop_duplicates().shape[0]
+    n_retenues = retenues[["country_code", "vintage"]].drop_duplicates().shape[0]
+    logging.info(f"-> {n:,} trajectoires prolongées, dont {n_retenues:,} retenues pour les fourchettes "
+                 f"(dérive d'au moins {DERIVE_MIN:g} %) ; fourchettes de long terme dans {processed}")
 
 
 if __name__ == "__main__":
