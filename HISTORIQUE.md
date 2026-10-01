@@ -5,6 +5,16 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 👥 Population : les Bornes de l'ONU Calibrées sur ses Erreurs Passées (30 Septembre 2026)
+
+Les scénarios prolongeaient la population par la variante médiane de l'ONU, avec ses bornes à 80 %. Nouveau module `pib.population` : les révisions de 1998 à 2022, relues dans les archives de l'ONU (fichier de la population totale seulement, par lecture partielle des archives), confrontées aux estimations de la révision 2024.
+
+- **Les bornes de l'ONU sont trop étroites.** Appliquées aux erreurs passées des mêmes pays au même horizon, celles de 2024 n'en contiennent que 19 % à 1 an, 39 % à 5 ans, 54 % à 20 ans. Elles ignorent notamment les révisions de la population de départ (Bhoutan divisé par trois en 2005, Érythrée, Qatar).
+- **Pour les pays de plus de 5 millions d'habitants, la population a dépassé les projections :** erreur médiane de −4,6 % à 20 ans. Royaume-Uni −8 à −10 %, Canada −3 à −8 %.
+- **Bornes calibrées** (`population_millions_basse_calibree`, `…_haute_calibree`) : multiplicateurs des bornes de l'ONU par côté, horizon et classe de taille, lissés, jamais inférieurs à 1. Estimées sur 1998-2008, elles contiennent 82 à 87 % des erreurs de 2010-2022. Canada 2050 : 42,1 à 57,2 millions, au lieu de 42,1 à 51,5.
+
+207 tests ; cinq mutations (signe du réalisé, plancher retiré, multiplicateur haut appliqué au bas, taille prise après la révision, bornes appliquées au passé observé), rattrapées.
+
 ## 🔌 Le Projet Trafic Garde l'Ancien Fichier, le Temps de Migrer (30 Septembre 2026)
 
 La chaîne du projet trafic (`build_macro_series.jl`) lit `gdp_unified_2000_2030.csv`, que le passage à l'horizon 2031 a remplacé. L'ancien fichier, figé au 29 septembre 2026, est remis sur le Drive à son chemin d'origine, le temps que le projet trafic passe au fichier stable `scenarios_pib_population.csv`. Rien ne change dans les chiffres : `GDP_Per_Capita_USD` y est identique sur toutes les années communes. La procédure, une adaptation de cinq lignes vérifiée sur une copie du script, est dans `docs/scenarios_trafic.md`.

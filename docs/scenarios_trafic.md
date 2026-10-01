@@ -56,6 +56,7 @@ La chaîne du projet trafic lit le PIB par `julia/run/build_macro_series.jl --so
 | `scenario` | `central_fmi`, `central_corrige`, `bas`, `haut`, `crise_mondiale`, et pour comparaison `bas_groupe_seul`, `haut_groupe_seul` |
 | `pib_reel_par_habitant_usd_2015` | PIB en volume par habitant, dollars constants de 2015 |
 | `population_millions_centrale`, `…_basse`, `…_haute` | Population, millions : centrale, et bornes de l'intervalle à 80 % de l'ONU |
+| `population_millions_basse_calibree`, `…_haute_calibree` | Bornes à 80 % calibrées sur les erreurs passées de l'ONU (ci-dessous), plus larges |
 | `pib_reel_milliards_usd_2015` | PIB en volume, population centrale |
 | `pib_par_habitant_usd_courants` | PIB par habitant en dollars courants, pour `central_fmi` jusqu'en 2031 seulement |
 
@@ -146,11 +147,31 @@ Les bornes `bas` et `haut` sont calculées **pays par pays**. Additionner la bor
 - **Jusqu'en 2031 :** celle du pipeline (Banque Mondiale, puis FMI).
 - **Ensuite :** prolongée par la croissance de la variante médiane de l'ONU (*World Population Prospects* 2024).
 - **Variantes basse et haute :** le rapport des bornes à 80 % de l'ONU à sa médiane, appliqué à la centrale dès la première année projetée. Pour le Canada en 2050 : 42,1 à 51,5 millions, autour de 46,6.
+- **Variantes calibrées, à préférer :** `population_millions_basse_calibree` et `…_haute_calibree`. Pour le Canada en 2050 : 42,1 à 57,2 millions.
+
+**Pourquoi calibrer** (`pib.population`). Les révisions de l'ONU de 1998 à 2022, relues dans ses archives, ont été confrontées aux estimations de la révision 2024 :
+- **Les bornes de l'ONU sont trop étroites.** Appliquées aux erreurs passées des mêmes pays au même horizon, celles de 2024 n'en contiennent que 19 % à 1 an, 39 % à 5 ans, 54 % à 20 ans, au lieu de 80 %. Elles ignorent notamment les révisions de la population de départ, de l'ordre de 2 % en médiane dès la première année.
+- **Pour les grands pays, la population a dépassé les projections.** Pays de plus de 5 millions d'habitants : erreur médiane de −2,0 % à 10 ans, −4,6 % à 20 ans (projeté / estimé − 1). À 20 ans : Royaume-Uni −8 à −10 % selon la révision, Canada −3 à −8 %, France −4 à −6 % ; États-Unis entre −6 et +2,5 %.
+- **La calibration.** Chaque réalisé passé est exprimé en demi-largeurs des bornes de l'ONU du pays, à l'horizon. Les 10e et 90e centiles, par classe de taille (plus ou moins de 5 millions) et lissés selon l'horizon, donnent le multiplicateur de chaque côté. Pour les grands pays : côté haut × 3,5 à 5 ans, × 2,5 à 10 ans, × 2 au-delà de 20 ans ; côté bas × 1,9 à 5 ans, × 1 au-delà de 20 ans. Les multiplicateurs ne descendent jamais sous 1 : les révisions évaluables couvrent une période d'immigration forte, qui ne dit rien du risque inverse.
+- **Hors échantillon.** Estimées sur les révisions 1998 à 2008, les bornes calibrées contiennent 82 à 87 % des erreurs des révisions 2010 à 2022 ; celles de l'ONU, 25 à 57 %.
+
+| Canada, millions | Centrale | ONU | Calibrées |
+|---|---|---|---|
+| 2031 | 42,8 | 41,8 – 44,0 | 41,3 – 46,4 |
+| 2040 | 44,9 | 42,4 – 47,7 | 42,2 – 51,3 |
+| 2050 | 46,6 | 42,1 – 51,5 | 42,1 – 57,2 |
+
+À comparer au PIB par habitant : en 2050, de 59 à 103 % du central pour le Canada. L'incertitude de la population est plus faible, mais elle va dans l'autre sens : vers le haut.
+
+**Limites :**
+- **Les horizons de 20 à 25 ans** ne reposent que sur les révisions de 1998 à 2004, toutes prises de court par l'immigration des années 2000 et 2010.
+- **Pas de dépendance avec le PIB.** Une population plus forte que prévu par l'immigration accroît aussi le PIB total ; les scénarios combinent les deux sans lien.
+- **Deux classes de taille seulement,** sans groupe de revenu : les révisions de la population de départ, qui dominent les erreurs des petits pays, se distinguent mal par le revenu.
 
 ## Pour la méthode de Kenza
 
 - **Utiliser le PIB en volume par habitant.** Le prix normalisé rapporte un prix au revenu ; en volume, il ne mêle pas l'inflation à la croissance du revenu. La variante indexée, qui remplace le prix par `PIB_ref / PIB_par_habitant(t)`, n'a besoin que d'un rapport, sans unité : le volume convient directement. Le dollar courant n'est fourni que jusqu'en 2031, pour la continuité.
-- **Combiner les dimensions au besoin.** Les scénarios de PIB et les variantes de population sont indépendants : `bas` × population basse donne le cas le plus défavorable.
+- **Combiner les dimensions au besoin.** Les scénarios de PIB et les variantes de population sont indépendants : `bas` × population basse donne le cas le plus défavorable. Préférer les variantes de population calibrées, plus larges que celles de l'ONU.
 - **Pour plusieurs marchés à la fois,** passer par les trajectoires conjointes (`scenarios_pib_tirages.csv`, ci-dessus) plutôt que d'additionner les bornes de chaque pays.
 - **Pour une crise ponctuelle**, `crise_mondiale` donne le niveau ; la pire année médiane (−3,7 % pour le Canada) et le profil de 2008 (`docs/cas_crise_2008.md`) donnent la forme de la trajectoire.
 - **La zone de chalandise n'est pas le pays.** Ces séries sont nationales ; le PIB métropolitain (Statistique Canada, tableau 36-10-0468-01) reste la piste identifiée par la feuille de route du projet trafic.

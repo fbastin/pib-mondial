@@ -30,7 +30,10 @@ favorable pour la zone, qui ne diffèrent que par le climat et la transition én
 
 Population : celle du pipeline (Banque Mondiale, puis FMI jusqu'à son horizon), prolongée
 par la croissance de la variante médiane de l'ONU (World Population Prospects 2024) ;
-variantes basse et haute tirées de ses intervalles de prédiction à 80 %.
+variantes basse et haute tirées de ses intervalles de prédiction à 80 %. Ces intervalles
+sont trop étroits : appliqués aux révisions passées de l'ONU, ils n'en contiennent que 19 %
+à 1 an, 54 % à 20 ans. Les variantes `…_calibree` les élargissent pour en contenir 80 % (`pib.population`,
+`population_calibrated_bounds.csv`) ; sans ce fichier, elles reprennent celles de l'ONU.
 
 Sortie, pour le projet trafic, sous un nom qui ne change pas avec l'horizon :
 
@@ -72,6 +75,7 @@ WPP = ("https://population.un.org/wpp/assets/Excel%20Files/1_Indicator%20(Standa
        "WPP2024_TotalPopulationBySex.csv.gz")
 FICHIER_WPP = "WPP2024_TotalPopulationBySex.csv.gz"
 VARIANTES_WPP = {"centrale": "Medium", "basse": "Lower 80 PI", "haute": "Upper 80 PI"}
+FICHIER_BORNES_POPULATION = "population_calibrated_bounds.csv"
 
 # Régions de la Banque Mondiale -> agrégats de l'OCDE, pour les pays qu'elle ne projette pas
 REGIONS_OCDE = {"NAC": "A2", "LCN": "A9", "ECS": "E_S4", "SSF": "F6", "MEA": "F98", "EAS": "O_S2_S8", "SAS": "S7"}
@@ -176,12 +180,14 @@ def facteurs_par_scenario(bandes: pd.DataFrame) -> pd.DataFrame:
 
 
 def construire_scenarios(unifie: pd.DataFrame, bandes: pd.DataFrame, ocde: pd.DataFrame, wpp: pd.DataFrame,
-                         regions: dict, annee_fin: int = ANNEE_FIN, bandes_long_terme: pd.DataFrame = None) -> tuple:
+                         regions: dict, annee_fin: int = ANNEE_FIN, bandes_long_terme: pd.DataFrame = None,
+                         bornes_population: pd.DataFrame = None) -> tuple:
     """
     Trajectoires par pays, année et scénario, de la première année de la série à `annee_fin`,
     et table par pays (zone de croissance, bornes de long terme retenues). Voir le module.
     `bandes_long_terme` : fourchettes lissées de `pib.long_terme` ; à défaut, `bas` et `haut`
-    suivent les scénarios extrêmes de l'OCDE.
+    suivent les scénarios extrêmes de l'OCDE. `bornes_population` : bornes calibrées de
+    `pib.population`, en rapport à la médiane de l'ONU ; à défaut, celles de l'ONU.
     """
     pays = unifie[~unifie["is_aggregate"].astype(bool)].sort_values(["country_code", "year"])
     derniere_obs = int(pays.loc[~pays["is_forecast"].astype(bool), "year"].max())
@@ -189,6 +195,8 @@ def construire_scenarios(unifie: pd.DataFrame, bandes: pd.DataFrame, ocde: pd.Da
     facteurs = facteurs_par_scenario(bandes).set_index(["country_code", "year"])
     zones = set(ocde["zone"])
     wpp_large = wpp.pivot_table(index=["country_code", "year"], columns="variante", values="population")
+    calibrees = (bornes_population.set_index(["country_code", "year"])[["calibree_basse", "calibree_haute"]]
+                 if bornes_population is not None else None)
 
     lignes, fiches = [], []
     for code, serie in pays.groupby("country_code"):
@@ -203,7 +211,8 @@ def construire_scenarios(unifie: pd.DataFrame, bandes: pd.DataFrame, ocde: pd.Da
         # Population : pipeline jusqu'à l'horizon du FMI, puis croissance médiane de l'ONU ;
         # variantes : rapport de la variante à la médiane de l'ONU, appliqué à la centrale
         annees = range(int(serie.index.min()), annee_fin + 1)
-        population = pd.DataFrame(index=annees, columns=list(VARIANTES_WPP), dtype=float)
+        population = pd.DataFrame(index=annees, columns=[*VARIANTES_WPP, "basse_calibree", "haute_calibree"],
+                                  dtype=float)
         population.loc[pop.index, "centrale"] = pop.values
         onu = wpp_large.xs(code, level="country_code") if code in wpp_large.index.get_level_values(0) else None
         if onu is not None and {"centrale", "basse", "haute"} <= set(onu.columns):
@@ -216,6 +225,14 @@ def construire_scenarios(unifie: pd.DataFrame, bandes: pd.DataFrame, ocde: pd.Da
             population["haute"] = population["centrale"] * ecart["haute"].fillna(1.0)
         else:
             population["basse"] = population["haute"] = population["centrale"]
+        calibree = (calibrees.xs(code, level="country_code").reindex(annees)
+                    if calibrees is not None and code in calibrees.index.get_level_values(0) else None)
+        if calibree is not None:
+            calibree.loc[calibree.index <= derniere_obs] = 1.0
+            population["basse_calibree"] = population["centrale"] * calibree["calibree_basse"].fillna(1.0)
+            population["haute_calibree"] = population["centrale"] * calibree["calibree_haute"].fillna(1.0)
+        else:
+            population["basse_calibree"], population["haute_calibree"] = population["basse"], population["haute"]
 
         groupe = serie["income_group"].iloc[0] if "income_group" in serie else None
         central = pd.Series({horizon_fmi: float(hab[horizon_fmi])})
@@ -245,6 +262,8 @@ def construire_scenarios(unifie: pd.DataFrame, bandes: pd.DataFrame, ocde: pd.Da
                                "population_millions_centrale": population.loc[a, "centrale"],
                                "population_millions_basse": population.loc[a, "basse"],
                                "population_millions_haute": population.loc[a, "haute"],
+                               "population_millions_basse_calibree": population.loc[a, "basse_calibree"],
+                               "population_millions_haute_calibree": population.loc[a, "haute_calibree"],
                                "pib_par_habitant_usd_courants": (serie["GDP_Per_Capita_USD"].get(a, np.nan)
                                                                  if scenario == "central_fmi" and a <= horizon_fmi else np.nan)})
         if bandes_long_terme is not None:
@@ -254,7 +273,8 @@ def construire_scenarios(unifie: pd.DataFrame, bandes: pd.DataFrame, ocde: pd.Da
         fiches.append({"country_code": code, "country_name": serie["country_name"].iloc[0],
                        "zone_croissance_long_terme": zone, "niveau_zone": niveau_zone,
                        "bornes_long_terme": source_bornes,
-                       "population_onu_disponible": onu is not None})
+                       "population_onu_disponible": onu is not None,
+                       "population_bornes_calibrees": calibree is not None})
     table = pd.DataFrame(lignes)
     table["pib_reel_milliards_usd_2015"] = table["pib_reel_par_habitant_usd_2015"] * table["population_millions_centrale"] / 1000
     return table, pd.DataFrame(fiches)
@@ -286,8 +306,13 @@ def main():
     if long_terme is None:
         logging.warning(f"{chemin_long_terme} absent (pib.long_terme) : au-delà de l'horizon du FMI, "
                         "bornes tirées des scénarios extrêmes de l'OCDE.")
+    chemin_population = os.path.join(processed, FICHIER_BORNES_POPULATION)
+    bornes_population = pd.read_csv(chemin_population) if os.path.exists(chemin_population) else None
+    if bornes_population is None:
+        logging.warning(f"{chemin_population} absent (pib.population) : variantes de population calibrées "
+                        "= celles de l'ONU.")
     table, fiches = construire_scenarios(unifie, pd.read_csv(bandes_csv), ocde, wpp, regions, args.annee_fin,
-                                         bandes_long_terme=long_terme)
+                                         bandes_long_terme=long_terme, bornes_population=bornes_population)
 
     # Par pays : bornes et probabilités de recul à l'horizon du FMI
     bandes_csv_final = os.path.join(processed, "gdp_projection_bands.csv")
@@ -304,6 +329,11 @@ def main():
         json.dump({"ocde": {"flux": "OECD.ECO.MAD:DSD_EO_LTB@DF_EO_LTB(1.0)", "mesure": "GDPVTRD_CAP",
                             "scenario_central": SCENARIO_OCDE_CENTRAL, "url": OCDE},
                    "onu": {"source": "World Population Prospects 2024", "variantes": VARIANTES_WPP, "url": WPP},
+                   "population_calibree": (
+                       {"methode": "bornes à 80 % de l'ONU élargies pour contenir 80 % des erreurs passées de ses "
+                                   "révisions 1998-2022, par classe de taille et horizon",
+                        "fichier": FICHIER_BORNES_POPULATION}
+                       if bornes_population is not None else {"methode": "bornes de l'ONU, faute de calibration"}),
                    "bornes_long_terme": (
                        {"methode": "fourchette du pays à l'horizon du FMI, élargie comme les erreurs passées des "
                                    "trajectoires du FMI prolongées par la dérive, par groupe de revenu",

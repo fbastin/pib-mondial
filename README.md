@@ -38,6 +38,7 @@ pib-mondial/
 │   ├── calibration.py            #   Évaluation : fourchettes et probabilités éprouvées en temps réel
 │   ├── groupes_revenu.py         #   Groupe de revenu connu à la date de chaque édition (fourchettes)
 │   ├── long_terme.py             #   Évaluation : fourchettes au-delà de l'horizon du FMI (trajectoires prolongées)
+│   ├── population.py             #   Évaluation : erreurs passées des projections de population de l'ONU, bornes calibrées
 │   ├── scenarios.py              #   Export : scénarios de PIB et de population jusqu'en 2050, pour le trafic
 │   ├── tirages.py                #   Export : trajectoires conjointes de tous les pays, pour agréger des marchés
 │   ├── cas_de_crise.py           #   Évaluation : une récession mondiale (2009, 2020) dans les prévisions
@@ -101,6 +102,7 @@ python produire_rapports.py [--start-year 2000] [--end-year AAAA] [--fcst-end AA
 | Révisions d'une édition à la suivante | `python -m pib.revisions_weo` |
 | Fourchettes et probabilités de récession éprouvées en temps réel | `python -m pib.calibration [--horizon 5]` |
 | Fourchettes au-delà de l'horizon du FMI (erreurs des trajectoires prolongées) | `python -m pib.long_terme` |
+| Erreurs passées des projections de population de l'ONU, bornes calibrées | `python -m pib.population` |
 | Scénarios de PIB et de population jusqu'en 2050, pour le projet trafic | `python -m pib.scenarios [--annee-fin 2050]` |
 | Trajectoires conjointes de tous les pays, pour agréger des marchés | `python -m pib.tirages` |
 | Cas d'étude d'une récession mondiale (hors chaîne) | `python -m pib.cas_de_crise --annee 2009 [--trafic]` |
@@ -139,7 +141,7 @@ jupyter nbconvert --to html --execute --ExecutePreprocessor.kernel_name=julia-1.
 ### Tests
 
 ```bash
-pytest                      # 200 tests, sans accès réseau
+pytest                      # 207 tests, sans accès réseau
 pytest -m "not donnees"     # sans les contrôles sur les fichiers produits
 ```
 
@@ -406,6 +408,12 @@ Les révisions penchent à la hausse (croissance +0,26 point en moyenne, niveau 
 
 Pour le Canada, le PIB par habitant de 2031 va de 43 340 $ (bas) à 51 379 $ (haut) autour de 48 883 $ ; en 2050, de 37 730 à 66 449 $ autour de 64 344 $.
 
+**Population : les bornes de l'ONU sont trop étroites** (`pib.population`). Les révisions des projections de l'ONU de 1998 à 2022, relues dans ses archives, sont confrontées aux estimations de la révision 2024, jusqu'à 25 ans d'horizon :
+- **Les bornes à 80 % de l'ONU** pour 2024, appliquées aux erreurs passées des mêmes pays au même horizon, n'en contiennent que 19 % à 1 an, 39 % à 5 ans, 54 % à 20 ans. Elles ignorent notamment les révisions de la population de départ.
+- **Pour les pays de plus de 5 millions d'habitants, la population a dépassé les projections :** −2,0 % d'erreur médiane à 10 ans, −4,6 % à 20 ans (projeté / estimé − 1). Royaume-Uni à 20 ans : −8 à −10 % selon la révision ; Canada : −3 à −8 %.
+- **Bornes calibrées :** le côté haut des bornes de l'ONU est multiplié par 2 à 2,5 au-delà de 10 ans pour ces pays ; le côté bas reste celui de l'ONU au-delà de 20 ans (multiplicateurs jamais inférieurs à 1). Estimées sur les révisions 1998-2008, elles contiennent 82 à 87 % des erreurs des révisions 2010-2022, contre 25 à 57 % pour celles de l'ONU.
+- **Canada en 2050 :** 42,1 à 57,2 millions, au lieu de 42,1 à 51,5, autour de 46,6. Dans les scénarios : `population_millions_basse_calibree`, `population_millions_haute_calibree`.
+
 **Trajectoires conjointes pour agréger des marchés** (`pib.tirages`, `scenarios_pib_tirages.csv`). Les bornes `bas` et `haut` sont calculées pays par pays : leur somme sur plusieurs marchés n'a pas de probabilité connue. Les 60 tirages rejouent chacun une édition passée du WEO (avril 1990 à octobre 2019), par le rééchantillonnage de Schaake. Chaque pays garde exactement sa fourchette (10 % des tirages sous `bas`, 10 % au-dessus de `haut`), mais un tirage donne à chaque pays son rang dans cette édition : les crises communes restent communes.
 - **Pour tous les pays ensemble,** la somme des bornes exagère nettement : en 2050, de 56 à 130 % de la trajectoire centrale, contre 73 à 113 % pour les tirages (2031 : 85 à 106 %, contre 90 à 101 %).
 - **Pour quelques marchés riches dominés par les États-Unis,** elle reste dans l'incertitude des tirages : Canada, États-Unis, France et Royaume-Uni en 2031, borne basse de 88,7 % contre 87,7 % (intervalle de 84,3 à 94,2). Les pertes de 2008-2009 ont frappé ces pays ensemble.
@@ -452,6 +460,7 @@ Pour chaque rapport (`data/` et `outputs/` ; `plus_recent/` pour le plus récent
 | `data/processed/world_gdp_per_capita_growth.csv` | Croissance du PIB mondial par habitant depuis 1961 (Banque Mondiale) : les récessions mondiales |
 | `data/processed/gdp_projection_bands_by_horizon.csv` | Fourchettes et probabilités à chaque horizon, de l'année de l'édition à 2031 |
 | `data/processed/scenarios_pib_population.csv`, `…_pays.csv`, `…_sources.json` | Scénarios de PIB par habitant et de population jusqu'en 2050, pour le projet trafic |
+| `data/processed/population_projection_errors.csv`, `population_bounds_calibration.csv`, `population_calibrated_bounds.csv` | Erreurs passées des projections de population de l'ONU par groupe, taille et horizon ; multiplicateurs de ses bornes ; bornes calibrées par pays |
 | `data/processed/scenarios_pib_tirages.csv`, `…_controle.csv` | 60 trajectoires conjointes de tous les pays jusqu'en 2050 ; contrôle : part sous `bas` et au-dessus de `haut` par pays, quantiles des agrégats contre la somme des bornes |
 | `data/processed/weo_cas_<année>_*.csv` | Cas d'étude d'une récession mondiale, sur demande (`pib.cas_de_crise`) : croissance, reculs annoncés, rebond, niveaux ; avec `--trafic`, trafic aérien face au PIB (par pays, régressions, part expliquée) |
 | `data/processed/gdp_projection_bands_calibration.csv` | Test rétrospectif des fourchettes : part des erreurs contenues |
@@ -487,7 +496,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 
 ## ✅ Tests des invariants
 
-200 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
+207 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
 
 | Invariant | Ce qu'il empêche |
 |---|---|
@@ -519,6 +528,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 | Scénarios pour le trafic : bornes et corrections dans le bon sens, croissance de l'OCDE du pays sinon de sa région, variantes de population de l'ONU appliquées aux seules années projetées | Un scénario bas plus haut que le central, ou une population « basse » qui modifie le passé observé |
 | Au-delà de l'horizon du FMI : dérive tirée des seules années connues à la date de l'édition ; loi ajustée sur les horizons assez fournis, y compris quand un quantile change de signe ; fourchette du pays conservée à l'horizon du FMI puis élargie, bornes basse et haute dans le bon sens | Une dérive qui connaît l'année en cours, une loi tirée de deux éditions, ou une fourchette qui saute en 2032 |
 | Fourchettes : cas passés classés selon le groupe de revenu publié avant leur édition (avril : exercice v ; octobre : v + 1), groupe actuel à défaut | Des pays devenus riches en dépassant les prévisions comptés parmi les riches dès 1999 |
+| Population : erreur projetée / estimée − 1 après la révision, jusqu'à la dernière année estimée ; taille du pays donnée par la révision pour son année ; bornes calibrées jamais plus étroites que celles de l'ONU, absentes du passé observé | Des bornes calibrées sur des pays rangés selon leur taille future, ou une population « haute » qui modifie le passé |
 | Trajectoires conjointes : chaque pays garde exactement sa fourchette, le choc commun d'une édition touche tous les pays, la position relative tient au-delà de 2031, le bootstrap tire ensemble avril et octobre | Des tirages qui reprennent le biais propre d'un pays, ou un agrégat dont la précision est surestimée |
 | Crises mondiales à part : récessions et historique mondial connus à la date de l'édition ; repli sans période en crise ; mélange pondéré dans le bon sens | Une probabilité qui connaît les crises à venir, ou vide faute d'exemple |
 | Calibration en temps réel : aucune erreur encore inconnue à la date de l'édition ; score d'intervalle, CRPS et compétence de Brier exacts ; méthodes comparées sur les mêmes cas | Une calibration flatteuse parce qu'elle voit l'avenir, ou des méthodes comparées sur des échantillons différents |

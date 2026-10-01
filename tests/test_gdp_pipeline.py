@@ -1599,6 +1599,26 @@ class TestScenariosPourLeTrafic:
         assert pib[(2028, "bas_groupe_seul")] == pytest.approx(pib[(2028, "bas")])
         assert pib[(2028, "haut_groupe_seul")] == pytest.approx(pib[(2028, "haut")])
 
+    def test_variantes_de_population_calibrees(self):
+        """Bornes calibrées de `pib.population` appliquées à la centrale ; le passé observé n'en a pas."""
+        from pib.scenarios import construire_scenarios
+        calibrees = pd.DataFrame({"country_code": "AAA", "year": range(2024, 2029),
+                                  "calibree_basse": 0.85, "calibree_haute": 1.2})
+        table, fiches = construire_scenarios(*self._entrees(), regions={}, annee_fin=2028, bornes_population=calibrees)
+        t = table[table["scenario"] == "central_fmi"].set_index("year")
+        assert t.loc[2028, "population_millions_basse_calibree"] == pytest.approx(t.loc[2028, "population_millions_centrale"] * 0.85)
+        assert t.loc[2028, "population_millions_haute_calibree"] == pytest.approx(t.loc[2028, "population_millions_centrale"] * 1.2)
+        assert t.loc[2024, "population_millions_haute_calibree"] == pytest.approx(10.0)
+        assert bool(fiches.iloc[0]["population_bornes_calibrees"])
+
+    def test_sans_calibration_les_variantes_de_l_onu(self):
+        from pib.scenarios import construire_scenarios
+        table, fiches = construire_scenarios(*self._entrees(), regions={}, annee_fin=2028)
+        t = table[table["scenario"] == "central_fmi"].set_index("year")
+        assert t.loc[2028, "population_millions_basse_calibree"] == pytest.approx(t.loc[2028, "population_millions_basse"])
+        assert t.loc[2028, "population_millions_haute_calibree"] == pytest.approx(t.loc[2028, "population_millions_haute"])
+        assert not bool(fiches.iloc[0]["population_bornes_calibrees"])
+
     def test_groupe_inconnu_prend_tous_les_pays(self):
         from pib.scenarios import construire_scenarios
         table, fiches = construire_scenarios(*self._entrees(), regions={}, annee_fin=2028,
@@ -1606,6 +1626,82 @@ class TestScenariosPourLeTrafic:
         assert fiches.iloc[0]["bornes_long_terme"] == "erreurs passées du FMI prolongé (tous)"
         pib = table.set_index(["year", "scenario"])["pib_reel_par_habitant_usd_2015"]
         assert pib[(2028, "bas")] == pytest.approx(104.0 * 1.01 ** 2 * 0.8 * 1.10 / 1.14)
+
+
+class TestPopulationONU:
+    """
+    Erreurs passées des projections de population de l'ONU, et bornes calibrées pour
+    contenir 80 % de ces erreurs.
+    """
+
+    @staticmethod
+    def _actuelle():
+        """Révision actuelle : deux pays, estimés jusqu'en 2023, projetés ensuite avec bornes."""
+        lignes = []
+        for code, loc, base in (("AAA", 1, 6000.0), ("BBB", 2, 100.0), ("CCC", 3, 5000.0)):
+            for a in range(2000, 2027):
+                med = base * (1.01 ** (a - 2000))
+                lignes.append(dict(country_code=code, LocID=loc, year=a, mediane=med,
+                                   basse=med * 0.95 if a > 2024 else med, haute=med * 1.04 if a > 2024 else med))
+        return pd.DataFrame(lignes)
+
+    def test_erreurs_horizon_signe_et_taille(self):
+        from pib.population import erreurs, GRANDS, PETITS
+        act = self._actuelle()
+        estimee = act.set_index(["LocID", "year"])["mediane"]
+        revision = pd.DataFrame([dict(LocID=loc, year=a, population=estimee[(loc, a)] * (1.10 if loc == 1 else 0.95))
+                                 for loc in (1, 2) for a in range(2000, 2026)]
+                                + [dict(LocID=3, year=a, population=5200.0 if a == 2000 else 4000.0) for a in range(2000, 2026)])
+        e = erreurs({2000: revision}, act).set_index(["country_code", "year"])
+        assert e.loc[("AAA", 2003), "erreur_pct"] == pytest.approx(10.0)      # projeté au-dessus : erreur positive
+        assert e.loc[("BBB", 2003), "erreur_pct"] == pytest.approx(-5.0)
+        assert e.loc[("AAA", 2003), "horizon"] == 3
+        assert e.loc[("AAA", 2003), "classe_taille"] == GRANDS               # 6,6 millions donnés en 2000
+        assert e.loc[("BBB", 2003), "classe_taille"] == PETITS
+        assert e.loc[("CCC", 2010), "classe_taille"] == GRANDS               # taille de l'année de la révision
+        assert e.index.get_level_values("year").min() == 2001                 # après la révision
+        assert e.index.get_level_values("year").max() == 2023                 # jusqu'à la dernière année estimée
+
+    def test_ecart_en_demi_largeurs(self):
+        from pib.population import ecarts_normalises
+        e = pd.DataFrame(dict(revision=2000, country_code=["AAA", "BBB"], year=2010, horizon=1, classe_taille="x",
+                              erreur_pct=[-10.0, 2.0]))
+        bornes = pd.DataFrame(dict(country_code=["AAA", "BBB"], horizon=1, onu_bas_pct=[-4.0, -4.0], onu_haut_pct=[5.0, 5.0]))
+        m = ecarts_normalises(e, bornes).set_index("country_code")
+        # Projeté 10 % sous le réalisé : réalisé au-dessus, côté haut
+        assert m.loc["AAA", "z"] == pytest.approx(-np.log(0.9) / np.log(1.05))
+        assert not m.loc["AAA", "dedans"]
+        assert m.loc["BBB", "z"] == pytest.approx(-np.log(1.02) / -np.log(0.96))
+        assert m.loc["BBB", "dedans"]
+
+    @staticmethod
+    def _z(valeurs):
+        return pd.DataFrame([dict(classe_taille="c", horizon=h, revision=r, z=z, dedans=abs(z) <= 1)
+                             for h in range(1, 11) for r in range(2000, 2010, 2) for z in valeurs])
+
+    def test_multiplicateurs_portent_la_couverture_a_80(self):
+        from pib.population import multiplicateurs
+        k = multiplicateurs(self._z(np.linspace(-2, 3, 101))).set_index("horizon")
+        assert k.loc[5, "k_bas_observe"] == pytest.approx(1.5)
+        assert k.loc[5, "k_haut_observe"] == pytest.approx(2.5)
+        assert k.loc[30, "k_bas"] == pytest.approx(1.5, abs=1e-6)               # extrapolé, constant
+        assert k.loc[30, "k_haut"] == pytest.approx(2.5, abs=1e-6)
+        assert k.loc[5, "part_dans_bornes_calibrees"] == pytest.approx(81 / 101)
+
+    def test_jamais_plus_etroit_que_l_onu(self):
+        from pib.population import multiplicateurs
+        k = multiplicateurs(self._z(np.linspace(-0.5, 3, 101))).set_index("horizon")
+        assert k.loc[5, "k_bas_observe"] < 1
+        assert (k["k_bas"] >= 1).all() and k.loc[5, "k_bas"] == pytest.approx(1.0)
+
+    def test_bornes_par_pays(self):
+        from pib.population import bornes_par_pays, GRANDS, PETITS
+        calibration = pd.DataFrame(dict(classe_taille=[GRANDS, PETITS], horizon=1, k_bas=[2.0, 1.0], k_haut=[3.0, 1.0]))
+        b = bornes_par_pays(self._actuelle(), calibration).set_index("country_code")
+        assert b.loc["AAA", "year"] == 2025
+        assert b.loc["AAA", "calibree_basse"] == pytest.approx(0.95 ** 2)
+        assert b.loc["AAA", "calibree_haute"] == pytest.approx(1.04 ** 3)
+        assert b.loc["BBB", "calibree_haute"] == pytest.approx(1.04)          # petit pays : k = 1
 
 
 class TestTiragesConjoints:

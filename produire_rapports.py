@@ -80,6 +80,7 @@ def main():
                 lancer("revisions_weo", "--data-dir", data_dir, "--classeur", classeur)
                 lancer("calibration", "--data-dir", data_dir)
                 lancer("long_terme", "--data-dir", data_dir)
+                lancer("population", "--data-dir", data_dir)
                 lancer("scenarios", "--data-dir", data_dir)
                 lancer("tirages", "--data-dir", data_dir)
             else:

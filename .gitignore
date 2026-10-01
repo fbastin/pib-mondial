@@ -19,6 +19,10 @@ data/raw/wdi_archive/
 # par `python -m pib.scenarios` (données ouvertes, 21 Mo)
 data/raw/scenarios_long_terme/
 
+# Révisions passées des projections de population de l'ONU (1998-2022) : relues dans ses
+# archives par `python -m pib.population` (population totale seulement, 193 Mo)
+data/raw/wpp_archive/
+
 # Classement historique des pays par revenu (Banque Mondiale) : re-téléchargé par pib.groupes_revenu
 data/raw/bm_groupes_revenu_historiques.xlsx
 
