@@ -5,6 +5,16 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## ➗ Tirages : le PIB par Habitant Suit la Population Tirée (1er Octobre 2026)
+
+Avec la population tirée, le PIB par habitant des tirages restait celui d'une population centrale. Or les erreurs du FMI portent sur le PIB total, indépendant de la population : le PIB par habitant d'un tirage vaut désormais son PIB total divisé par sa population (`tirages.par_habitant`), et le fichier gagne le PIB total (`pib_reel_milliards_usd_2015`).
+
+- **Agrégats de PIB inchangés,** la population s'annulant dans le total.
+- **Par pays, le PIB par habitant tiré est plus dispersé** que `bas`–`haut`, qui ignorent l'incertitude de la population : en 2050, 16 % des tirages sous `bas` et 14 % au-dessus de `haut` en moyenne.
+- **Défaut mis au jour, non corrigé :** les bornes de population calibrées sont démesurées pour une vingtaine de petits territoires et États du Golfe (Hong Kong 2050 : −33 à +207 %). Le multiplicateur des bornes de l'ONU, commun à une classe de taille, devrait être plus petit pour les pays dont ces bornes sont déjà larges (à 10 ans, côté haut des grands pays : 2,5 pour les bornes étroites, 1,6 pour les larges).
+
+216 tests ; une mutation (multiplier au lieu de diviser), rattrapée.
+
 ## 👪 La Population dans les Trajectoires Conjointes (1er Octobre 2026)
 
 Les 60 tirages ne faisaient varier que le PIB par habitant. Or, dans la loi de Kenza, le trafic est proportionnel à la population, et pour le Canada le haut de la population calibrée (+23 % en 2050) pèse plus que celui du PIB.

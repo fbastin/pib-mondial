@@ -143,7 +143,7 @@ jupyter nbconvert --to html --execute --ExecutePreprocessor.kernel_name=julia-1.
 ### Tests
 
 ```bash
-pytest                      # 215 tests, sans accès réseau
+pytest                      # 216 tests, sans accès réseau
 pytest -m "not donnees"     # sans les contrôles sur les fichiers produits
 ```
 
@@ -419,7 +419,7 @@ Pour le Canada, le PIB par habitant de 2031 va de 43 340 $ (bas) à 51 379 $ (ha
 **Trajectoires conjointes pour agréger des marchés** (`pib.tirages`, `scenarios_pib_tirages.csv`). Les bornes `bas` et `haut` sont calculées pays par pays : leur somme sur plusieurs marchés n'a pas de probabilité connue. Les 60 tirages rejouent chacun une édition passée du WEO (avril 1990 à octobre 2019), par le rééchantillonnage de Schaake. Chaque pays garde exactement sa fourchette (10 % des tirages sous `bas`, 10 % au-dessus de `haut`), mais un tirage donne à chaque pays son rang dans cette édition : les crises communes restent communes.
 - **Pour tous les pays ensemble,** la somme des bornes exagère nettement : en 2050, de 56 à 117 % de la trajectoire centrale, contre 70 à 106 % pour les tirages (2031 : 85 à 106 %, contre 90 à 101 %).
 - **Pour quelques marchés riches dominés par les États-Unis,** elle reste dans l'incertitude des tirages : Canada, États-Unis, France et Royaume-Uni en 2031, borne basse de 88,7 % contre 87,7 % (intervalle de 84,3 à 94,2). Les pertes de 2008-2009 ont frappé ces pays ensemble.
-- **La population se tire aussi,** de la même façon, sur les révisions passées de l'ONU : chaque pays garde sa fourchette calibrée. Indépendamment du PIB, car les erreurs passées des deux ne sont pas liées (corrélation de rang de 0,00 à 0,04).
+- **La population se tire aussi,** de la même façon, sur les révisions passées de l'ONU : chaque pays garde sa fourchette calibrée. Indépendamment du PIB total, car les erreurs passées des deux ne sont pas liées (corrélation de rang de 0,00 à 0,04) ; le PIB par habitant d'un tirage est donc son PIB total divisé par sa population.
 - **Leur usage :** faire passer chaque tirage dans le modèle de trafic, puis lire les quantiles du trafic, plutôt que d'agréger les bornes.
 
 **Au-delà de l'horizon du FMI** (`pib.long_terme`). Chaque édition du WEO depuis 1999 est prolongée au-delà de 5 ans, puis confrontée au réalisé jusqu'à la dernière année connue (8 930 trajectoires, jusqu'à 25 ans d'horizon) :
@@ -499,7 +499,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 
 ## ✅ Tests des invariants
 
-215 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
+216 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
 
 | Invariant | Ce qu'il empêche |
 |---|---|
@@ -533,6 +533,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 | Fourchettes : cas passés classés selon le groupe de revenu publié avant leur édition (avril : exercice v ; octobre : v + 1), groupe actuel à défaut | Des pays devenus riches en dépassant les prévisions comptés parmi les riches dès 1999 |
 | Population : erreur projetée / estimée − 1 après la révision, jusqu'à la dernière année estimée ; taille du pays donnée par la révision pour son année ; bornes calibrées jamais plus étroites que celles de l'ONU, absentes du passé observé | Des bornes calibrées sur des pays rangés selon leur taille future, ou une population « haute » qui modifie le passé |
 | Variante élargie des pays riches : identique aux bornes retenues jusqu'en 2031, milieu figé au-delà du dernier horizon ajusté, largeur jamais sous le plancher, autres groupes inchangés | Une variante qui saute en 2032, ou qui touche les pays qu'elle ne vise pas |
+| PIB par habitant des tirages : PIB total du tirage divisé par sa population | Une population surprise sans effet sur le revenu par habitant |
 | Population des tirages : bornes calibrées de chaque pays gardées exactement, rang parmi tous les cas passés de la classe de taille (le choc commun d'une révision reste commun), position relative constante d'une année à l'autre | Une population tirée qui sort de sa fourchette, ou des surprises communes effacées |
 | Trajectoires conjointes : chaque pays garde exactement sa fourchette, le choc commun d'une édition touche tous les pays, la position relative tient au-delà de 2031, le bootstrap tire ensemble avril et octobre | Des tirages qui reprennent le biais propre d'un pays, ou un agrégat dont la précision est surestimée |
 | Crises mondiales à part : récessions et historique mondial connus à la date de l'édition ; repli sans période en crise ; mélange pondéré dans le bon sens | Une probabilité qui connaît les crises à venir, ou vide faute d'exemple |

@@ -46,6 +46,12 @@ donc à part, de la même façon que le PIB :
 4. **Les révisions sont attribuées aux tirages** par blocs consécutifs, dans l'ordre
    chronologique (6 éditions du WEO par révision) : un choix sans conséquence, puisque les deux
    erreurs sont indépendantes. Une même révision donne la même population à ses 6 tirages.
+5. **PIB par habitant cohérent avec la population tirée** (`par_habitant`). Les erreurs du FMI
+   portent sur le PIB total, indépendant de la population : le PIB total d'un tirage est la
+   trajectoire centrale multipliée par son écart, et le PIB par habitant vaut ce total divisé
+   par la population tirée. Une population plus forte que prévu abaisse donc le PIB par
+   habitant. Par pays, celui-ci est un peu plus dispersé que `bas`–`haut`, qui ignorent
+   l'incertitude de la population.
 
 Une même édition fournit les positions de tous les horizons : chaque tirage est une
 trajectoire cohérente dans le temps, et la dépendance entre pays est celle qu'a connue cet
@@ -55,7 +61,7 @@ celles de 1995-1996 l'essor de la fin des années 1990.
 Sorties dans `data/processed/` :
 
 - `scenarios_pib_tirages.csv` : tirage (édition rejouée), pays, année, PIB en volume par habitant,
-  population (millions) et révision de l'ONU dont vient sa position ;
+  population (millions), révision de l'ONU dont vient sa position, et PIB en volume total ;
 - `scenarios_pib_tirages_controle.csv` : par pays (et pour quelques agrégats), part des
   tirages sous `bas` et au-dessus de `haut`, et quantiles de l'agrégat comparés à la somme
   des bornes.
@@ -285,10 +291,24 @@ def population_tirages(niveaux: pd.DataFrame, affectation: dict, scenarios: pd.D
     return pd.concat(morceaux, ignore_index=True).dropna(subset=["population_millions"])
 
 
+def par_habitant(t: pd.DataFrame, scenarios: pd.DataFrame) -> pd.DataFrame:
+    """
+    PIB par habitant divisé par l'écart de la population tirée à la population centrale : le
+    PIB total du tirage ne dépend pas de la population. Ajoute le PIB total (milliards).
+    """
+    centrale = scenarios[scenarios["scenario"] == "central_fmi"].set_index(["country_code", "year"])[
+        "population_millions_centrale"]
+    c = centrale.reindex(pd.MultiIndex.from_arrays([t["country_code"], t["year"]])).to_numpy()
+    pib_total = t["pib_reel_par_habitant_usd_2015"].to_numpy() * c / 1000
+    return t.assign(pib_reel_par_habitant_usd_2015=1000 * pib_total / t["population_millions"].to_numpy(),
+                    pib_reel_milliards_usd_2015=pib_total)
+
+
 def controle(t: pd.DataFrame, scenarios: pd.DataFrame, annees=(2031, 2040, 2050)) -> pd.DataFrame:
     """
     Par pays et année : part des tirages sous `bas` et au-dessus de `haut` (10 % de chaque
-    côté par construction). Par agrégat (PIB total, population centrale) : 10e, 50e et 90e
+    côté sans population tirée ; davantage avec, `bas` et `haut` ignorant son incertitude), et
+    pour la population, sous et au-dessus des bornes calibrées (10 % par construction). Par agrégat (PIB total, population centrale) : 10e, 50e et 90e
     centiles des tirages, avec l'intervalle à 95 % des deux bornes, contre la somme des
     bornes des pays.
     """
@@ -315,7 +335,10 @@ def controle(t: pd.DataFrame, scenarios: pd.DataFrame, annees=(2031, 2040, 2050)
             if sel.empty:
                 continue
             p = pop.reindex(pd.MultiIndex.from_arrays([sel["country_code"], sel["year"]])).to_numpy()
-            total = (sel.assign(pib=sel["pib_reel_par_habitant_usd_2015"] * p).groupby("tirage")["pib"].sum())
+            # PIB total : celui du tirage s'il est donné (population tirée), sinon par habitant × population centrale
+            pib = (sel["pib_reel_milliards_usd_2015"] * 1000 if "pib_reel_milliards_usd_2015" in sel.columns
+                   else sel["pib_reel_par_habitant_usd_2015"] * p)
+            total = sel.assign(pib=pib).groupby("tirage")["pib"].sum()
             bornes = b.loc[(b.index.get_level_values(0).isin(membres)) & (b.index.get_level_values(1) == annee)]
             pb = pop.reindex(bornes.index).to_numpy()
             central = float((bornes["central_fmi"] * pb).sum())
@@ -353,10 +376,10 @@ def main():
         niveaux_pop = niveaux_population(pd.read_csv(chemin_positions), pd.Index(sorted(t["country_code"].unique())))
         affectation = affecter_revisions(sorted(t["tirage"].unique()), list(niveaux_pop.columns))
         pop = population_tirages(niveaux_pop, affectation, scenarios, sorted(t["year"].unique()))
-        t = t.merge(pop, on=["tirage", "country_code", "year"], how="left")
+        t = par_habitant(t.merge(pop, on=["tirage", "country_code", "year"], how="left"), scenarios)
     else:
         logging.warning(f"{chemin_positions} absent (pib.population) : tirages sans population.")
-    t.round({"pib_reel_par_habitant_usd_2015": 1, "population_millions": 4}).to_csv(
+    t.round({"pib_reel_par_habitant_usd_2015": 1, "population_millions": 4, "pib_reel_milliards_usd_2015": 3}).to_csv(
         os.path.join(processed, FICHIER), index=False, encoding="utf-8-sig")
     c = controle(t, scenarios)
     c.round(2).to_csv(os.path.join(processed, FICHIER_CONTROLE), index=False, encoding="utf-8-sig")

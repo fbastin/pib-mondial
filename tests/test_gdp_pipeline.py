@@ -1899,6 +1899,18 @@ class TestTiragesConjoints:
                                                                                10.0 / x.loc[a, "population_millions_basse_calibree"])
         assert abs(rel(2030)) == pytest.approx(abs(rel(2050)))
 
+    def test_pib_par_habitant_suit_la_population_tiree(self):
+        """Le PIB total du tirage ne dépend pas de la population : le PIB par habitant, si."""
+        from pib.tirages import par_habitant
+        scenarios = pd.DataFrame(dict(country_code="AAA", year=[2030, 2050], scenario="central_fmi",
+                                      population_millions_centrale=[10.0, 12.0]))
+        t = pd.DataFrame(dict(tirage="S2000", country_code="AAA", year=[2030, 2050],
+                              pib_reel_par_habitant_usd_2015=[50_000.0, 60_000.0], population_millions=[11.0, 9.0]))
+        r = par_habitant(t, scenarios).set_index("year")
+        assert r.loc[2030, "pib_reel_milliards_usd_2015"] == pytest.approx(50_000.0 * 10.0 / 1000)
+        assert r.loc[2030, "pib_reel_par_habitant_usd_2015"] == pytest.approx(50_000.0 * 10.0 / 11.0)
+        assert r.loc[2050, "pib_reel_par_habitant_usd_2015"] == pytest.approx(60_000.0 * 12.0 / 9.0)
+
     def test_intervalle_tire_les_annees_d_edition(self):
         from pib.tirages import intervalle_des_quantiles
         constant = pd.Series(95.0, index=self.EDITIONS)
