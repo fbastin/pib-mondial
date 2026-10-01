@@ -5,6 +5,17 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 📏 Population : un Multiplicateur par Tiers de Largeur des Bornes de l'ONU (1er Octobre 2026)
+
+Le multiplicateur des bornes de l'ONU, commun à une classe de taille, élargissait trop les pays dont ces bornes sont déjà larges (Hong Kong 2050 : −33 à +207 %) et pas assez les autres : à 10 ans, pour les grands pays, il fallait 2,5 côté haut aux bornes étroites, 1,6 aux larges. Deux corrections essayées :
+
+- **Une incertitude ajoutée de largeur fixe** (demi-largeur √(ONU² + s²)) : écartée, elle faisait l'inverse (bornes étroites couvrant 86 à 96 % des erreurs passées, larges 70 à 77 %, au lieu de 80 %).
+- **Un multiplicateur par tiers de largeur des bornes de l'ONU** (parmi les pays, à chaque horizon), retenu : chaque tiers garde environ 10 % de dépassements de chaque côté dans l'échantillon, 7 à 13 % hors échantillon (estimé sur 1998-2008, éprouvé sur 2010-2022), contre 2 à 17 % avant. Couverture d'ensemble hors échantillon : 81 à 86 %.
+
+Effet en 2050 : Hong Kong, −33 à +119 % (au lieu de +207) ; Émirats, −34 à +113 % (au lieu de +194) ; Canada, 42,1 à 57,0 millions (au lieu de 57,2). Les bornes de l'ONU de Hong Kong, nulles en bas pour une année, sont écartées du calcul des tiers.
+
+219 tests ; trois mutations (tiers ignoré dans l'estimation, rang non centré, tiers ignoré à l'application), rattrapées après avoir rendu deux tests discriminants.
+
 ## ➗ Tirages : le PIB par Habitant Suit la Population Tirée (1er Octobre 2026)
 
 Avec la population tirée, le PIB par habitant des tirages restait celui d'une population centrale. Or les erreurs du FMI portent sur le PIB total, indépendant de la population : le PIB par habitant d'un tirage vaut désormais son PIB total divisé par sa population (`tirages.par_habitant`), et le fichier gagne le PIB total (`pib_reel_milliards_usd_2015`).

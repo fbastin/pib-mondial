@@ -16,8 +16,12 @@ confrontées aux estimations de la révision 2024 jusqu'à 2023, soit jusqu'à 2
   calibrées, elles en contiendraient 80 %.
 - **Calibration.** En logarithme, chaque réalisé passé, relatif à la projection, est
   exprimé en demi-largeurs des bornes de l'ONU, côté haut s'il est au-dessus, côté bas
-  sinon. Ses 10e et 90e centiles, par horizon et par classe de taille, donnent les
-  multiplicateurs qui portent les bornes à 80 % de couverture. Lissés par
+  sinon. Ses 10e et 90e centiles, par horizon, classe de taille et tiers de largeur des
+  bornes de l'ONU, donnent les multiplicateurs qui portent les bornes à 80 % de couverture.
+  Le tiers de largeur compte : un multiplicateur commun élargissait trop les pays dont les
+  bornes de l'ONU sont déjà larges (Hong Kong 2050, +207 %) et pas assez les autres ; un
+  modèle additif, qui ajouterait aux bornes de l'ONU une incertitude manquante de largeur
+  fixe, faisait l'inverse. Lissés par
   k(h) = a + b · (h + 1)^c, ajustés sur les horizons qu'atteignent au moins
   `REVISIONS_MIN` révisions, ils ne descendent jamais sous 1 : on élargit les bornes de
   l'ONU, on ne les resserre pas. Les révisions évaluables couvrent une période
@@ -75,6 +79,7 @@ REVISIONS_MIN = 4
 H_EXTRAPOLATION = 40
 SEUIL_TAILLE = 5000          # milliers d'habitants
 GRANDS, PETITS = "plus de 5 millions", "5 millions ou moins"
+TIERS = ("étroite", "moyenne", "large")
 EXPOSANTS = np.round(np.arange(-3.0, -0.0999, 0.01), 2)
 FICHIER_ERREURS = "population_projection_errors.csv"
 FICHIER_CALIBRATION = "population_bounds_calibration.csv"
@@ -202,12 +207,24 @@ def avec_groupe(e: pd.DataFrame, groupes_actuels: pd.Series, historique) -> pd.D
     return groupes_revenu.a_l_edition(cas, historique).drop(columns=["vintage", "annee_millesime"])
 
 
+def tiers_de_largeur(largeur: pd.Series) -> pd.Series:
+    """Tiers (`TIERS`) de chaque largeur parmi celles données ; les ex aequo partagent le même."""
+    rang = largeur.rank(method="average")
+    indice = np.minimum(2, np.floor(3 * (rang - 0.5) / len(largeur))).astype(int)
+    return pd.Series(np.array(TIERS)[indice], index=largeur.index)
+
+
 def bornes_actuelles(actuelle: pd.DataFrame) -> pd.DataFrame:
-    """Bornes à 80 % de la révision actuelle, en % de la médiane, par pays et horizon (année − 2024)."""
-    a = actuelle[actuelle["year"] >= REVISION_ACTUELLE]
-    return pd.DataFrame({"country_code": a["country_code"], "horizon": a["year"] - REVISION_ACTUELLE,
-                         "onu_bas_pct": 100 * (a["basse"] / a["mediane"] - 1),
-                         "onu_haut_pct": 100 * (a["haute"] / a["mediane"] - 1)}).dropna()
+    """
+    Bornes à 80 % de la révision actuelle, en % de la médiane, par pays et horizon (année −
+    2024), et tiers de leur largeur (en logarithme) parmi les pays, à chaque horizon.
+    """
+    a = actuelle[(actuelle["year"] >= REVISION_ACTUELLE) & (actuelle["basse"] > 0) & (actuelle["mediane"] > 0)]
+    b = pd.DataFrame({"country_code": a["country_code"], "horizon": a["year"] - REVISION_ACTUELLE,
+                      "onu_bas_pct": 100 * (a["basse"] / a["mediane"] - 1),
+                      "onu_haut_pct": 100 * (a["haute"] / a["mediane"] - 1)}).dropna()
+    largeur = np.log1p(b["onu_haut_pct"] / 100) - np.log1p(b["onu_bas_pct"] / 100)
+    return b.assign(tiers_largeur=largeur.groupby(b["horizon"]).transform(tiers_de_largeur))
 
 
 def ecarts_normalises(e: pd.DataFrame, bornes: pd.DataFrame) -> pd.DataFrame:
@@ -265,20 +282,20 @@ def ajuster_multiplicateur(horizons: np.ndarray, k: np.ndarray) -> tuple:
 
 def multiplicateurs(m: pd.DataFrame, revisions_min: int = REVISIONS_MIN, h_max: int = H_EXTRAPOLATION) -> pd.DataFrame:
     """
-    Par classe de taille et horizon (1 à `h_max`) : multiplicateurs observés des bornes de
-    l'ONU (opposé du 10e centile de z côté bas, 90e centile côté haut), lissés et ramenés à
-    1 au moins ; part des erreurs passées dans les bornes de l'ONU et dans les bornes
-    calibrées (lissées).
+    Par classe de taille, tiers de largeur des bornes de l'ONU et horizon (1 à `h_max`) :
+    multiplicateurs observés des bornes de l'ONU (opposé du 10e centile de z côté bas, 90e
+    centile côté haut), lissés et ramenés à 1 au moins ; part des erreurs passées dans les
+    bornes de l'ONU et dans les bornes calibrées (lissées).
     """
     morceaux = []
-    for classe, g in m.groupby("classe_taille"):
+    for (classe, tiers), g in m.groupby(["classe_taille", "tiers_largeur"]):
         obs = g.groupby("horizon").agg(cas=("z", "size"), revisions=("revision", "nunique"),
                                        k_bas_observe=("z", lambda z: -z.quantile(0.1)),
                                        k_haut_observe=("z", lambda z: z.quantile(0.9)),
                                        part_dans_bornes_onu=("dedans", "mean"))
         fiable = obs[obs["revisions"] >= revisions_min]
         h = np.arange(1, h_max + 1)
-        table = pd.DataFrame({"classe_taille": classe, "horizon": h,
+        table = pd.DataFrame({"classe_taille": classe, "tiers_largeur": tiers, "horizon": h,
                               "horizon_max_ajuste": int(fiable.index.max())}).set_index("horizon")
         for cote in ("bas", "haut"):
             a, b, c = ajuster_multiplicateur(fiable.index.to_numpy(), fiable[f"k_{cote}_observe"].to_numpy())
@@ -295,16 +312,19 @@ def bornes_par_pays(actuelle: pd.DataFrame, calibration: pd.DataFrame) -> pd.Dat
     Par pays et année projetée (horizon 1 à celui de `calibration`) : bornes de l'ONU et
     bornes calibrées, en rapport à la médiane. La borne calibrée vaut le rapport de l'ONU
     élevé à la puissance k (multiplicateur de la classe de taille du pays, selon sa
-    population de 2024, à cet horizon) : le logarithme de l'écart est multiplié par k.
+    population de 2024, et du tiers de largeur de ses bornes, à cet horizon) : le logarithme
+    de l'écart est multiplié par k.
     """
     taille = actuelle[actuelle["year"] == REVISION_ACTUELLE].set_index("country_code")["mediane"]
     a = actuelle[actuelle["year"] > REVISION_ACTUELLE].dropna(subset=["mediane", "basse", "haute"])
     a = a.assign(horizon=a["year"] - REVISION_ACTUELLE,
                  classe_taille=classe_de_taille(a["country_code"].map(taille).fillna(0)))
-    a = a.merge(calibration[["classe_taille", "horizon", "k_bas", "k_haut"]], on=["classe_taille", "horizon"])
+    a = a.merge(bornes_actuelles(actuelle)[["country_code", "horizon", "tiers_largeur"]], on=["country_code", "horizon"])
+    a = a.merge(calibration[["classe_taille", "tiers_largeur", "horizon", "k_bas", "k_haut"]],
+                on=["classe_taille", "tiers_largeur", "horizon"])
     onu_basse, onu_haute = a["basse"] / a["mediane"], a["haute"] / a["mediane"]
     return pd.DataFrame({"country_code": a["country_code"], "year": a["year"], "classe_taille": a["classe_taille"],
-                         "onu_basse": onu_basse, "onu_haute": onu_haute,
+                         "tiers_largeur": a["tiers_largeur"], "onu_basse": onu_basse, "onu_haute": onu_haute,
                          "calibree_basse": np.exp(a["k_bas"] * np.log(onu_basse)),
                          "calibree_haute": np.exp(a["k_haut"] * np.log(onu_haute))}).sort_values(["country_code", "year"])
 
@@ -343,8 +363,8 @@ def main():
     logging.info(f"-> {len(e)} erreurs, révisions {obtenues[0]}-{obtenues[-1]} :\n"
                  + vue[["groupe", "horizon", "cas", "revisions", "p10", "p50", "p90", "onu_bas_pct", "onu_haut_pct",
                         "part_dans_bornes_onu"]].round(2).to_string(index=False) + "\n"
-                 + calibration[calibration["horizon"].isin([1, 2, 5, 10, 15, 20, 26])]
-                 [["classe_taille", "horizon", "cas", "k_bas_observe", "k_bas", "k_haut_observe", "k_haut",
+                 + calibration[calibration["horizon"].isin([1, 5, 10, 20, 26])]
+                 [["classe_taille", "tiers_largeur", "horizon", "cas", "k_bas_observe", "k_bas", "k_haut_observe", "k_haut",
                    "part_dans_bornes_onu", "part_dans_bornes_calibrees"]].round(2).to_string(index=False))
 
 

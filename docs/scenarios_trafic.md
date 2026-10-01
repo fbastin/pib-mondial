@@ -146,7 +146,7 @@ Les bornes `bas` et `haut` sont calculées **pays par pays**. Additionner la bor
 - **Pays absent d'une édition :** il prend le rang médian des pays de son groupe de revenu dans cette édition.
 - **Au-delà de 2031,** chaque tirage garde sa position relative dans la fourchette `bas`–`haut` de son pays.
 - **La population se tire à part,** de la même façon, sur les révisions de l'ONU de 1998 à 2017 et leurs erreurs à 5 ans : chaque pays garde exactement sa fourchette calibrée (10 % des tirages sous `population_millions_basse_calibree`, 10 % au-dessus de la haute), et les surprises communes à plusieurs pays restent communes. Chaque révision sert à 6 tirages consécutifs. À part, car les erreurs passées de population et de PIB ne sont pas liées : corrélation de rang de 0,00 à 0,04 aux mêmes horizons, entre pays comme dans le temps.
-- **Le PIB par habitant suit la population tirée.** Les erreurs du FMI portent sur le PIB total, qui ne dépend pas de la population : le PIB par habitant d'un tirage est son PIB total divisé par sa population. Une population plus forte que prévu abaisse donc le PIB par habitant. Par pays, il est ainsi plus dispersé que `bas`–`haut`, qui ignorent l'incertitude de la population : en 2050, en moyenne 16 % des tirages sous `bas` et 14 % au-dessus de `haut`, au lieu de 10 %. Pour le Canada, 8 % et 5 %, à cause de l'appariement d'une révision à six éditions consécutives.
+- **Le PIB par habitant suit la population tirée.** Les erreurs du FMI portent sur le PIB total, qui ne dépend pas de la population : le PIB par habitant d'un tirage est son PIB total divisé par sa population. Une population plus forte que prévu abaisse donc le PIB par habitant. Par pays, il est ainsi plus dispersé que `bas`–`haut`, qui ignorent l'incertitude de la population : en 2050, en moyenne 15 % des tirages sous `bas` et 13,5 % au-dessus de `haut`, au lieu de 10 %. Pour le Canada, 8 % et 5 %, à cause de l'appariement d'une révision à six éditions consécutives.
 
 **Ce que ça change** (en % de la somme des `central_fmi`, population centrale ; intervalle à 95 % par bootstrap des années d'édition) :
 
@@ -165,34 +165,34 @@ Les bornes `bas` et `haut` sont calculées **pays par pays**. Additionner la bor
 **Limites :**
 - **60 tirages, dont des paires voisines.** Les éditions d'avril et d'octobre d'une même année sont très proches : cela fait une trentaine d'épisodes indépendants. Les quantiles d'un agrégat se lisent à quelques points près ; d'où les intervalles du fichier de contrôle.
 - **Aucun choc nouveau après 2031 :** un tirage garde sa position relative dans la fourchette de chaque pays. L'élargissement des bornes après 2031 vient des erreurs passées des trajectoires prolongées (ci-dessus), qui ne disent rien de leur dépendance entre pays.
-- **Bornes de population calibrées trop larges pour quelques pays.** Le multiplicateur des bornes de l'ONU est commun à une classe de taille ; or il devrait être plus petit pour les pays dont les bornes de l'ONU sont déjà larges. D'où des bornes démesurées en 2050 pour une vingtaine de petits territoires et États du Golfe (Hong Kong, −33 à +207 % ; Émirats, −34 à +194 %), et des PIB par habitant tirés très dispersés pour eux. À revoir ; sans effet notable pour les marchés de Montréal.
-- **Population : dix révisions seulement.** Chaque pays n'a que 10 positions de population distinctes, chacune répétée 6 fois. Les quantiles d'une population agrégée sont donc grossiers. Pour les quatre marchés en 2050, ils vont de 99,7 à 107,2 % de la population centrale, contre 92,8 à 115,2 % en sommant les bornes calibrées.
+- **Quelques pays aux bornes de population très larges.** Pour des territoires et des États du Golfe à forte migration, les bornes de l'ONU elles-mêmes sont très larges (Hong Kong 2050 : −33 à +74 %), et les bornes calibrées davantage (−33 à +119 %). Leurs PIB par habitant tirés sont donc très dispersés.
+- **Population : dix révisions seulement.** Chaque pays n'a que 10 positions de population distinctes, chacune répétée 6 fois. Les quantiles d'une population agrégée sont donc grossiers. Pour les quatre marchés en 2050, ils vont de 99,7 à 107,0 % de la population centrale, contre 92,7 à 115,0 % en sommant les bornes calibrées.
 
 ## Population
 
 - **Jusqu'en 2031 :** celle du pipeline (Banque Mondiale, puis FMI).
 - **Ensuite :** prolongée par la croissance de la variante médiane de l'ONU (*World Population Prospects* 2024).
 - **Variantes basse et haute :** le rapport des bornes à 80 % de l'ONU à sa médiane, appliqué à la centrale dès la première année projetée. Pour le Canada en 2050 : 42,1 à 51,5 millions, autour de 46,6.
-- **Variantes calibrées, à préférer :** `population_millions_basse_calibree` et `…_haute_calibree`. Pour le Canada en 2050 : 42,1 à 57,2 millions.
+- **Variantes calibrées, à préférer :** `population_millions_basse_calibree` et `…_haute_calibree`. Pour le Canada en 2050 : 42,1 à 57,0 millions.
 
 **Pourquoi calibrer** (`pib.population`). Les révisions de l'ONU de 1998 à 2022, relues dans ses archives, ont été confrontées aux estimations de la révision 2024 :
 - **Les bornes de l'ONU sont trop étroites.** Appliquées aux erreurs passées des mêmes pays au même horizon, celles de 2024 n'en contiennent que 19 % à 1 an, 39 % à 5 ans, 54 % à 20 ans, au lieu de 80 %. Elles ignorent notamment les révisions de la population de départ, de l'ordre de 2 % en médiane dès la première année.
 - **Pour les grands pays, la population a dépassé les projections.** Pays de plus de 5 millions d'habitants : erreur médiane de −2,0 % à 10 ans, −4,6 % à 20 ans (projeté / estimé − 1). À 20 ans : Royaume-Uni −8 à −10 % selon la révision, Canada −3 à −8 %, France −4 à −6 % ; États-Unis entre −6 et +2,5 %.
-- **La calibration.** Chaque réalisé passé est exprimé en demi-largeurs des bornes de l'ONU du pays, à l'horizon. Les 10e et 90e centiles, par classe de taille (plus ou moins de 5 millions) et lissés selon l'horizon, donnent le multiplicateur de chaque côté. Pour les grands pays : côté haut × 3,5 à 5 ans, × 2,5 à 10 ans, × 2 au-delà de 20 ans ; côté bas × 1,9 à 5 ans, × 1 au-delà de 20 ans. Les multiplicateurs ne descendent jamais sous 1 : les révisions évaluables couvrent une période d'immigration forte, qui ne dit rien du risque inverse.
-- **Hors échantillon.** Estimées sur les révisions 1998 à 2008, les bornes calibrées contiennent 82 à 87 % des erreurs des révisions 2010 à 2022 ; celles de l'ONU, 25 à 57 %.
+- **La calibration.** Chaque réalisé passé est exprimé en demi-largeurs des bornes de l'ONU du pays, à l'horizon. Les 10e et 90e centiles donnent le multiplicateur de chaque côté, lissé selon l'horizon. Ils se calculent par classe de taille (plus ou moins de 5 millions) et par tiers de largeur des bornes de l'ONU : un multiplicateur commun élargissait trop les pays aux bornes déjà larges (Hong Kong 2050, +207 % au lieu de +119 %) et pas assez les autres ; ajouter plutôt une incertitude de largeur fixe faisait l'inverse. Pour les grands pays aux bornes étroites, comme le Canada : côté haut × 3,3 à 5 ans, × 2,4 à 10 ans, × 2 au-delà de 20 ans ; côté bas × 2,5 à 5 ans, × 1,5 à 10 ans, × 1 au-delà de 20 ans. Les multiplicateurs ne descendent jamais sous 1 : les révisions évaluables couvrent une période d'immigration forte, qui ne dit rien du risque inverse.
+- **Hors échantillon.** Estimées sur les révisions 1998 à 2008, les bornes calibrées contiennent 81 à 86 % des erreurs des révisions 2010 à 2022 ; celles de l'ONU, 25 à 57 %. Chaque tiers de largeur garde 7 à 13 % de dépassements de chaque côté, contre 2 à 17 % avec un multiplicateur commun.
 
 | Canada, millions | Centrale | ONU | Calibrées |
 |---|---|---|---|
-| 2031 | 42,8 | 41,8 – 44,0 | 41,3 – 46,4 |
-| 2040 | 44,9 | 42,4 – 47,7 | 42,2 – 51,3 |
-| 2050 | 46,6 | 42,1 – 51,5 | 42,1 – 57,2 |
+| 2031 | 42,8 | 41,8 – 44,0 | 40,9 – 46,2 |
+| 2040 | 44,9 | 42,4 – 47,7 | 41,9 – 51,1 |
+| 2050 | 46,6 | 42,1 – 51,5 | 42,1 – 57,0 |
 
 À comparer au PIB par habitant : en 2050, de 59 à 101 % du central pour le Canada. L'incertitude de la population est plus faible, mais elle va dans l'autre sens : vers le haut.
 
 **Limites :**
 - **Les horizons de 20 à 25 ans** ne reposent que sur les révisions de 1998 à 2004, toutes prises de court par l'immigration des années 2000 et 2010.
 - **Pas de dépendance avec le PIB, et c'est mesuré.** On pouvait craindre qu'une population plus forte que prévu, par l'immigration, accroisse aussi le PIB total. Les erreurs passées ne le montrent pas : entre une révision de l'ONU et l'édition du FMI de la même année, la corrélation de rang des erreurs, aux mêmes horizons, vaut 0,00 à 0,04 (−0,05 pour les grands pays riches). Combiner les deux comme indépendants est donc justifié.
-- **Deux classes de taille seulement,** sans groupe de revenu : les révisions de la population de départ, qui dominent les erreurs des petits pays, se distinguent mal par le revenu.
+- **Classes de taille et tiers de largeur, sans groupe de revenu :** les révisions de la population de départ, qui dominent les erreurs des petits pays, se distinguent mal par le revenu. Pour les petits pays aux bornes étroites, la cellule ne compte que 31 cas à 20 ans.
 
 ## Pour la méthode de Kenza
 

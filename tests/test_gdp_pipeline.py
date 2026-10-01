@@ -1746,7 +1746,7 @@ class TestPopulationONU:
 
     @staticmethod
     def _z(valeurs):
-        return pd.DataFrame([dict(classe_taille="c", horizon=h, revision=r, z=z, dedans=abs(z) <= 1)
+        return pd.DataFrame([dict(classe_taille="c", tiers_largeur="moyenne", horizon=h, revision=r, z=z, dedans=abs(z) <= 1)
                              for h in range(1, 11) for r in range(2000, 2010, 2) for z in valeurs])
 
     def test_multiplicateurs_portent_la_couverture_a_80(self):
@@ -1758,15 +1758,49 @@ class TestPopulationONU:
         assert k.loc[30, "k_haut"] == pytest.approx(2.5, abs=1e-6)
         assert k.loc[5, "part_dans_bornes_calibrees"] == pytest.approx(81 / 101)
 
+    def test_tiers_de_largeur_des_bornes_de_l_onu(self):
+        from pib.population import bornes_actuelles
+        def tiers(largeurs):
+            act = pd.DataFrame([dict(country_code=c, LocID=i, year=2030, mediane=100.0, basse=100.0 - w, haute=100.0 + w)
+                                for i, (c, w) in enumerate(largeurs.items())])
+            return bornes_actuelles(act).set_index("country_code")["tiers_largeur"].to_dict()
+        # Quatre largeurs : rangs centrés, (rang − ½) / n
+        assert tiers({"AAA": 1.0, "BBB": 5.0, "CCC": 20.0, "DDD": 8.0}) == {
+            "AAA": "étroite", "BBB": "moyenne", "DDD": "moyenne", "CCC": "large"}
+        # Ex aequo : même tiers
+        assert tiers({"AAA": 1.0, "BBB": 5.0, "CCC": 20.0, "DDD": 5.0}) == {
+            "AAA": "étroite", "BBB": "moyenne", "DDD": "moyenne", "CCC": "large"}
+
+    def test_multiplicateur_propre_a_chaque_tiers(self):
+        from pib.population import multiplicateurs
+        m = pd.concat([self._z(np.linspace(-2, 3, 101)).assign(tiers_largeur="étroite"),
+                       self._z(np.linspace(-1.2, 1.5, 101)).assign(tiers_largeur="large")])
+        k = multiplicateurs(m).set_index(["tiers_largeur", "horizon"])
+        assert k.loc[("étroite", 5), "k_haut"] == pytest.approx(2.5, abs=1e-6)
+        assert k.loc[("large", 5), "k_haut"] == pytest.approx(1.23, abs=1e-6)
+
     def test_jamais_plus_etroit_que_l_onu(self):
         from pib.population import multiplicateurs
         k = multiplicateurs(self._z(np.linspace(-0.5, 3, 101))).set_index("horizon")
         assert k.loc[5, "k_bas_observe"] < 1
         assert (k["k_bas"] >= 1).all() and k.loc[5, "k_bas"] == pytest.approx(1.0)
 
+    def test_bornes_par_pays_selon_le_tiers_de_largeur(self):
+        from pib.population import bornes_par_pays, GRANDS
+        act = pd.DataFrame([dict(country_code=c, LocID=i, year=a, mediane=6000.0,
+                                 basse=6000.0 * (1 - w) if a > 2024 else 6000.0, haute=6000.0 * (1 + w) if a > 2024 else 6000.0)
+                            for i, (c, w) in enumerate((("AAA", 0.01), ("BBB", 0.05), ("CCC", 0.20))) for a in (2024, 2025)])
+        calibration = pd.DataFrame(dict(classe_taille=GRANDS, tiers_largeur=["étroite", "moyenne", "large"], horizon=1,
+                                        k_bas=1.0, k_haut=[3.0, 2.0, 1.5]))
+        b = bornes_par_pays(act, calibration).set_index("country_code")
+        assert b.loc["AAA", "calibree_haute"] == pytest.approx(1.01 ** 3.0)
+        assert b.loc["BBB", "calibree_haute"] == pytest.approx(1.05 ** 2.0)
+        assert b.loc["CCC", "calibree_haute"] == pytest.approx(1.20 ** 1.5)
+
     def test_bornes_par_pays(self):
         from pib.population import bornes_par_pays, GRANDS, PETITS
-        calibration = pd.DataFrame(dict(classe_taille=[GRANDS, PETITS], horizon=1, k_bas=[2.0, 1.0], k_haut=[3.0, 1.0]))
+        calibration = pd.DataFrame(dict(classe_taille=[GRANDS, PETITS], tiers_largeur="moyenne", horizon=1,
+                                        k_bas=[2.0, 1.0], k_haut=[3.0, 1.0]))     # bornes égales : tiers du milieu
         b = bornes_par_pays(self._actuelle(), calibration).set_index("country_code")
         assert b.loc["AAA", "year"] == 2025
         assert b.loc["AAA", "calibree_basse"] == pytest.approx(0.95 ** 2)

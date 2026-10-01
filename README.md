@@ -143,7 +143,7 @@ jupyter nbconvert --to html --execute --ExecutePreprocessor.kernel_name=julia-1.
 ### Tests
 
 ```bash
-pytest                      # 216 tests, sans accès réseau
+pytest                      # 219 tests, sans accès réseau
 pytest -m "not donnees"     # sans les contrôles sur les fichiers produits
 ```
 
@@ -413,8 +413,8 @@ Pour le Canada, le PIB par habitant de 2031 va de 43 340 $ (bas) à 51 379 $ (ha
 **Population : les bornes de l'ONU sont trop étroites** (`pib.population`). Les révisions des projections de l'ONU de 1998 à 2022, relues dans ses archives, sont confrontées aux estimations de la révision 2024, jusqu'à 25 ans d'horizon :
 - **Les bornes à 80 % de l'ONU** pour 2024, appliquées aux erreurs passées des mêmes pays au même horizon, n'en contiennent que 19 % à 1 an, 39 % à 5 ans, 54 % à 20 ans. Elles ignorent notamment les révisions de la population de départ.
 - **Pour les pays de plus de 5 millions d'habitants, la population a dépassé les projections :** −2,0 % d'erreur médiane à 10 ans, −4,6 % à 20 ans (projeté / estimé − 1). Royaume-Uni à 20 ans : −8 à −10 % selon la révision ; Canada : −3 à −8 %.
-- **Bornes calibrées :** le côté haut des bornes de l'ONU est multiplié par 2 à 2,5 au-delà de 10 ans pour ces pays ; le côté bas reste celui de l'ONU au-delà de 20 ans (multiplicateurs jamais inférieurs à 1). Estimées sur les révisions 1998-2008, elles contiennent 82 à 87 % des erreurs des révisions 2010-2022, contre 25 à 57 % pour celles de l'ONU.
-- **Canada en 2050 :** 42,1 à 57,2 millions, au lieu de 42,1 à 51,5, autour de 46,6. Dans les scénarios : `population_millions_basse_calibree`, `population_millions_haute_calibree`.
+- **Bornes calibrées :** multiplicateurs des bornes de l'ONU par côté, horizon, classe de taille et tiers de largeur de ces bornes (jamais inférieurs à 1). Pour les grands pays aux bornes étroites, comme le Canada, le côté haut est multiplié par 2 à 2,4 au-delà de 10 ans, le côté bas reste celui de l'ONU au-delà de 20 ans. Estimées sur les révisions 1998-2008, elles contiennent 81 à 86 % des erreurs des révisions 2010-2022, contre 25 à 57 % pour celles de l'ONU.
+- **Canada en 2050 :** 42,1 à 57,0 millions, au lieu de 42,1 à 51,5, autour de 46,6. Dans les scénarios : `population_millions_basse_calibree`, `population_millions_haute_calibree`.
 
 **Trajectoires conjointes pour agréger des marchés** (`pib.tirages`, `scenarios_pib_tirages.csv`). Les bornes `bas` et `haut` sont calculées pays par pays : leur somme sur plusieurs marchés n'a pas de probabilité connue. Les 60 tirages rejouent chacun une édition passée du WEO (avril 1990 à octobre 2019), par le rééchantillonnage de Schaake. Chaque pays garde exactement sa fourchette (10 % des tirages sous `bas`, 10 % au-dessus de `haut`), mais un tirage donne à chaque pays son rang dans cette édition : les crises communes restent communes.
 - **Pour tous les pays ensemble,** la somme des bornes exagère nettement : en 2050, de 56 à 117 % de la trajectoire centrale, contre 70 à 106 % pour les tirages (2031 : 85 à 106 %, contre 90 à 101 %).
@@ -499,7 +499,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 
 ## ✅ Tests des invariants
 
-216 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
+219 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
 
 | Invariant | Ce qu'il empêche |
 |---|---|
