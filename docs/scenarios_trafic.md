@@ -12,7 +12,40 @@ Produit par `python produire_rapports.py`, ou seul par `python -m pib.scenarios 
 | `scenarios_pib_tirages.csv` | 60 trajectoires conjointes de tous les pays, de 2026 à 2050 (`python -m pib.tirages`) |
 | `scenarios_pib_tirages_controle.csv` | Contrôle des tirages : part sous `bas` et au-dessus de `haut` par pays ; quantiles de quelques agrégats contre la somme des bornes |
 
-**Le nom ne change pas avec l'horizon** : lire ces fichiers plutôt que `gdp_unified_<début>_<fin>.csv`, dont le nom suit les bornes du run. La chaîne du projet trafic lisait `gdp_unified_2000_2030.csv`, remplacé depuis par `gdp_unified_2000_2031.csv`.
+**Le nom ne change pas avec l'horizon** : lire ces fichiers plutôt que `gdp_unified_<début>_<fin>.csv`, dont le nom suit les bornes du run.
+
+## Pour la chaîne du projet trafic : de `gdp_unified_2000_2030.csv` au fichier stable
+
+La chaîne du projet trafic lit le PIB par `julia/run/build_macro_series.jl --source …/GDP/data/processed/gdp_unified_2000_2030.csv`. Ce fichier ne suit plus les mises à jour : son nom portait les bornes du run, devenues 2000-2031.
+
+**En attendant, rien à changer.** L'ancien fichier, figé au 29 septembre 2026, est remis à sa place sur le Drive (`Transport Aerien/GDP/data/processed/gdp_unified_2000_2030.csv`). La commande du README du projet trafic fonctionne telle quelle. Il restera là jusqu'au passage au fichier stable, mais ne sera plus mis à jour.
+
+**Le passage ne change aucun chiffre.** Sur toutes les années communes, `GDP_Per_Capita_USD` est identique dans l'ancien fichier, dans `gdp_unified_2000_2031.csv` et dans `scenarios_pib_population.csv` (scénario `central_fmi`, colonne `pib_par_habitant_usd_courants`), à l'arrondi près (0,00005 $). La seule différence : l'année 2031 s'ajoute aux projections.
+
+**Procédure, une fois :**
+
+1. Dans `julia/run/build_macro_series.jl`, fonction `macro_series`, juste après `table = CSV.read(path, DataFrame)`, ajouter :
+
+   ```julia
+   if "scenario" in names(table)        # fichier stable de pib-mondial : scenarios_pib_population.csv
+       table = filter(r -> r.scenario == "central_fmi", table)
+       table.GDP_Per_Capita_USD = table.pib_par_habitant_usd_courants
+       table.is_forecast = table.periode .!= "observé"
+   end
+   ```
+
+   La fonction lit alors les deux formats. Sur l'ancien fichier, sa sortie est inchangée (vérifié pour le Canada, les États-Unis, la France, le Royaume-Uni et la Chine, avec et sans `--with-forecast`).
+
+2. Remplacer, dans les commandes et dans le README du projet trafic, `--source …/GDP/data/processed/gdp_unified_2000_2030.csv` par `--source …/GDP/data/processed/scenarios_pib_population.csv`.
+
+3. Vérifier : `--country CAN --years 2005-2020` donne, comme avant, 16 années, de 36 384 à 52 670 $ par habitant.
+
+**Ensuite, à chaque édition du WEO, plus rien à changer.** La chaîne de ce dépôt est relancée (`python produire_rapports.py`). Le Drive est mis à jour sous le même nom. Il suffit de relancer `build_macro_series.jl` : les projections, et les années récentes révisées, suivent la nouvelle édition.
+
+**Pour aller plus loin, dans un second temps :**
+- **Le PIB en volume par habitant** (`pib_reel_par_habitant_usd_2015`) plutôt qu'en dollars courants, comme le recommande la section « Pour la méthode de Kenza ». Remplacer `pib_par_habitant_usd_courants` dans l'adaptation ci-dessus ; les prix normalisés changent, le modèle est donc à recaler.
+- **Les autres scénarios** (`bas`, `haut`, `crise_mondiale`…), jusqu'en 2050 : remplacer `"central_fmi"` par le scénario voulu, en volume. Les dollars courants ne sont donnés que jusqu'en 2031.
+- **Plusieurs marchés à la fois :** les trajectoires conjointes (`scenarios_pib_tirages.csv`, plus bas).
 
 ## Colonnes de `scenarios_pib_population.csv`
 

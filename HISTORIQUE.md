@@ -5,6 +5,10 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 🔌 Le Projet Trafic Garde l'Ancien Fichier, le Temps de Migrer (30 Septembre 2026)
+
+La chaîne du projet trafic (`build_macro_series.jl`) lit `gdp_unified_2000_2030.csv`, que le passage à l'horizon 2031 a remplacé. L'ancien fichier, figé au 29 septembre 2026, est remis sur le Drive à son chemin d'origine, le temps que le projet trafic passe au fichier stable `scenarios_pib_population.csv`. Rien ne change dans les chiffres : `GDP_Per_Capita_USD` y est identique sur toutes les années communes. La procédure, une adaptation de cinq lignes vérifiée sur une copie du script, est dans `docs/scenarios_trafic.md`.
+
 ## 🎲 Trajectoires Conjointes pour Agréger des Marchés (30 Septembre 2026)
 
 Les scénarios `bas` et `haut` sont calculés pays par pays. Une prévision de trafic qui additionne des marchés ne peut pas prendre la borne basse de chacun et l'appeler « scénario bas à 80 % ». Nouveau module `pib.tirages` : 60 trajectoires conjointes de tous les pays jusqu'en 2050 (`scenarios_pib_tirages.csv`), chacune rejouant une édition du WEO d'avril 1990 à octobre 2019.
