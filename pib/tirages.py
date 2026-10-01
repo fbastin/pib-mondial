@@ -31,6 +31,22 @@ rééchantillonnage de Schaake (Clark et al., 2004) :
    l'horizon du FMI, où r est le rapport à `central_fmi` ; puis log r(t) = milieu(t)
    + z · demi-largeur(t), avec la fourchette `bas`–`haut` de l'année t.
 
+**Population.** Chaque tirage porte aussi une population par pays. Les erreurs passées de
+population (révisions de l'ONU) et de PIB (éditions du FMI) ne sont pas liées : corrélation de
+rang de 0,00 à 0,04 entre pays comme dans le temps, aux mêmes horizons. La population se tire
+donc à part, de la même façon que le PIB :
+
+1. **Position de chaque pays dans une révision passée de l'ONU** (`pib.population`,
+   `population_projection_positions.csv`) : à 5 ans, son écart en demi-largeurs des bornes
+   de l'ONU, rangé parmi tous les cas passés de sa classe de taille.
+2. **Rang de la révision dans l'histoire du pays,** d'où un niveau (k − ½) / R, R révisions.
+3. **Position dans la fourchette calibrée :** z = Φ⁻¹(niveau) / Φ⁻¹(0,9), gardée à toutes les
+   années, en demi-largeurs de la fourchette calibrée du pays (`population_millions_…_calibree`).
+   Chaque pays a ainsi 10 % de tirages sous la borne basse calibrée, 10 % au-dessus de la haute.
+4. **Les révisions sont attribuées aux tirages** par blocs consécutifs, dans l'ordre
+   chronologique (6 éditions du WEO par révision) : un choix sans conséquence, puisque les deux
+   erreurs sont indépendantes. Une même révision donne la même population à ses 6 tirages.
+
 Une même édition fournit les positions de tous les horizons : chaque tirage est une
 trajectoire cohérente dans le temps, et la dépendance entre pays est celle qu'a connue cet
 épisode. Pour les pays riches, les éditions de 2005 à 2008 rejouent la crise financière,
@@ -38,7 +54,8 @@ celles de 1995-1996 l'essor de la fin des années 1990.
 
 Sorties dans `data/processed/` :
 
-- `scenarios_pib_tirages.csv` : tirage (édition rejouée), pays, année, PIB en volume par habitant ;
+- `scenarios_pib_tirages.csv` : tirage (édition rejouée), pays, année, PIB en volume par habitant,
+  population (millions) et révision de l'ONU dont vient sa position ;
 - `scenarios_pib_tirages_controle.csv` : par pays (et pour quelques agrégats), part des
   tirages sous `bas` et au-dessus de `haut`, et quantiles de l'agrégat comparés à la somme
   des bornes.
@@ -53,8 +70,11 @@ import argparse
 import numpy as np
 import pandas as pd
 
+from statistics import NormalDist
+
 from pib import groupes_revenu
 from pib.evaluate_forecasts import MIN_CAS_CELLULE, classes_de_croissance
+from pib.population import FICHIER_POSITIONS
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -63,6 +83,7 @@ COLONNE = "erreur_niveau_vs_fmi_pct"
 FICHIER = "scenarios_pib_tirages.csv"
 FICHIER_CONTROLE = "scenarios_pib_tirages_controle.csv"
 TIRAGES_BOOTSTRAP = 1000
+Z80 = NormalDist().inv_cdf(0.9)
 GRAINE = 2026
 
 # Agrégats contrôlés : la somme des bornes de chaque pays contre les quantiles des tirages
@@ -221,6 +242,49 @@ def intervalle_des_quantiles(total: pd.Series, q: float, tirages: int = TIRAGES_
     return tuple(np.quantile(valeurs, [0.025, 0.975]))
 
 
+def niveaux_population(positions: pd.DataFrame, pays: pd.Index) -> pd.DataFrame:
+    """
+    Pays × révisions : niveau (k − ½) / R de chaque révision dans l'histoire du pays, k étant
+    son rang par position u croissante. u : rang (− ½, rapporté à l'effectif) de l'écart z
+    parmi tous les cas passés de la classe de taille, toutes révisions confondues, comme pour
+    le PIB : ranger dans la seule révision effacerait le choc commun. À défaut, la médiane des
+    positions de la révision, puis ½.
+    """
+    p = positions.copy()
+    rang = p.groupby("classe_taille")["z"].rank(method="average")
+    p["u"] = (rang - 0.5) / p.groupby("classe_taille")["z"].transform("size")
+    large = p.pivot_table(index="country_code", columns="revision", values="u").reindex(pays)
+    return niveaux_de_quantile(large.fillna(large.median()).fillna(0.5))
+
+
+def affecter_revisions(editions: list, revisions: list) -> dict:
+    """Édition -> révision, par blocs consécutifs dans l'ordre chronologique des éditions."""
+    ordre = sorted(editions, key=lambda e: (int(e[1:]), e[0] == "F"))
+    return {e: revisions[i * len(revisions) // len(ordre)] for i, e in enumerate(ordre)}
+
+
+def population_tirages(niveaux: pd.DataFrame, affectation: dict, scenarios: pd.DataFrame, annees) -> pd.DataFrame:
+    """
+    Une ligne par tirage, pays et année : population (millions) à la position
+    z = Φ⁻¹(niveau) / Φ⁻¹(0,9) de la fourchette calibrée du pays, en demi-largeurs de
+    celle-ci (côté haut si z > 0, bas sinon), autour de la population centrale.
+    """
+    c = scenarios[(scenarios["scenario"] == "central_fmi") & scenarios["year"].isin(annees)].set_index(["country_code", "year"])
+    centrale = c["population_millions_centrale"]
+    log_bas = np.log(c["population_millions_basse_calibree"] / centrale)
+    log_haut = np.log(c["population_millions_haute_calibree"] / centrale)
+    z = niveaux.apply(lambda col: col.map(NormalDist().inv_cdf)) / Z80
+    morceaux = []
+    for tirage, revision in affectation.items():
+        zc = z[revision].reindex(c.index.get_level_values("country_code")).to_numpy()
+        ecart = np.where(zc >= 0, zc * log_haut.to_numpy(), -zc * log_bas.to_numpy())
+        morceaux.append(pd.DataFrame({"tirage": tirage, "country_code": c.index.get_level_values("country_code"),
+                                      "year": c.index.get_level_values("year"),
+                                      "population_millions": centrale.to_numpy() * np.exp(ecart),
+                                      "revision_onu": revision}))
+    return pd.concat(morceaux, ignore_index=True).dropna(subset=["population_millions"])
+
+
 def controle(t: pd.DataFrame, scenarios: pd.DataFrame, annees=(2031, 2040, 2050)) -> pd.DataFrame:
     """
     Par pays et année : part des tirages sous `bas` et au-dessus de `haut` (10 % de chaque
@@ -232,10 +296,18 @@ def controle(t: pd.DataFrame, scenarios: pd.DataFrame, annees=(2031, 2040, 2050)
     b = s.pivot_table(index=["country_code", "year"], columns="scenario", values="pib_reel_par_habitant_usd_2015")
     pop = s[s["scenario"] == "central_fmi"].set_index(["country_code", "year"])["population_millions_centrale"]
     tt = t[t["year"].isin(annees)].join(b[["bas", "haut"]], on=["country_code", "year"])
-    par_pays = (tt.assign(sous=tt["pib_reel_par_habitant_usd_2015"] < tt["bas"],
-                          dessus=tt["pib_reel_par_habitant_usd_2015"] > tt["haut"])
-                .groupby(["country_code", "year"])[["sous", "dessus"]].mean().reset_index()
-                .rename(columns={"sous": "part_sous_bas", "dessus": "part_au_dessus_haut"}))
+    tt = tt.assign(sous=tt["pib_reel_par_habitant_usd_2015"] < tt["bas"],
+                   dessus=tt["pib_reel_par_habitant_usd_2015"] > tt["haut"])
+    colonnes = {"sous": "part_sous_bas", "dessus": "part_au_dessus_haut"}
+    if "population_millions" in tt.columns:
+        p = s[s["scenario"] == "central_fmi"].set_index(["country_code", "year"])[
+            ["population_millions_basse_calibree", "population_millions_haute_calibree"]]
+        tt = tt.join(p, on=["country_code", "year"])
+        tt = tt.assign(pop_sous=tt["population_millions"] < tt["population_millions_basse_calibree"] * (1 - 1e-9),
+                       pop_dessus=tt["population_millions"] > tt["population_millions_haute_calibree"] * (1 + 1e-9))
+        colonnes.update({"pop_sous": "part_population_sous_basse_calibree",
+                         "pop_dessus": "part_population_au_dessus_haute_calibree"})
+    par_pays = (tt.groupby(["country_code", "year"])[list(colonnes)].mean().reset_index().rename(columns=colonnes))
     lignes = []
     for nom, membres in {"tous les pays": sorted(set(t["country_code"])), **AGREGATS}.items():
         for annee in annees:
@@ -276,7 +348,16 @@ def main():
     niveaux = groupes_revenu.a_l_edition(pd.read_csv(chemins["niveaux"]), groupes_revenu.charger())
     scenarios = pd.read_csv(chemins["scenarios"])
     t = tirages(niveaux, pd.read_csv(chemins["bandes"]), scenarios, int(scenarios["year"].max()))
-    t.round(1).to_csv(os.path.join(processed, FICHIER), index=False, encoding="utf-8-sig")
+    chemin_positions = os.path.join(processed, FICHIER_POSITIONS)
+    if os.path.exists(chemin_positions) and "population_millions_basse_calibree" in scenarios.columns:
+        niveaux_pop = niveaux_population(pd.read_csv(chemin_positions), pd.Index(sorted(t["country_code"].unique())))
+        affectation = affecter_revisions(sorted(t["tirage"].unique()), list(niveaux_pop.columns))
+        pop = population_tirages(niveaux_pop, affectation, scenarios, sorted(t["year"].unique()))
+        t = t.merge(pop, on=["tirage", "country_code", "year"], how="left")
+    else:
+        logging.warning(f"{chemin_positions} absent (pib.population) : tirages sans population.")
+    t.round({"pib_reel_par_habitant_usd_2015": 1, "population_millions": 4}).to_csv(
+        os.path.join(processed, FICHIER), index=False, encoding="utf-8-sig")
     c = controle(t, scenarios)
     c.round(2).to_csv(os.path.join(processed, FICHIER_CONTROLE), index=False, encoding="utf-8-sig")
     logging.info(f"-> {t['tirage'].nunique()} tirages, {t['country_code'].nunique()} pays, "

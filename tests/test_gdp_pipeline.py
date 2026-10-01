@@ -1857,6 +1857,48 @@ class TestTiragesConjoints:
         assert u.loc["CCC", "F2000"] == pytest.approx(0.2)            # seul LIC absent : médiane de tous
         assert u.loc["EEE", "S2000"] == pytest.approx(0.7)            # groupe sans membre : médiane de tous
 
+    @staticmethod
+    def _population(revisions=(1998, 2000, 2002, 2004, 2006, 2008, 2010, 2012, 2015, 2017)):
+        """Positions passées : un choc commun par révision, plus un écart propre ; scénarios avec bornes calibrées."""
+        rng = np.random.default_rng(1)
+        choc = dict(zip(revisions, rng.normal(0, 1, len(revisions))))
+        choc[2008] = 5.0                                          # la révision la plus basse pour tous
+        positions = pd.DataFrame([dict(revision=r, country_code=c, classe_taille="x", z=choc[r] + 0.1 * rng.normal())
+                                  for r in revisions for c in ("AAA", "BBB", "CCC")])
+        scenarios = pd.DataFrame([dict(country_code=c, year=a, scenario="central_fmi", population_millions_centrale=10.0,
+                                       population_millions_basse_calibree=10.0 * np.exp(-0.01 * (a - 2025)),
+                                       population_millions_haute_calibree=10.0 * np.exp(0.02 * (a - 2025)))
+                                  for c in ("AAA", "BBB", "CCC") for a in (2026, 2030, 2050)])
+        return positions, scenarios
+
+    def test_affectation_des_revisions_par_blocs(self):
+        from pib.tirages import affecter_revisions
+        a = affecter_revisions(self.EDITIONS, [1998, 2000])
+        assert [a[e] for e in ("S2000", "F2004", "S2005", "F2009")] == [1998, 1998, 2000, 2000]
+        assert pd.Series(a).value_counts().tolist() == [10, 10]
+
+    def test_population_garde_les_bornes_calibrees_et_le_choc_commun(self):
+        from pib.tirages import niveaux_population, affecter_revisions, population_tirages
+        positions, scenarios = self._population()
+        niveaux = niveaux_population(positions, pd.Index(["AAA", "BBB", "CCC", "DDD"]))
+        # Absent partout : position médiane, ex aequo départagés dans l'ordre ; la fourchette reste exacte
+        assert sorted(niveaux.loc["DDD"]) == pytest.approx([(k - 0.5) / 10 for k in range(1, 11)])
+        editions = [f"{s}{a}" for a in range(1990, 2020) for s in ("S", "F")]
+        p = population_tirages(niveaux.drop(index="DDD"), affecter_revisions(editions, list(niveaux.columns)),
+                               scenarios, [2026, 2030, 2050])
+        p = p.merge(scenarios, on=["country_code", "year"])
+        assert (p["population_millions"] < p["population_millions_basse_calibree"] * (1 - 1e-9)).groupby(p["country_code"]).mean().tolist() == pytest.approx([0.1] * 3)
+        assert (p["population_millions"] > p["population_millions_haute_calibree"] * (1 + 1e-9)).groupby(p["country_code"]).mean().tolist() == pytest.approx([0.1] * 3)
+        # La révision au choc commun le plus fort donne à tous la population la plus haute
+        haut = p[p["year"] == 2050].loc[lambda d: d.groupby("country_code")["population_millions"].idxmax()]
+        assert set(haut["revision_onu"]) == {2008}
+        # Position relative constante d'une année à l'autre
+        x = p[(p["tirage"] == "S2000") & (p["country_code"] == "AAA")].set_index("year")
+        rel = lambda a: np.log(x.loc[a, "population_millions"] / 10.0) / np.log(x.loc[a, "population_millions_haute_calibree"] / 10.0
+                                                                               if x.loc[a, "population_millions"] >= 10.0 else
+                                                                               10.0 / x.loc[a, "population_millions_basse_calibree"])
+        assert abs(rel(2030)) == pytest.approx(abs(rel(2050)))
+
     def test_intervalle_tire_les_annees_d_edition(self):
         from pib.tirages import intervalle_des_quantiles
         constant = pd.Series(95.0, index=self.EDITIONS)

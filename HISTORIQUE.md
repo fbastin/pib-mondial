@@ -5,6 +5,17 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 👪 La Population dans les Trajectoires Conjointes (1er Octobre 2026)
+
+Les 60 tirages ne faisaient varier que le PIB par habitant. Or, dans la loi de Kenza, le trafic est proportionnel à la population, et pour le Canada le haut de la population calibrée (+23 % en 2050) pèse plus que celui du PIB.
+
+- **Indépendante du PIB, et c'est mesuré :** entre une révision de l'ONU et l'édition du FMI de la même année, la corrélation de rang des erreurs aux mêmes horizons vaut 0,00 à 0,04, entre pays comme dans le temps (−0,05 pour les grands pays riches). L'intuition qu'une immigration surprise accroît aussi le PIB total ne se vérifie pas.
+- **Tirée comme le PIB :** positions à 5 ans dans les révisions de 1998 à 2017 (`population_projection_positions.csv`), rang parmi tous les cas passés de la classe de taille, puis rang de la révision dans l'histoire du pays, et position constante dans la fourchette calibrée. Chaque révision sert 6 tirages consécutifs. Chaque pays garde exactement sa fourchette calibrée.
+- **Canada 2050 :** 40,9 à 60,6 millions sur les 60 tirages, médiane 46,9. Quatre marchés de Montréal : 99,7 à 107,2 % de la population centrale en 2050, contre 92,8 à 115,2 % en sommant les bornes.
+- **Une erreur rattrapée par les tests :** une première version rangeait chaque pays parmi ceux de la même révision, ce qui effaçait le choc commun.
+
+215 tests ; quatre mutations (rang dans la seule révision, côté bas ignoré, niveaux non rangés, révisions distribuées en alternance), rattrapées.
+
 ## 🧭 Fourchettes de Long Terme : sans les Trajectoires qui Prolongent un Effondrement (1er Octobre 2026)
 
 Pour vérifier si les fourchettes de long terme des pays non riches étaient trop larges (Inde 2050 : 49 à 193 % du central), on a comparé la loi prolongée au-delà de 16 ans aux quelques observations disponibles, puis découpé la queue haute par période d'édition. La loi n'était pas trop large par elle-même. En revanche, sa queue haute venait des premières éditions, et surtout de trajectoires qui prolongeaient un effondrement : la Géorgie, le Turkménistan, le Kazakhstan et l'Ukraine, projetés en 1999-2003 par une croissance passée négative, ont réalisé jusqu'à 16 fois la trajectoire prolongée.

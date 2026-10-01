@@ -9,7 +9,7 @@ Produit par `python produire_rapports.py`, ou seul par `python -m pib.scenarios 
 | `scenarios_pib_population.csv` | Une ligne par pays, année (de 2000 à 2050) et scénario |
 | `scenarios_pib_population_pays.csv` | Par pays : zone de croissance de long terme, origine des bornes au-delà de 2031, bornes et probabilités de recul d'ici 2031 |
 | `scenarios_pib_population_sources.json` | Sources et paramètres |
-| `scenarios_pib_tirages.csv` | 60 trajectoires conjointes de tous les pays, de 2026 à 2050 (`python -m pib.tirages`) |
+| `scenarios_pib_tirages.csv` | 60 trajectoires conjointes de tous les pays, PIB par habitant et population, de 2026 à 2050 (`python -m pib.tirages`) |
 | `scenarios_pib_tirages_controle.csv` | Contrôle des tirages : part sous `bas` et au-dessus de `haut` par pays ; quantiles de quelques agrégats contre la somme des bornes |
 
 **Le nom ne change pas avec l'horizon** : lire ces fichiers plutôt que `gdp_unified_<début>_<fin>.csv`, dont le nom suit les bornes du run.
@@ -137,11 +137,14 @@ Les bornes `bas` et `haut` sont calculées **pays par pays**. Additionner la bor
 | `tirage` | Édition du WEO rejouée (`S1990` à `F2019` : avril et octobre de 1990 à 2019) |
 | `country_code`, `year` | Pays, année |
 | `pib_reel_par_habitant_usd_2015` | PIB en volume par habitant, dollars constants de 2015 |
+| `population_millions` | Population, millions |
+| `revision_onu` | Révision de l'ONU dont vient la position de la population |
 
 **Construction** (rééchantillonnage de Schaake, Clark et al., 2004) :
 - **Jusqu'en 2031,** chaque tirage rejoue une édition passée. À chaque horizon, chaque pays y reçoit son rang parmi les 60 éditions de sa propre histoire, puis le quantile correspondant de **sa fourchette actuelle**. Exemple : l'édition où le Canada a le plus surestimé son niveau à 5 ans lui donne le plus bas des 60 niveaux de 2031. Chaque pays garde donc exactement sa fourchette, mais les crises communes restent communes.
 - **Pays absent d'une édition :** il prend le rang médian des pays de son groupe de revenu dans cette édition.
 - **Au-delà de 2031,** chaque tirage garde sa position relative dans la fourchette `bas`–`haut` de son pays.
+- **La population se tire à part,** de la même façon, sur les révisions de l'ONU de 1998 à 2017 et leurs erreurs à 5 ans : chaque pays garde exactement sa fourchette calibrée (10 % des tirages sous `population_millions_basse_calibree`, 10 % au-dessus de la haute), et les surprises communes à plusieurs pays restent communes. Chaque révision sert à 6 tirages consécutifs. À part, car les erreurs passées de population et de PIB ne sont pas liées : corrélation de rang de 0,00 à 0,04 aux mêmes horizons, entre pays comme dans le temps.
 
 **Ce que ça change** (en % de la somme des `central_fmi`, population centrale ; intervalle à 95 % par bootstrap des années d'édition) :
 
@@ -160,7 +163,7 @@ Les bornes `bas` et `haut` sont calculées **pays par pays**. Additionner la bor
 **Limites :**
 - **60 tirages, dont des paires voisines.** Les éditions d'avril et d'octobre d'une même année sont très proches : cela fait une trentaine d'épisodes indépendants. Les quantiles d'un agrégat se lisent à quelques points près ; d'où les intervalles du fichier de contrôle.
 - **Aucun choc nouveau après 2031 :** un tirage garde sa position relative dans la fourchette de chaque pays. L'élargissement des bornes après 2031 vient des erreurs passées des trajectoires prolongées (ci-dessus), qui ne disent rien de leur dépendance entre pays.
-- **PIB seulement :** la population reste celle du scénario central.
+- **Population : dix révisions seulement.** Chaque pays n'a que 10 positions de population distinctes, chacune répétée 6 fois. Les quantiles d'une population agrégée sont donc grossiers. Pour les quatre marchés en 2050, ils vont de 99,7 à 107,2 % de la population centrale, contre 92,8 à 115,2 % en sommant les bornes calibrées.
 
 ## Population
 
@@ -185,7 +188,7 @@ Les bornes `bas` et `haut` sont calculées **pays par pays**. Additionner la bor
 
 **Limites :**
 - **Les horizons de 20 à 25 ans** ne reposent que sur les révisions de 1998 à 2004, toutes prises de court par l'immigration des années 2000 et 2010.
-- **Pas de dépendance avec le PIB.** Une population plus forte que prévu par l'immigration accroît aussi le PIB total ; les scénarios combinent les deux sans lien.
+- **Pas de dépendance avec le PIB, et c'est mesuré.** On pouvait craindre qu'une population plus forte que prévu, par l'immigration, accroisse aussi le PIB total. Les erreurs passées ne le montrent pas : entre une révision de l'ONU et l'édition du FMI de la même année, la corrélation de rang des erreurs, aux mêmes horizons, vaut 0,00 à 0,04 (−0,05 pour les grands pays riches). Combiner les deux comme indépendants est donc justifié.
 - **Deux classes de taille seulement,** sans groupe de revenu : les révisions de la population de départ, qui dominent les erreurs des petits pays, se distinguent mal par le revenu.
 
 ## Pour la méthode de Kenza

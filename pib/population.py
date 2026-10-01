@@ -40,7 +40,10 @@ Sorties dans `data/processed/` :
   bornes de l'ONU et dans les bornes calibrées ;
 - `population_calibrated_bounds.csv` : par pays et année projetée, bornes à 80 % de l'ONU
   et bornes calibrées, en rapport à la variante médiane, que `pib.scenarios` applique à
-  sa population centrale.
+  sa population centrale ;
+- `population_projection_positions.csv` : par révision et pays, l'écart de l'horizon
+  `H_POSITIONS` en demi-largeurs des bornes de l'ONU (`z`), dont `pib.tirages` tire la
+  dépendance entre pays de ses trajectoires de population.
 
     python -m pib.population --data-dir data
 """
@@ -75,6 +78,9 @@ GRANDS, PETITS = "plus de 5 millions", "5 millions ou moins"
 EXPOSANTS = np.round(np.arange(-3.0, -0.0999, 0.01), 2)
 FICHIER_ERREURS = "population_projection_errors.csv"
 FICHIER_CALIBRATION = "population_bounds_calibration.csv"
+FICHIER_POSITIONS = "population_projection_positions.csv"
+# Horizon des positions passées dont les trajectoires conjointes tirent leur dépendance entre pays
+H_POSITIONS = 5
 
 
 # ------------------------------------------------------------------ données
@@ -331,6 +337,8 @@ def main():
     calibration.round(3).to_csv(os.path.join(processed, FICHIER_CALIBRATION), index=False, encoding="utf-8-sig")
     bornes_par_pays(actuelle, calibration).round(5).to_csv(os.path.join(processed, FICHIER_BORNES), index=False,
                                                            encoding="utf-8-sig")
+    (m[m["horizon"] == H_POSITIONS][["revision", "country_code", "classe_taille", "z"]].round(5)
+     .to_csv(os.path.join(processed, FICHIER_POSITIONS), index=False, encoding="utf-8-sig"))
     vue = table[table["horizon"].isin([5, 10, 20]) & table["groupe"].isin([TOUS, GRANDS, PETITS])]
     logging.info(f"-> {len(e)} erreurs, révisions {obtenues[0]}-{obtenues[-1]} :\n"
                  + vue[["groupe", "horizon", "cas", "revisions", "p10", "p50", "p90", "onu_bas_pct", "onu_haut_pct",
