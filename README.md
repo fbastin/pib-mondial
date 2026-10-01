@@ -27,6 +27,7 @@ Le venv est créé hors du dépôt : les dépendances ne sont ni versionnées ni
 ```
 pib-mondial/
 ├── produire_rapports.py          # Point d'entrée : la chaîne complète, pour chaque rapport
+├── miroir.py                     # Copie du dépôt et de ses sorties vers un dossier partagé
 ├── pib/                          # Code : paquet Python
 │   ├── http_utils.py             #   Requêtes HTTP communes : nouvelles tentatives, échec explicite
 │   ├── fetch_historical_gdp.py   #   Collecte : historique Banque Mondiale (API WDI)
@@ -109,6 +110,7 @@ python produire_rapports.py [--start-year 2000] [--end-year AAAA] [--fcst-end AA
 | Éditions archivées des WDI : collecte, puis révisions du réalisé | `python -m pib.millesimes_bm --collecter` ; `python -m pib.millesimes_bm --data-dir data` |
 | Graphiques et tableau de bord | `python -m pib.visualize_gdp` |
 | Page de résultats | `python -m pib.build_results_page [--pays FRA]` |
+| Copie du dépôt et de ses sorties vers un dossier partagé (seulement ce qui a changé, sans rien supprimer) | `python miroir.py --destination DOSSIER [--simulation]` |
 | Collecte seule, historique | `python -m pib.fetch_historical_gdp --start-year 2000 --end-year 2025` |
 | Collecte seule, prévisions | `python -m pib.fetch_forecast_gdp --forecast-start 2025` |
 
@@ -141,7 +143,7 @@ jupyter nbconvert --to html --execute --ExecutePreprocessor.kernel_name=julia-1.
 ### Tests
 
 ```bash
-pytest                      # 210 tests, sans accès réseau
+pytest                      # 212 tests, sans accès réseau
 pytest -m "not donnees"     # sans les contrôles sur les fichiers produits
 ```
 
@@ -496,7 +498,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 
 ## ✅ Tests des invariants
 
-210 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
+212 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
 
 | Invariant | Ce qu'il empêche |
 |---|---|

@@ -1669,6 +1669,35 @@ class TestScenariosPourLeTrafic:
         assert pib[(2028, "bas")] == pytest.approx(104.0 * 1.01 ** 2 * 0.8 * 1.10 / 1.14)
 
 
+class TestMiroir:
+    """Copie vers un dossier partagé : seulement ce qui a changé, jamais de suppression."""
+
+    def test_copie_ce_qui_change_et_ne_supprime_rien(self, tmp_path):
+        import miroir
+        src, dst = tmp_path / "depot", tmp_path / "partage"
+        (src / "data" / "processed").mkdir(parents=True)
+        (src / "a.txt").write_text("nouveau")
+        (src / "b.txt").write_text("identique")
+        (src / "data" / "processed" / "c.csv").write_text("modifié")
+        (dst / "data" / "processed").mkdir(parents=True)
+        (dst / "b.txt").write_text("identique")
+        (dst / "data" / "processed" / "c.csv").write_text("ancien")
+        (dst / "garde.csv").write_text("laissé exprès")
+        bilan = miroir.copier(["a.txt", "b.txt", "data/processed/c.csv"], str(src), str(dst))
+        assert sorted(bilan["copies"]) == ["a.txt", "data/processed/c.csv"]
+        assert bilan["identiques"] == 1 and bilan["erreurs"] == []
+        assert (dst / "data" / "processed" / "c.csv").read_text() == "modifié"
+        assert (dst / "garde.csv").read_text() == "laissé exprès"
+
+    def test_simulation_ne_copie_rien(self, tmp_path):
+        import miroir
+        src, dst = tmp_path / "depot", tmp_path / "partage"
+        src.mkdir(), dst.mkdir()
+        (src / "a.txt").write_text("x")
+        assert miroir.copier(["a.txt"], str(src), str(dst), simulation=True)["copies"] == ["a.txt"]
+        assert not (dst / "a.txt").exists()
+
+
 class TestPopulationONU:
     """
     Erreurs passées des projections de population de l'ONU, et bornes calibrées pour
