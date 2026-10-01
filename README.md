@@ -137,7 +137,7 @@ jupyter nbconvert --to html --execute --ExecutePreprocessor.kernel_name=julia-1.
 ### Tests
 
 ```bash
-pytest                      # 190 tests, sans accès réseau
+pytest                      # 194 tests, sans accès réseau
 pytest -m "not donnees"     # sans les contrôles sur les fichiers produits
 ```
 
@@ -351,6 +351,7 @@ Plus la croissance projetée est forte, plus la fourchette penche vers le bas. *
 
 - **Les fourchettes poolées sont calibrées en temps réel en moyenne**, mais leur couverture dépend des chocs que traverse chaque fenêtre de cinq ans : de 65 % (édition 2003, qui sous-estimait l'essor d'avant 2008) à 86 % (éditions 2000 et 2010), 70 % pour l'édition 2015, dont la fenêtre inclut 2020.
 - **Le choix des projections comparables compte par le groupe de revenu, et pondéré par le PIB.** Le score de la méthode retenue est alors meilleur que celui d'une fourchette unique (écart de 4,1, intervalle de 1,9 à 6,0) et de la classe seule (5,0), mais moins bon que celui du groupe seul (2,3, intervalle de 0,7 à 4,1). Sans pondération, les méthodes poolées se valent. Seul l'historique du pays est nettement moins bon.
+- **L'avantage du groupe seul ne tient qu'à la Chine et à l'Inde d'avant 2008** (`gdp_bands_realtime_subsamples.csv`). Sans elles, l'écart pondéré tombe à 1,0 (intervalle de −0,7 à 3,0) ; sur les éditions 2008-2019, il est nul (0,1) ; il atteint 7,2 sur 2000-2007, quand leur croissance dépassait les projections. La méthode retenue est donc conservée. Les bornes du seul groupe de revenu sont publiées à côté (`borne_basse_pct_groupe_seul`, `borne_haute_pct_groupe_seul`), et en scénarios (`bas_groupe_seul`, `haut_groupe_seul`) : elles diffèrent de 4,5 points en moyenne, surtout pour les pays à forte croissance projetée (Inde 2031 : −19,6 à +8,4 % au lieu de −25,0 à +4,6 %).
 - **Groupe de revenu connu à la date de l'édition** (`pib.groupes_revenu`, classement historique de la Banque Mondiale) pour les cas passés. Le groupe actuel rangerait parmi les pays riches ceux qui le sont devenus en dépassant les prévisions : un biais de sélection, faible à 5 ans (couverture de 79,0 % avec le groupe actuel), fort au-delà (voir ci-dessous).
 - **Probabilités de récession.** Apprises sur les seules fréquences passées, elles faisaient mieux qu'une probabilité unique (score de Brier inférieur de 7,3 %, grâce surtout à la classe de croissance), mais leur niveau dépendait des crises que contenait la période d'apprentissage : 38 % en moyenne sur 2000-2019, pour 49 % de périodes avec recul. **Les crises mondiales sont désormais traitées à part** :
   - les récessions mondiales sont les reculs du PIB mondial par habitant depuis 1961 (1975, 1982, 1991, 2009, 2020 ; série de la Banque Mondiale, `world_gdp_per_capita_growth.csv`) ;
@@ -397,7 +398,7 @@ Les révisions penchent à la hausse (croissance +0,26 point en moyenne, niveau 
 **Le biais du FMI ne tient pas à sa propre référence.** Contre la croissance que publiait la Banque Mondiale à la fin de l'année suivante — une référence indépendante du FMI, connue en temps réel —, le biais à un an vaut +0,88 point, contre +0,86 face à la ré-estimation du FMI, sur les mêmes 7 381 projections ; +0,68 face à la série actuelle, révisée à la hausse depuis (`weo_forecast_bias_by_reference_ngdp_rpch.csv`). Une partie de l'optimisme mesuré contre les premières estimations s'efface donc avec les révisions ultérieures des données.
 
 **Scénarios pour le projet trafic** (`pib.scenarios`, détail dans `docs/scenarios_trafic.md`). Export de PIB en volume par habitant et de population, par pays, de 2000 à 2050, sous un nom qui ne change pas avec l'horizon (`scenarios_pib_population.csv`) :
-- **jusqu'en 2031**, cinq scénarios autour de la trajectoire du FMI, tirés des fourchettes calculées à chaque horizon : central du FMI, central corrigé de l'erreur médiane, bas et haut (bornes à 80 %), crise mondiale (erreur médiane des périodes passées en crise mondiale) ;
+- **jusqu'en 2031**, cinq scénarios autour de la trajectoire du FMI, tirés des fourchettes calculées à chaque horizon : central du FMI, central corrigé de l'erreur médiane, bas et haut (bornes à 80 %), crise mondiale (erreur médiane des périodes passées en crise mondiale). S'y ajoutent, pour comparaison, les bornes du seul groupe de revenu (`bas_groupe_seul`, `haut_groupe_seul`) ;
 - **ensuite**, pour les scénarios centraux et de crise, la croissance du PIB potentiel par habitant du scénario de référence de l'OCDE (pays, sinon région). Les bornes `bas` et `haut` s'élargissent comme les erreurs passées des trajectoires du FMI prolongées, par groupe de revenu (`pib.long_terme`, ci-dessous) ;
 - **population :** celle du pipeline jusqu'en 2031, puis la croissance médiane de l'ONU (*World Population Prospects* 2024), avec les bornes de son intervalle à 80 %.
 
@@ -446,6 +447,7 @@ Pour chaque rapport (`data/` et `outputs/` ; `plus_recent/` pour le plus récent
 | `data/processed/scenarios_pib_population.csv`, `…_pays.csv`, `…_sources.json` | Scénarios de PIB par habitant et de population jusqu'en 2050, pour le projet trafic |
 | `data/processed/weo_cas_<année>_*.csv` | Cas d'étude d'une récession mondiale, sur demande (`pib.cas_de_crise`) : croissance, reculs annoncés, rebond, niveaux ; avec `--trafic`, trafic aérien face au PIB (par pays, régressions, part expliquée) |
 | `data/processed/gdp_projection_bands_calibration.csv` | Test rétrospectif des fourchettes : part des erreurs contenues |
+| `data/processed/gdp_bands_realtime_subsamples.csv` | Écart entre la méthode retenue et le seul groupe de revenu, par sous-échantillon (sans la Chine et l'Inde, par période, par groupe) |
 | `data/processed/gdp_long_horizon_errors.csv`, `…_bands.csv`, `…_law.csv` | Au-delà de l'horizon du FMI : erreurs des trajectoires prolongées par horizon, quantiles observés et lissés par groupe de revenu, lois de puissance |
 | `data/processed/gdp_bands_realtime_scores.csv`, `…_coverage_by_cell.csv`, `…_coverage_by_edition.csv` | Fourchettes éprouvées en temps réel : couverture, largeur, score d'intervalle, CRPS par méthode, avec intervalles de confiance ; couverture par cellule et par édition |
 | `data/processed/recession_probability_realtime_scores.csv`, `recession_probability_reliability.csv` | Probabilités de récession en temps réel : score de Brier et compétence par méthode ; fiabilité par tranche |
@@ -477,7 +479,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 
 ## ✅ Tests des invariants
 
-190 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
+194 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
 
 | Invariant | Ce qu'il empêche |
 |---|---|

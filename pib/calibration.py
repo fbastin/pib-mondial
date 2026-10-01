@@ -239,6 +239,50 @@ def scores_fourchettes(previsions: pd.DataFrame, tirages: int = TIRAGES) -> pd.D
     return pd.DataFrame(lignes).round(3)
 
 
+# Sous-échantillons où l'on vérifie l'écart entre la méthode retenue et une autre : l'écart
+# pondéré par le PIB pourrait tenir à quelques grandes économies émergentes, ou à une période
+SOUS_ECHANTILLONS = {
+    "tous les cas": lambda t: t,
+    "sans la Chine ni l'Inde": lambda t: t[~t["country_code"].isin(["CHN", "IND"])],
+    "sans la Chine, l'Inde ni l'Indonésie": lambda t: t[~t["country_code"].isin(["CHN", "IND", "IDN"])],
+    "éditions 2000-2007": lambda t: t[t["annee_millesime"] <= 2007],
+    "éditions 2008-2019": lambda t: t[t["annee_millesime"] >= 2008],
+    "revenu élevé": lambda t: t[t["income_group"] == "HIC"],
+    "autres groupes de revenu": lambda t: t[t["income_group"] != "HIC"],
+}
+
+
+def ecart_par_sous_echantillon(previsions: pd.DataFrame, methode: str = "groupe de revenu",
+                               tirages: int = TIRAGES) -> pd.DataFrame:
+    """
+    Écart de score d'intervalle entre la méthode retenue et `methode` (positif : `methode`
+    fait mieux), sans et avec pondération par le PIB, sur chaque sous-échantillon de
+    `SOUS_ECHANTILLONS` des cas communs, avec intervalles à 95 % (bootstrap en blocs
+    d'années visées) et couverture des deux méthodes.
+    """
+    p = cas_communs(previsions)
+    cles = ["country_code", "annee_millesime", "year"]
+    retenue = p[p["methode"] == METHODE_RETENUE].set_index(cles)
+    autre = p[p["methode"] == methode].set_index(cles)
+    table = autre.assign(ecart=retenue["score_intervalle"] - autre["score_intervalle"],
+                         couvert_retenue=retenue["couvert"]).reset_index()
+    table["poids"] = table["poids_pib"].fillna(0)
+
+    def stats(t):
+        return {"ecart": t["ecart"].mean(), "ecart_pondere_pib": np.average(t["ecart"], weights=t["poids"])}
+
+    lignes = []
+    for nom, filtre in SOUS_ECHANTILLONS.items():
+        t = filtre(table)
+        if len(t) < MIN_CAS_CELLULE or t["poids"].sum() == 0:
+            continue
+        lignes.append({"sous_echantillon": nom, "methode_comparee": methode, "cas": len(t),
+                       "couverture_retenue_pct": t["couvert_retenue"].mean() * 100,
+                       "couverture_comparee_pct": t["couvert"].mean() * 100,
+                       **stats(t), **_bootstrap(t, stats, tirages)})
+    return pd.DataFrame(lignes).round(3)
+
+
 def couverture_par_cellule(previsions: pd.DataFrame) -> pd.DataFrame:
     """Couverture de la méthode retenue par classe de croissance et groupe de revenu (tous cas)."""
     p = previsions[previsions["methode"] == METHODE_RETENUE]
@@ -331,6 +375,7 @@ def main():
         "gdp_bands_realtime_scores.csv": scores_fourchettes(previsions, args.tirages),
         "gdp_bands_realtime_coverage_by_cell.csv": couverture_par_cellule(previsions),
         "gdp_bands_realtime_coverage_by_edition.csv": couverture_par_periode(previsions),
+        "gdp_bands_realtime_subsamples.csv": ecart_par_sous_echantillon(previsions, tirages=args.tirages),
         "recession_probability_realtime_scores.csv": scores_recession(previsions, args.tirages),
         "recession_probability_reliability.csv": fiabilite_recession(previsions),
     }

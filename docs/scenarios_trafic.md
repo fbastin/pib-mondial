@@ -18,7 +18,7 @@ Produit par `python produire_rapports.py`, ou seul par `python -m pib.scenarios 
 |---|---|
 | `country_code`, `country_name`, `income_group` | Pays (codes ISO3 de la Banque Mondiale) et groupe de revenu |
 | `year`, `periode` | Année ; `observé`, `projection du FMI` (jusqu'en 2031) ou `long terme` |
-| `scenario` | `central_fmi`, `central_corrige`, `bas`, `haut`, `crise_mondiale` |
+| `scenario` | `central_fmi`, `central_corrige`, `bas`, `haut`, `crise_mondiale`, et pour comparaison `bas_groupe_seul`, `haut_groupe_seul` |
 | `pib_reel_par_habitant_usd_2015` | PIB en volume par habitant, dollars constants de 2015 |
 | `population_millions_centrale`, `…_basse`, `…_haute` | Population, millions : centrale, et bornes de l'intervalle à 80 % de l'ONU |
 | `pib_reel_milliards_usd_2015` | PIB en volume, population centrale |
@@ -33,7 +33,12 @@ Les années observées sont identiques dans tous les scénarios : chacun est une
 - `central_fmi` : la trajectoire du FMI ;
 - `central_corrige` : divisée par (1 + erreur médiane passée), soit 2,9 % plus bas en 2031 pour le Canada et les États-Unis ;
 - `bas`, `haut` : bornes de l'intervalle à 80 % (−11,3 % et +5,1 % en 2031 pour le Canada), calibrées en temps réel (79 % de couverture, voir le README) ;
-- `crise_mondiale` : divisée par (1 + erreur médiane des périodes passées qui contenaient une récession mondiale).
+- `crise_mondiale` : divisée par (1 + erreur médiane des périodes passées qui contenaient une récession mondiale) ;
+- `bas_groupe_seul`, `haut_groupe_seul` : les bornes à 80 % tirées du seul groupe de revenu, sans la classe de croissance projetée, élargies de même après 2031.
+
+**Pourquoi deux jeux de bornes.** Éprouvées en temps réel, les deux méthodes se valent, sans pondération comme hors de la Chine et de l'Inde. Pondéré par le PIB sur les éditions 2000-2007, le groupe seul l'emporte : la croissance de ces deux pays dépassait alors les projections, et la méthode retenue penche vers le bas la fourchette des pays à forte croissance projetée. La méthode retenue est conservée ; la variante montre ce que coûterait l'autre choix.
+- **Pour le Canada et les pays riches,** même borne haute ; borne basse un peu plus basse avec le groupe seul (−13,6 % en 2031, contre −11,3 %).
+- **Pour les pays à forte croissance projetée,** l'écart est plus net : Inde 2031, de −19,6 à +8,4 % avec le groupe seul, contre −25,0 à +4,6 %.
 
 **De 2032 à 2050, les scénarios centraux et de crise** suivent la croissance du PIB potentiel par habitant du scénario de référence de l'OCDE (`BAU1`, *Perspectives économiques* n° 117). C'est celle du pays s'il est couvert (49 pays, dont le Canada et les États-Unis), sinon celle de sa région (135 pays). Le niveau atteint en 2031 est conservé : après une crise, pas de rattrapage, comme après 2008.
 

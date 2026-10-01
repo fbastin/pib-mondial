@@ -5,6 +5,24 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 🔀 Deux Jeux de Bornes : Classe × Groupe, et Groupe Seul (30 Septembre 2026)
+
+Avec le groupe de revenu connu à la date de l'édition, le seul groupe de revenu calibrait mieux, pondéré par le PIB, que la méthode retenue (score d'intervalle de 29,6 contre 31,9). Vérifié par sous-échantillon (`calibration.ecart_par_sous_echantillon`, `gdp_bands_realtime_subsamples.csv`) :
+
+| Sous-échantillon | Écart pondéré (positif : groupe seul meilleur) |
+|---|---|
+| Tous les cas | +2,3 (0,7 à 4,1) |
+| Sans la Chine ni l'Inde | +1,0 (−0,7 à 3,0) |
+| Éditions 2000-2007 | +7,2 (4,2 à 10,3) |
+| Éditions 2008-2019 | +0,1 (−0,3 à 0,6) |
+| Pays à revenu élevé | +1,4 (−0,8 à 4,0) |
+
+- **L'avantage tient à la Chine et à l'Inde d'avant 2008,** dont la croissance dépassait les projections. La méthode retenue penche vers le bas la fourchette des pays à forte croissance projetée. Sans pondération, les deux méthodes se valent partout.
+- **Décision :** la méthode retenue est conservée ; les bornes du seul groupe de revenu sont publiées à côté (`…_groupe_seul` dans les fourchettes, `bas_groupe_seul` et `haut_groupe_seul` dans les scénarios).
+- **Écart entre les deux :** 4,5 points en moyenne ; plus de 5 points pour 42 pays sur 184, surtout ceux à forte croissance projetée (Inde 2031 : −19,6 à +8,4 % au lieu de −25,0 à +4,6 %).
+
+194 tests ; deux mutations (variante qui reprendrait les bornes retenues, borne basse branchée sur la haute), rattrapées.
+
 ## ⚖️ Groupe de Revenu Connu à la Date de l'Édition (30 Septembre 2026)
 
 Les fourchettes regroupaient les cas passés selon le groupe de revenu **actuel** des pays. Ce classement range parmi les pays riches ceux qui le sont devenus depuis (Chili, Pologne, pays baltes, Guyana), justement parce que leur croissance a dépassé les prévisions : un biais de sélection. Nouveau module `pib.groupes_revenu` : classement historique de la Banque Mondiale (exercices FY89 à aujourd'hui), téléchargé une fois dans `data/raw/`. L'édition d'avril v connaît l'exercice v, celle d'octobre l'exercice v + 1 ; un pays sans classement à la date garde son groupe actuel.

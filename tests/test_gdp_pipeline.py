@@ -1383,6 +1383,21 @@ class TestFourchettesDesProjections:
         assert vive["borne_haute_pct"] == pytest.approx((1 / (1 + p10 / 100) - 1) * 100, abs=1e-2)
         assert vive["GDP_Reel_2031_Bas"] == pytest.approx(100 * (1 + vive["borne_basse_pct"] / 100), abs=1e-2)
 
+    def test_variante_du_seul_groupe_de_revenu(self):
+        """Publiée à côté : la même fourchette pour tout le groupe, quelle que soit la croissance projetée."""
+        from pib.evaluate_forecasts import fourchettes_projections
+        niveaux = self._niveaux()
+        bandes = fourchettes_projections(niveaux, self._croissance(), self._synthese(), 2031, 2026
+                                         ).set_index("country_code")
+        p10, p90 = niveaux["erreur_niveau_vs_fmi_pct"].quantile([0.1, 0.9])
+        for code in ("LEN", "VIF"):
+            assert bandes.loc[code, "borne_basse_pct_groupe_seul"] == pytest.approx((1 / (1 + p90 / 100) - 1) * 100, abs=1e-2)
+            assert bandes.loc[code, "borne_haute_pct_groupe_seul"] == pytest.approx((1 / (1 + p10 / 100) - 1) * 100, abs=1e-2)
+        # La méthode retenue distingue, elle, la projection vive de la lente
+        assert bandes.loc["VIF", "borne_haute_pct"] < bandes.loc["VIF", "borne_haute_pct_groupe_seul"]
+        # Sans groupe : l'ensemble des projections
+        assert bandes.loc["TWN", "borne_basse_pct_groupe_seul"] == pytest.approx((1 / (1 + p90 / 100) - 1) * 100, abs=1e-2)
+
     def test_horizon_sans_historique(self):
         from pib.evaluate_forecasts import fourchettes_projections
         assert fourchettes_projections(self._niveaux(), self._croissance(), self._synthese(), 2033, 2026).empty
@@ -1564,6 +1579,26 @@ class TestScenariosPourLeTrafic:
         assert pib[(2028, "central_fmi")] == pytest.approx(central[2028])        # centraux inchangés
         assert fiches.iloc[0]["bornes_long_terme"] == "erreurs passées du FMI prolongé (HIC)"
 
+    def test_variante_du_seul_groupe_elargie_de_meme(self):
+        """Les bornes du seul groupe de revenu suivent la même règle : continuité, puis élargissement."""
+        from pib.scenarios import construire_scenarios
+        unifie, bandes, ocde, wpp = self._entrees()
+        bandes = bandes.assign(borne_basse_pct_groupe_seul=[-15.0, -25.0], borne_haute_pct_groupe_seul=[8.0, 12.0])
+        table, _ = construire_scenarios(unifie, bandes, ocde, wpp, regions={}, annee_fin=2028,
+                                        bandes_long_terme=self._bandes_long_terme())
+        pib = table.set_index(["year", "scenario"])["pib_reel_par_habitant_usd_2015"]
+        assert pib[(2026, "bas_groupe_seul")] == pytest.approx(104.0 * 0.75)
+        assert pib[(2026, "haut_groupe_seul")] == pytest.approx(104.0 * 1.12)
+        assert pib[(2028, "bas_groupe_seul")] == pytest.approx(104.0 * 1.01 ** 2 * 0.75 * 1.10 / 1.14)
+        assert pib[(2028, "haut_groupe_seul")] == pytest.approx(104.0 * 1.01 ** 2 * 1.12 * 0.95 / 0.93)
+
+    def test_variante_absente_reprend_les_bornes_retenues(self):
+        from pib.scenarios import construire_scenarios
+        table, _ = construire_scenarios(*self._entrees(), regions={}, annee_fin=2028)
+        pib = table.set_index(["year", "scenario"])["pib_reel_par_habitant_usd_2015"]
+        assert pib[(2028, "bas_groupe_seul")] == pytest.approx(pib[(2028, "bas")])
+        assert pib[(2028, "haut_groupe_seul")] == pytest.approx(pib[(2028, "haut")])
+
     def test_groupe_inconnu_prend_tous_les_pays(self):
         from pib.scenarios import construire_scenarios
         table, fiches = construire_scenarios(*self._entrees(), regions={}, annee_fin=2028,
@@ -1603,6 +1638,31 @@ class TestGroupesDeRevenuALEdition:
         assert r["income_group"].tolist() == ["UMC", "HIC", "HIC", "HIC"]
         assert cas["income_group"].tolist() == ["HIC"] * 4          # l'original est intact
         assert a_l_edition(cas, None) is cas                        # sans classement : inchangé
+
+
+class TestEcartParSousEchantillon:
+    """L'écart entre méthodes se vérifie sur des sous-échantillons : sans la Chine et l'Inde, par période."""
+
+    def test_ecart_et_sous_echantillons(self):
+        from pib import calibration as c
+        lignes = []
+        riches = ("FRA", "DEU", "USA", "JPN", "GBR", "ITA", "CAN", "ESP")
+        for code in ("CHN", "IND") + riches:
+            for annee in range(1990, 2020):
+                for methode, score in ((c.METHODE_RETENUE, 10.0 if code in ("CHN", "IND") else 5.0), ("groupe de revenu", 5.0)):
+                    lignes.append(dict(country_code=code, annee_millesime=annee, year=annee + 5, methode=methode,
+                                       income_group="HIC" if code in riches else "UMC",
+                                       poids_pib=10.0 if code in ("CHN", "IND") else 1.0,
+                                       score_intervalle=score, couvert=True, bas=-1.0, haut=1.0))
+        # Les autres méthodes sont présentes aussi, pour que les cas soient communs
+        p = pd.DataFrame(lignes)
+        autres = [m for m in c.METHODES if m not in (c.METHODE_RETENUE, "groupe de revenu")]
+        p = pd.concat([p] + [p[p["methode"] == "groupe de revenu"].assign(methode=m) for m in autres], ignore_index=True)
+        e = c.ecart_par_sous_echantillon(p, tirages=20).set_index("sous_echantillon")
+        assert e.loc["tous les cas", "ecart"] == pytest.approx(1.0, abs=1e-3)          # 5 points pour 2 pays sur 10
+        assert e.loc["sans la Chine ni l'Inde", "ecart"] == pytest.approx(0.0, abs=1e-3)
+        assert e.loc["tous les cas", "ecart_pondere_pib"] == pytest.approx(5 * 20 / 28, abs=1e-3)
+        assert e.loc["revenu élevé", "ecart_pondere_pib"] == pytest.approx(0.0, abs=1e-3)
 
 
 class TestFourchettesDeLongTerme:

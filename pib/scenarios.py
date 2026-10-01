@@ -11,6 +11,9 @@ passées du FMI (voir `evaluate_forecasts.fourchettes_projections`, à chaque ho
 - `central_fmi` : la trajectoire du FMI, telle que raccordée par le pipeline ;
 - `central_corrige` : divisée par (1 + erreur de niveau médiane passée) ;
 - `bas`, `haut` : bornes de la fourchette à 80 % ;
+- `bas_groupe_seul`, `haut_groupe_seul` : les mêmes bornes tirées du seul groupe de revenu, publiées
+  pour comparaison (éprouvées en temps réel, les deux méthodes se valent hors de la Chine et de
+  l'Inde d'avant 2008) ;
 - `crise_mondiale` : divisée par (1 + erreur médiane des périodes passées en crise mondiale).
 
 Au-delà, les scénarios centraux et de crise suivent la croissance du PIB potentiel par
@@ -74,7 +77,8 @@ VARIANTES_WPP = {"centrale": "Medium", "basse": "Lower 80 PI", "haute": "Upper 8
 REGIONS_OCDE = {"NAC": "A2", "LCN": "A9", "ECS": "E_S4", "SSF": "F6", "MEA": "F98", "EAS": "O_S2_S8", "SAS": "S7"}
 MONDE_OCDE = "W"
 
-SCENARIOS = ("central_fmi", "central_corrige", "bas", "haut", "crise_mondiale")
+SCENARIOS = ("central_fmi", "central_corrige", "bas", "haut", "crise_mondiale", "bas_groupe_seul", "haut_groupe_seul")
+BORNES = {"bas": "bas", "haut": "haut", "bas_groupe_seul": "bas", "haut_groupe_seul": "haut"}
 
 
 # ------------------------------------------------------------------ sources
@@ -155,6 +159,10 @@ def facteurs_par_scenario(bandes: pd.DataFrame) -> pd.DataFrame:
     b = bandes.copy()
     crise = b["erreur_niveau_mediane_si_crise_mondiale_pct"].fillna(b["erreur_niveau_mediane_pct"]) \
         if "erreur_niveau_mediane_si_crise_mondiale_pct" in b.columns else b["erreur_niveau_mediane_pct"]
+    # Variante : bornes du seul groupe de revenu (à défaut, celles de la méthode retenue)
+    for borne in ("borne_basse_pct", "borne_haute_pct"):
+        if f"{borne}_groupe_seul" not in b.columns:
+            b[f"{borne}_groupe_seul"] = b[borne]
     return pd.DataFrame({
         "country_code": b["country_code"], "year": b["year"],
         "central_fmi": 1.0,
@@ -162,6 +170,8 @@ def facteurs_par_scenario(bandes: pd.DataFrame) -> pd.DataFrame:
         "bas": 1 + b["borne_basse_pct"] / 100,
         "haut": 1 + b["borne_haute_pct"] / 100,
         "crise_mondiale": 1 / (1 + crise / 100),
+        "bas_groupe_seul": 1 + b["borne_basse_pct_groupe_seul"] / 100,
+        "haut_groupe_seul": 1 + b["borne_haute_pct_groupe_seul"] / 100,
     })
 
 
@@ -216,14 +226,14 @@ def construire_scenarios(unifie: pd.DataFrame, bandes: pd.DataFrame, ocde: pd.Da
             for a in range(derniere_obs + 1, horizon_fmi + 1):
                 f = facteurs[scenario].get((code, a), 1.0)
                 niveau[a] = hab[a] * (1.0 if pd.isna(f) else f)
-            if scenario in ("bas", "haut") and bandes_long_terme is not None:
+            if scenario in BORNES and bandes_long_terme is not None:
                 # Fourchette du pays à l'horizon du FMI, élargie comme les erreurs passées
                 ecart = niveau[horizon_fmi] / hab[horizon_fmi]
                 for a in range(horizon_fmi + 1, annee_fin + 1):
                     f_bas, f_haut = elargissement(bandes_long_terme, groupe, H_FMI, H_FMI + a - horizon_fmi)
-                    niveau[a] = central[a] * ecart * (f_bas if scenario == "bas" else f_haut)
+                    niveau[a] = central[a] * ecart * (f_bas if BORNES[scenario] == "bas" else f_haut)
             else:
-                voie = {"bas": croissance["bas"], "haut": croissance["haut"]}.get(scenario, croissance["central"])
+                voie = {"bas": croissance["bas"], "haut": croissance["haut"]}.get(BORNES.get(scenario), croissance["central"])
                 for a in range(horizon_fmi + 1, annee_fin + 1):
                     niveau[a] = niveau[a - 1] * voie.get(a, np.nan)
             for a in annees:

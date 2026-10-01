@@ -691,6 +691,11 @@ def fourchettes_projections(niveaux: pd.DataFrame, croissance_actuelle: pd.Serie
     `erreur_niveau_mediane_si_crise_mondiale_pct` donne l'erreur de niveau médiane des
     seules périodes passées en crise mondiale : de quoi bâtir un scénario de crise.
 
+    Variante publiée à côté (`…_groupe_seul`) : les bornes tirées du seul groupe de revenu.
+    Éprouvées en temps réel, les deux méthodes se valent, sauf pondérées par le PIB sur les
+    éditions 2000-2007, où le groupe seul l'emporte grâce à la Chine et à l'Inde, dont la
+    croissance a dépassé les projections (`calibration.ecart_par_sous_echantillon`).
+
     Sans colonne de niveau pour `annee_fin` dans `synthese_pays` (années intermédiaires),
     seules les bornes et probabilités, en %, sont données.
     """
@@ -705,6 +710,8 @@ def fourchettes_projections(niveaux: pd.DataFrame, croissance_actuelle: pd.Serie
 
     passe["classe"], bornes = classes_de_croissance(passe["croissance_prevue_cumulee_pct"])
     par_cellule, par_classe = _quantiles_retenus(passe)
+    par_groupe = _quantiles_fourchette(passe, ["income_group"])
+    par_groupe = par_groupe[par_groupe["cas"] >= MIN_CAS_CELLULE]
     q_bas, q_haut = QUANTILES_FOURCHETTE
     ensemble = pd.Series({"bas": passe[colonne].quantile(q_bas), "haut": passe[colonne].quantile(q_haut),
                           "mediane": passe[colonne].median(), "cas": len(passe)})
@@ -735,6 +742,7 @@ def fourchettes_projections(niveaux: pd.DataFrame, croissance_actuelle: pd.Serie
         # Erreur passée élevée (p90) -> réalisé bien en dessous : borne basse, et inversement
         borne_basse = (1 / (1 + q["haut"] / 100) - 1) * 100
         borne_haute = (1 / (1 + q["bas"] / 100) - 1) * 100
+        q_groupe = par_groupe.loc[groupe] if groupe in par_groupe.index else ensemble
         recul = {"probabilite_recul_pct": q.get("recul", np.nan)}
         if melange is not None:
             proba, f_crise, f_hors = probabilite_de_recul(melange, classe, groupe)
@@ -754,6 +762,8 @@ def fourchettes_projections(niveaux: pd.DataFrame, croissance_actuelle: pd.Serie
             "erreur_niveau_p10_pct": q["bas"], "erreur_niveau_mediane_pct": q["mediane"],
             "erreur_niveau_p90_pct": q["haut"],
             "borne_basse_pct": borne_basse, "borne_haute_pct": borne_haute,
+            "borne_basse_pct_groupe_seul": (1 / (1 + q_groupe["haut"] / 100) - 1) * 100,
+            "borne_haute_pct_groupe_seul": (1 / (1 + q_groupe["bas"] / 100) - 1) * 100,
             **recul, "pire_annee_mediane_pct": q.get("pire_recul", np.nan),
             **({niveau: pays[niveau],
                 f"GDP_Reel_{annee_fin}_Bas": pays[niveau] * (1 + borne_basse / 100),
