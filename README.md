@@ -36,6 +36,7 @@ pib-mondial/
 │   ├── evaluate_forecasts.py     #   Évaluation : prévisions d'époque confrontées au réalisé, récessions
 │   ├── revisions_weo.py          #   Évaluation : révisions d'une édition du WEO à la suivante
 │   ├── calibration.py            #   Évaluation : fourchettes et probabilités éprouvées en temps réel
+│   ├── groupes_revenu.py         #   Groupe de revenu connu à la date de chaque édition (fourchettes)
 │   ├── long_terme.py             #   Évaluation : fourchettes au-delà de l'horizon du FMI (trajectoires prolongées)
 │   ├── scenarios.py              #   Export : scénarios de PIB et de population jusqu'en 2050, pour le trafic
 │   ├── cas_de_crise.py           #   Évaluation : une récession mondiale (2009, 2020) dans les prévisions
@@ -136,7 +137,7 @@ jupyter nbconvert --to html --execute --ExecutePreprocessor.kernel_name=julia-1.
 ### Tests
 
 ```bash
-pytest                      # 187 tests, sans accès réseau
+pytest                      # 190 tests, sans accès réseau
 pytest -m "not donnees"     # sans les contrôles sur les fichiers produits
 ```
 
@@ -330,32 +331,33 @@ Le FMI apporte beaucoup sur l'année en cours ; à 5 ans — l'horizon des proje
 
 | PIB en volume 2031 | Croissance projetée 2026-2031 | Écart à la projection (80 % des cas passés) | Au moins une année de recul 2027-2031 |
 |---|---|---|---|
-| États-Unis | +12,5 % | −11,9 à +6,9 % | 65 % |
-| Chine | +25,0 % | −16,2 à +8,7 % | 47 % |
-| Allemagne, Japon, France, Royaume-Uni | +4 à +9 % | −11,9 à +6,9 % | 65 % |
-| Inde | +46,0 % | **−21,8 à +4,8 %** | 23 % |
-| Indonésie | +35,1 % | −19,3 à +7,4 % | 46 % |
+| États-Unis | +12,5 % | −11,3 à +5,1 % | 64 % |
+| Chine | +25,0 % | −18,2 à +5,0 % | 52 % |
+| Allemagne, Japon, France, Royaume-Uni | +4 à +9 % | −11,3 à +5,1 % | 64 % |
+| Inde | +46,0 % | **−25,0 à +4,6 %** | 32 % |
+| Indonésie | +35,1 % | −21,6 à +2,5 % | 50 % |
 
-Plus la croissance projetée est forte, plus la fourchette penche vers le bas. **Ces fourchettes sont éprouvées sur le passé** : calculées sur les éditions 1990-2007, elles ont contenu 83 % des erreurs des éditions 2008-2019, pour une cible de 80 % (`gdp_projection_bands_calibration.csv`, refait à chaque exécution). Elles sont prudentes pour les vingt premières économies (94 %) et justes pour les pays à faible revenu (78 %). La dernière colonne vient des mêmes projections comparables : la part où il est survenu au moins une année de recul dans les cinq années suivant l'édition (voir ci-dessous).
+Plus la croissance projetée est forte, plus la fourchette penche vers le bas. **Ces fourchettes sont éprouvées sur le passé** : calculées sur les éditions 1990-2007, elles ont contenu 80 % des erreurs des éditions 2008-2019, pour une cible de 80 % (`gdp_projection_bands_calibration.csv`, refait à chaque exécution). Elles sont prudentes pour les vingt premières économies (91 %) et pour les pays à faible revenu (86 %). La dernière colonne vient des mêmes projections comparables : la part où il est survenu au moins une année de recul dans les cinq années suivant l'édition (voir ci-dessous).
 
 **Éprouvées en temps réel** (`pib.calibration`). Le test précédent coupe une fois, en 2007. Plus exigeant : chaque édition de 2000 à 2019 reçoit des fourchettes tirées des seules erreurs connues à sa date. À 5 ans, l'erreur d'une édition m n'est connue qu'après la ré-estimation d'octobre m + 6 : l'édition v n'utilise donc que les éditions jusqu'à v − 7. Les méthodes sont comparées sur les mêmes 6 874 projections, avec des scores propres (Gneiting et Raftery, 2007 : plus petits, meilleurs) et des intervalles de confiance par bootstrap en blocs d'années visées :
 
 | Méthode | Couverture (cible 80 %) | Score d'intervalle | Pondéré par le PIB | CRPS |
 |---|---|---|---|---|
-| Classe de croissance × groupe de revenu (retenue) | 79,0 % (76 à 82) | 56,3 | **33,5** | 7,78 |
+| Classe de croissance × groupe de revenu (retenue) | 78,7 % (76 à 81) | 55,6 | 31,9 | 7,70 |
 | Classe de croissance seule | 81,8 % | 55,5 | 36,9 | 7,69 |
-| Groupe de revenu seul | 81,5 % | 56,7 | 33,0 | 7,79 |
+| Groupe de revenu seul | 80,2 % | 56,0 | **29,6** | 7,77 |
 | Fourchette unique pour tous les pays | 82,8 % | 55,8 | 36,0 | 7,69 |
 | Historique du pays | 58,5 % | 73,5 | 38,1 | 9,89 |
 
-- **Les fourchettes poolées sont calibrées en temps réel en moyenne**, mais leur couverture dépend des chocs que traverse chaque fenêtre de cinq ans : de 66 % (édition 2003, qui sous-estimait l'essor d'avant 2008) à 86 % (édition 2014), 70 % pour l'édition 2015, dont la fenêtre inclut 2020.
-- **Le choix des projections comparables compte par le groupe de revenu, et pondéré par le PIB.** Le score de la méthode retenue est alors meilleur que celui d'une fourchette unique (écart de 2,6, intervalle de 1,6 à 3,4) et de la classe seule (3,4), et équivalent à celui du groupe seul. Sans pondération, les méthodes poolées se valent. Seul l'historique du pays est nettement moins bon.
-- **Probabilités de récession.** Apprises sur les seules fréquences passées, elles faisaient mieux qu'une probabilité unique (score de Brier inférieur de 7,2 %, grâce à la classe de croissance ; le groupe de revenu n'apporte rien), mais leur niveau dépendait des crises que contenait la période d'apprentissage : 38 % en moyenne sur 2000-2019, pour 49 % de périodes avec recul. **Les crises mondiales sont désormais traitées à part** :
+- **Les fourchettes poolées sont calibrées en temps réel en moyenne**, mais leur couverture dépend des chocs que traverse chaque fenêtre de cinq ans : de 65 % (édition 2003, qui sous-estimait l'essor d'avant 2008) à 86 % (éditions 2000 et 2010), 70 % pour l'édition 2015, dont la fenêtre inclut 2020.
+- **Le choix des projections comparables compte par le groupe de revenu, et pondéré par le PIB.** Le score de la méthode retenue est alors meilleur que celui d'une fourchette unique (écart de 4,1, intervalle de 1,9 à 6,0) et de la classe seule (5,0), mais moins bon que celui du groupe seul (2,3, intervalle de 0,7 à 4,1). Sans pondération, les méthodes poolées se valent. Seul l'historique du pays est nettement moins bon.
+- **Groupe de revenu connu à la date de l'édition** (`pib.groupes_revenu`, classement historique de la Banque Mondiale) pour les cas passés. Le groupe actuel rangerait parmi les pays riches ceux qui le sont devenus en dépassant les prévisions : un biais de sélection, faible à 5 ans (couverture de 79,0 % avec le groupe actuel), fort au-delà (voir ci-dessous).
+- **Probabilités de récession.** Apprises sur les seules fréquences passées, elles faisaient mieux qu'une probabilité unique (score de Brier inférieur de 7,3 %, grâce surtout à la classe de croissance), mais leur niveau dépendait des crises que contenait la période d'apprentissage : 38 % en moyenne sur 2000-2019, pour 49 % de périodes avec recul. **Les crises mondiales sont désormais traitées à part** :
   - les récessions mondiales sont les reculs du PIB mondial par habitant depuis 1961 (1975, 1982, 1991, 2009, 2020 ; série de la Banque Mondiale, `world_gdp_per_capita_growth.csv`) ;
   - une période de 5 ans en contient une dans 41 % des cas ;
   - la probabilité de recul d'un pays mêle sa fréquence dans les périodes passées en crise et hors crise, dans sa cellule, pondérées par cette probabilité.
 
-  En temps réel, la compétence passe de 7,2 à 11,8 % (intervalle de 6,4 à 17,4 %), un gain significatif ; la moyenne remonte à 41 %. La trajectoire du FMI, qui n'annonce presque jamais de recul, ferait bien pire (Brier supérieur de 79 %). En production, les probabilités bougent peu, mais `gdp_projection_bands.csv` donne aussi leurs versions conditionnelles, utiles aux scénarios : États-Unis 98 % de recul si une récession mondiale survient d'ici 2031, 42 % sinon ; Chine 73 % et 29 % ; Inde 29 % et 18 %.
+  En temps réel, la compétence passe de 7,3 à 11,3 % (intervalle de 5,6 à 17,1 %), un gain significatif ; la moyenne remonte à 41 %. La trajectoire du FMI, qui n'annonce presque jamais de recul, ferait bien pire (Brier supérieur de 79 %). En production, les probabilités bougent peu, mais `gdp_projection_bands.csv` donne aussi leurs versions conditionnelles, utiles aux scénarios : États-Unis 97 % de recul si une récession mondiale survient d'ici 2031, 41 % sinon ; Chine 78 % et 33 % ; Inde 39 % et 27 %.
 
 Une première version tirait la fourchette de l'historique propre de chaque pays : elle n'aurait contenu que 67 % des erreurs de la période suivante. Le biais d'un pays ne se reproduit pas d'une période à l'autre — corrélation de 0,01 entre 1990-2007 et 2008-2020 ; la Chine passe de −1,9 à +1,0 point, l'Inde de −0,5 à +1,8.
 
@@ -399,13 +401,13 @@ Les révisions penchent à la hausse (croissance +0,26 point en moyenne, niveau 
 - **ensuite**, pour les scénarios centraux et de crise, la croissance du PIB potentiel par habitant du scénario de référence de l'OCDE (pays, sinon région). Les bornes `bas` et `haut` s'élargissent comme les erreurs passées des trajectoires du FMI prolongées, par groupe de revenu (`pib.long_terme`, ci-dessous) ;
 - **population :** celle du pipeline jusqu'en 2031, puis la croissance médiane de l'ONU (*World Population Prospects* 2024), avec les bornes de son intervalle à 80 %.
 
-Pour le Canada, le PIB par habitant de 2031 va de 43 059 $ (bas) à 52 261 $ (haut) autour de 48 883 $ ; en 2050, de 35 248 à 82 620 $ autour de 64 344 $.
+Pour le Canada, le PIB par habitant de 2031 va de 43 340 $ (bas) à 51 379 $ (haut) autour de 48 883 $ ; en 2050, de 37 730 à 66 449 $ autour de 64 344 $.
 
 **Au-delà de l'horizon du FMI** (`pib.long_terme`). Chaque édition du WEO depuis 1999 est prolongée au-delà de 5 ans, puis confrontée au réalisé jusqu'à la dernière année connue (8 930 trajectoires, jusqu'à 25 ans d'horizon) :
 - **Prolonger la croissance de moyen terme du FMI** (médiane de ses horizons 3 à 5) surestime le niveau de 12 % en médiane à 10 ans, de 28 % à 20 ans.
 - **Prolonger par la dérive**, la croissance moyenne des 10 dernières années connues à la date de l'édition, fait mieux que la dérive seule dans 56 à 64 % des cas.
-- **L'erreur croît presque linéairement avec l'horizon :** 80 % des erreurs de niveau restent sous 30 % à 10 ans, sous 50 % à 20 ans. Pour les pays à revenu élevé à 10 ans, de −11 % à +35 % (niveau prévu / réalisé − 1).
-- **Les quantiles par groupe de revenu,** lissés par une loi de puissance de l'horizon (ajustée jusqu'à 16 ans, extrapolée au-delà), donnent les bornes des scénarios après 2031. Avant, l'écart entre variantes de l'OCDE, qui ne diffèrent que par le climat et la transition énergétique, sous-estimait l'incertitude.
+- **L'erreur croît presque linéairement avec l'horizon :** 80 % des erreurs de niveau restent sous 30 % à 10 ans, sous 50 % à 20 ans. Pour les pays à revenu élevé à la date de l'édition, à 10 ans, de −4 % à +35 % (niveau prévu / réalisé − 1) : le réalisé a rarement dépassé la trajectoire prolongée. Classés selon leur groupe actuel, ces pays auraient montré −11 % à +35 %, par biais de sélection.
+- **Les quantiles par groupe de revenu connu à la date de l'édition,** lissés par une loi log(1 + q) = α + β (h + 1)^b (ajustée jusqu'à 16 ans, extrapolée au-delà), donnent les bornes des scénarios après 2031. Avant, l'écart entre variantes de l'OCDE, qui ne diffèrent que par le climat et la transition énergétique, sous-estimait l'incertitude.
 
 **Autres indicateurs : lire les médianes.** La référence Banque Mondiale n'existe que pour la croissance du PIB : pour `pcpi_pch` (inflation) et `bca_gdp_bp6` (balance courante), seule la ré-estimation du FMI sert de référence. Pour l'inflation, les moyennes ne décrivent pas l'erreur typique : quelques projections d'hyperinflation (le Venezuela à 10 000 000 %) portent le biais moyen au-delà de 1 600 points à un an, quand la médiane reste à −0,1 point. La synthèse fournit donc aussi `mediane` et `erreur_absolue_mediane`, et le script avertit dès que l'erreur absolue moyenne dépasse dix fois la médiane.
 
@@ -475,7 +477,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 
 ## ✅ Tests des invariants
 
-187 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
+190 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
 
 | Invariant | Ce qu'il empêche |
 |---|---|
@@ -505,7 +507,8 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 | Révisions entre éditions consécutives seulement, étapes dans l'ordre ; historique contrôlé sur une année observée | Une révision calculée par-dessus une édition manquante, ou une révision de l'inflation prévue prise pour un changement d'année de base |
 | Commentaires de la page déduits des chiffres | Une conclusion écrite d'avance que la prochaine édition démentirait |
 | Scénarios pour le trafic : bornes et corrections dans le bon sens, croissance de l'OCDE du pays sinon de sa région, variantes de population de l'ONU appliquées aux seules années projetées | Un scénario bas plus haut que le central, ou une population « basse » qui modifie le passé observé |
-| Au-delà de l'horizon du FMI : dérive tirée des seules années connues à la date de l'édition ; loi ajustée sur les horizons assez fournis ; fourchette du pays conservée à l'horizon du FMI puis élargie, bornes basse et haute dans le bon sens | Une dérive qui connaît l'année en cours, une loi tirée de deux éditions, ou une fourchette qui saute en 2032 |
+| Au-delà de l'horizon du FMI : dérive tirée des seules années connues à la date de l'édition ; loi ajustée sur les horizons assez fournis, y compris quand un quantile change de signe ; fourchette du pays conservée à l'horizon du FMI puis élargie, bornes basse et haute dans le bon sens | Une dérive qui connaît l'année en cours, une loi tirée de deux éditions, ou une fourchette qui saute en 2032 |
+| Fourchettes : cas passés classés selon le groupe de revenu publié avant leur édition (avril : exercice v ; octobre : v + 1), groupe actuel à défaut | Des pays devenus riches en dépassant les prévisions comptés parmi les riches dès 1999 |
 | Crises mondiales à part : récessions et historique mondial connus à la date de l'édition ; repli sans période en crise ; mélange pondéré dans le bon sens | Une probabilité qui connaît les crises à venir, ou vide faute d'exemple |
 | Calibration en temps réel : aucune erreur encore inconnue à la date de l'édition ; score d'intervalle, CRPS et compétence de Brier exacts ; méthodes comparées sur les mêmes cas | Une calibration flatteuse parce qu'elle voit l'avenir, ou des méthodes comparées sur des échantillons différents |
 | Millésimes des WDI : champs lus par nom, chaque édition archivée une fois, première publication réelle seulement, valeur en temps réel à la fin de l'année suivante | Une révision mesurée depuis une édition qui n'était pas la première, ou une référence « en temps réel » qui connaît l'avenir |

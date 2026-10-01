@@ -5,6 +5,25 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## ⚖️ Groupe de Revenu Connu à la Date de l'Édition (30 Septembre 2026)
+
+Les fourchettes regroupaient les cas passés selon le groupe de revenu **actuel** des pays. Ce classement range parmi les pays riches ceux qui le sont devenus depuis (Chili, Pologne, pays baltes, Guyana), justement parce que leur croissance a dépassé les prévisions : un biais de sélection. Nouveau module `pib.groupes_revenu` : classement historique de la Banque Mondiale (exercices FY89 à aujourd'hui), téléchargé une fois dans `data/raw/`. L'édition d'avril v connaît l'exercice v, celle d'octobre l'exercice v + 1 ; un pays sans classement à la date garde son groupe actuel.
+
+- **Appliqué aux fourchettes de 2031, à leur calibration en temps réel et au long terme.** Les tableaux descriptifs (biais par groupe de revenu) gardent le groupe actuel.
+- **À 5 ans, peu de changement :**
+  - couverture en temps réel de 78,7 % au lieu de 79,0 % ;
+  - score d'intervalle pondéré de 31,9 au lieu de 33,5 ;
+  - coupure de 2007 : 80 % au lieu de 83 % ;
+  - États-Unis : −11,3 à +5,1 % au lieu de −11,9 à +6,9 % ;
+  - pondéré par le PIB, le groupe de revenu seul fait désormais mieux que la méthode retenue (29,6), écart significatif.
+- **Au-delà, un changement net pour les pays riches.** Pour les pays déjà riches à la date de l'édition, le réalisé n'a presque jamais dépassé de beaucoup la trajectoire prolongée : à 10 ans, l'erreur va de −4 à +35 %, contre −11 à +35 % avec le groupe actuel.
+  - Canada en 2050 : de 59 à 103 % de la trajectoire centrale, au lieu de 55 à 128 %.
+  - Pays à revenu intermédiaire : les rattrapages passés gardent une large marge à la hausse (Inde : 49 à 193 %).
+- **Lissage :** la loi log(1 + q) = c (h + 1)^b gardait un signe constant. Elle devient log(1 + q) = α + β (h + 1)^b, monotone, capable de changer de signe, l'exposant étant choisi sur une grille.
+- **Réserve :** au-delà de 10 ans, les éditions évaluables (1999 à 2009) sont dominées par la perte de niveau de 2008-2009, qui pèse sur le haut de la fourchette des pays riches.
+
+190 tests.
+
 ## 🔭 Fourchettes au-delà de l'Horizon du FMI (30 Septembre 2026)
 
 Les bornes `bas` et `haut` des scénarios suivaient, après 2031, les scénarios de l'OCDE le moins et le plus favorables. Ceux-ci ne diffèrent que par le climat et la transition énergétique : l'écart ne s'élargissait guère (84 à 107 % de la trajectoire centrale en 2050 pour le Canada), alors que l'incertitude, elle, croît avec l'horizon. Nouveau module `pib.long_terme`, dans la chaîne avant `pib.scenarios`.

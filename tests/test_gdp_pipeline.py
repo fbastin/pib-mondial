@@ -1573,6 +1573,38 @@ class TestScenariosPourLeTrafic:
         assert pib[(2028, "bas")] == pytest.approx(104.0 * 1.01 ** 2 * 0.8 * 1.10 / 1.14)
 
 
+class TestGroupesDeRevenuALEdition:
+    """
+    Groupe de revenu connu à la date de l'édition : le groupe actuel rangerait parmi les pays
+    riches ceux qui le sont devenus en dépassant les prévisions.
+    """
+
+    def test_lecture_du_classement_historique(self, tmp_path):
+        from pib.groupes_revenu import lire, FEUILLE
+        lignes = [[None] * 5 for _ in range(11)]
+        lignes[4] = [None, "Bank's fiscal year:", "FY89", "FY99", "FY12"]
+        lignes += [["POL", "Poland", "LM", "UM", "H"], ["YEM", "Yemen", "L", "LM*", ".."], ["xx", None, "H", "H", "H"]]
+        chemin = tmp_path / "oghist.xlsx"
+        pd.DataFrame(lignes).to_excel(chemin, sheet_name=FEUILLE, header=False, index=False)
+        g = lire(str(chemin)).set_index(["country_code", "exercice"])["groupe"]
+        assert g[("POL", 1989)] == "LMC" and g[("POL", 1999)] == "UMC" and g[("POL", 2012)] == "HIC"
+        assert g[("YEM", 1999)] == "LMC"                    # astérisque retiré
+        assert ("YEM", 2012) not in g.index                 # « .. » : pas de classement
+        assert "xx" not in g.index.get_level_values(0)
+
+    def test_groupe_a_l_edition(self):
+        from pib.groupes_revenu import a_l_edition
+        groupes = pd.DataFrame({"country_code": "POL", "exercice": [2011, 2012, 2013],
+                                "groupe": ["UMC", "UMC", "HIC"]})
+        cas = pd.DataFrame({"country_code": ["POL", "POL", "POL", "ZZZ"], "income_group": "HIC",
+                            "vintage": ["S2012", "F2012", "S2013", "S2012"], "annee_millesime": [2012, 2012, 2013, 2012]})
+        r = a_l_edition(cas, groupes)
+        # Avril 2012 : exercice 2012 ; octobre 2012 : exercice 2013 ; pays sans historique : groupe actuel
+        assert r["income_group"].tolist() == ["UMC", "HIC", "HIC", "HIC"]
+        assert cas["income_group"].tolist() == ["HIC"] * 4          # l'original est intact
+        assert a_l_edition(cas, None) is cas                        # sans classement : inchangé
+
+
 class TestFourchettesDeLongTerme:
     """
     Au-delà de l'horizon du FMI : erreurs des trajectoires du FMI prolongées, en temps réel ;
@@ -1610,15 +1642,13 @@ class TestFourchettesDeLongTerme:
         assert e.loc[9, "erreur_fmi_puis_derive"] == pytest.approx(100 * ((1.03 / 1.01) ** 6 - 1))
         assert e.loc[9, "erreur_fmi_prolonge"] == pytest.approx(100 * ((1.03 / 1.01) ** 10 - 1))
 
-    def test_loi_de_puissance_retrouvee_et_lissage(self):
+    def test_loi_lissee_retrouvee_et_lissage(self):
         from pib.long_terme import ajuster_loi, lisser
         h = np.arange(1, 17)
         p90 = 100 * np.expm1(0.03 * (h + 1) ** 0.9)
         p10 = 100 * np.expm1(-0.015 * (h + 1) ** 1.1)
-        c, b = ajuster_loi(h, p90)
-        assert (c, b) == pytest.approx((0.03, 0.9))
-        c, b = ajuster_loi(h, p10)
-        assert (c, b) == pytest.approx((-0.015, 1.1))
+        assert ajuster_loi(h, p90) == pytest.approx((0.0, 0.03, 0.9), abs=1e-9)
+        assert ajuster_loi(h, p10) == pytest.approx((0.0, -0.015, 1.1), abs=1e-9)
         q = pd.DataFrame({"groupe": "HIC", "horizon": np.r_[0, h, 30], "annees_edition": np.r_[25, [12] * 16, 2],
                           "p10": np.r_[-1, p10, -90], "p90": np.r_[1, p90, 500], "p50": 0.0, "cas": 100})
         bandes, lois = lisser(q)
@@ -1626,6 +1656,14 @@ class TestFourchettesDeLongTerme:
         b30 = bandes.set_index("horizon").loc[30]
         assert b30["p90_lisse"] == pytest.approx(100 * np.expm1(0.03 * 31 ** 0.9))
         assert np.all(np.diff(bandes["p90_lisse"]) > 0) and np.all(np.diff(bandes["p10_lisse"]) < 0)
+
+    def test_loi_lissee_qui_change_de_signe(self):
+        """10e centile négatif à court terme, positif au-delà : la loi le suit."""
+        from pib.long_terme import ajuster_loi
+        h = np.arange(1, 17)
+        q = 100 * np.expm1(-0.05 + 0.01 * (h + 1))
+        alpha, beta, b = ajuster_loi(h, q)
+        assert (alpha, beta, b) == pytest.approx((-0.05, 0.01, 1.0), abs=1e-9)
 
     def test_elargissement(self):
         from pib.long_terme import elargissement
@@ -1644,8 +1682,8 @@ class TestFourchettesDeLongTerme:
         if not os.path.exists(chemin):
             pytest.skip("pib.long_terme n'a pas tourné")
         b = pd.read_csv(chemin)
-        apres = b[b["horizon"] >= 1]
-        assert (apres["p10_lisse"] < 0).all() and (apres["p90_lisse"] > 0).all()
+        assert (b["p90_lisse"] > b["p10_lisse"]).all()
+        assert (b.loc[b["horizon"] >= 1, "p90_lisse"] > 0).all()
         for _, g in b.groupby("groupe"):
             assert np.all(np.diff(g.sort_values("horizon")["p90_lisse"]) > 0)
 

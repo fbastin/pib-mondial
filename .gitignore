@@ -19,6 +19,9 @@ data/raw/wdi_archive/
 # par `python -m pib.scenarios` (données ouvertes, 21 Mo)
 data/raw/scenarios_long_terme/
 
+# Classement historique des pays par revenu (Banque Mondiale) : re-téléchargé par pib.groupes_revenu
+data/raw/bm_groupes_revenu_historiques.xlsx
+
 # Compilation LaTeX (le PDF, lui, reste versionné : lisible sans installation LaTeX)
 build/
 *.aux

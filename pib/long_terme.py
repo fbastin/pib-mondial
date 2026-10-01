@@ -23,18 +23,21 @@ réalisé − 1, en %, croissances enchaînées depuis l'année précédant l'é
 ré-estimation du FMI à un an.
 
 Les fourchettes des scénarios (`pib.scenarios`) s'en déduisent au-delà de l'horizon du FMI.
-Par groupe de revenu et par horizon, les quantiles à 10 et 90 % de l'erreur de
-`fmi_puis_derive` sont lissés par une loi de puissance, log(1 + q) = c · (h + 1)^b. La loi est
-ajustée sur les horizons qui comptent au moins `ANNEES_MIN` années d'édition, puis
-extrapolée. La fourchette de l'horizon du FMI, propre à chaque pays, s'élargit ensuite comme
-ces quantiles entre l'horizon 5 et l'horizon h (`elargissement`).
+Par groupe de revenu connu à la date de l'édition (`pib.groupes_revenu`) et par horizon, les
+quantiles à 10 et 90 % de l'erreur de `fmi_puis_derive` sont lissés par une loi
+log(1 + q) = α + β · (h + 1)^b, monotone en h. Elle peut changer de signe : pour les pays
+alors riches, le 10e centile devient positif au-delà d'une dizaine d'années, le réalisé
+n'ayant presque jamais dépassé la trajectoire prolongée. La loi est ajustée sur les
+horizons qui comptent au moins `ANNEES_MIN` années d'édition, puis extrapolée. La
+fourchette de l'horizon du FMI, propre à chaque pays, s'élargit ensuite comme ces quantiles
+entre l'horizon 5 et l'horizon h (`elargissement`).
 
 Sorties dans `data/processed/` :
 
 - `gdp_long_horizon_errors.csv` : par horizon, quantiles et erreurs absolues des trois
   prolongements, et part des cas où le FMI prolongé fait mieux que la dérive ;
 - `gdp_long_horizon_bands.csv` : par groupe de revenu et horizon, quantiles observés et lissés ;
-- `gdp_long_horizon_law.csv` : paramètres des lois de puissance.
+- `gdp_long_horizon_law.csv` : paramètres des lois lissées.
 
     python -m pib.long_terme --data-dir data
 """
@@ -45,6 +48,8 @@ import argparse
 
 import numpy as np
 import pandas as pd
+
+from pib import groupes_revenu
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -60,6 +65,8 @@ ANNEES_MIN = 10
 # Extrapolation des fourchettes : jusqu'à cet horizon (2026 + 40 dépasse 2050)
 H_EXTRAPOLATION = 40
 TOUS = "tous"
+# Exposants essayés pour la loi lissée (pas de scipy : recherche sur une grille)
+EXPOSANTS = np.round(np.arange(0.2, 2.0001, 0.01), 2)
 
 FICHIER_EVALUATION = "weo_forecast_evaluation_ngdp_rpch.csv"
 FICHIER_ERREURS = "gdp_long_horizon_errors.csv"
@@ -159,18 +166,26 @@ def quantiles_par_groupe(erreurs: pd.DataFrame, prolongement: str = "fmi_puis_de
 
 def ajuster_loi(horizons: np.ndarray, quantiles_pct: np.ndarray) -> tuple:
     """
-    log(1 + q) = c · (h + 1)^b, ajusté en log-log sur |log(1 + q)| (le signe de q est
-    constant : positif pour le 90e centile, négatif pour le 10e). Rend (c signé, b).
+    log(1 + q) = α + β · (h + 1)^b : b sur la grille `EXPOSANTS`, α et β par moindres carrés
+    pour chaque b, la plus petite somme des carrés l'emportant. Monotone en h, la loi peut
+    changer de signe. Rend (α, β, b).
     """
-    y = np.log1p(np.asarray(quantiles_pct) / 100)
-    signe = np.sign(np.median(y))
-    b, log_c = np.polyfit(np.log(np.asarray(horizons) + 1), np.log(np.abs(y)), 1)
-    return signe * np.exp(log_c), b
+    y = np.log1p(np.asarray(quantiles_pct, dtype=float) / 100)
+    x = np.asarray(horizons, dtype=float) + 1
+    meilleur = None
+    for b in EXPOSANTS:
+        X = np.column_stack([np.ones_like(x), x ** b])
+        coef, *_ = np.linalg.lstsq(X, y, rcond=None)
+        carres = float(np.sum((y - X @ coef) ** 2))
+        if meilleur is None or carres < meilleur[0] - 1e-12:
+            meilleur = (carres, coef[0], coef[1], b)
+    _, alpha, beta, b = meilleur
+    return float(alpha), float(beta), float(b)
 
 
 def lisser(quantiles: pd.DataFrame, annees_min: int = ANNEES_MIN, h_max: int = H_EXTRAPOLATION) -> tuple:
     """
-    Pour chaque groupe : lois de puissance des 10e et 90e centiles, ajustées de l'horizon 1
+    Pour chaque groupe : lois des 10e et 90e centiles (`ajuster_loi`), ajustées de l'horizon 1
     au dernier horizon qui compte au moins `annees_min` années d'édition, et quantiles lissés
     de l'horizon 0 à `h_max`. Rend (fourchettes lissées jointes aux observées, lois).
     """
@@ -183,9 +198,9 @@ def lisser(quantiles: pd.DataFrame, annees_min: int = ANNEES_MIN, h_max: int = H
         ligne_loi = {"groupe": groupe, "horizon_max_ajuste": int(fiable["horizon"].max())}
         lisse = pd.DataFrame({"groupe": groupe, "horizon": h})
         for q in ("p10", "p90"):
-            c, b = ajuster_loi(fiable["horizon"].to_numpy(), fiable[q].to_numpy())
-            ligne_loi.update({f"c_{q}": c, f"b_{q}": b})
-            lisse[f"{q}_lisse"] = 100 * np.expm1(c * (h + 1) ** b)
+            alpha, beta, b = ajuster_loi(fiable["horizon"].to_numpy(), fiable[q].to_numpy())
+            ligne_loi.update({f"alpha_{q}": alpha, f"beta_{q}": beta, f"b_{q}": b})
+            lisse[f"{q}_lisse"] = 100 * np.expm1(alpha + beta * (h + 1) ** b)
         lissees.append(lisse)
         lois.append(ligne_loi)
     bandes = pd.concat(lissees, ignore_index=True).merge(quantiles, on=["groupe", "horizon"], how="left")
@@ -222,7 +237,8 @@ def main():
         logging.warning(f"{chemin} absent : lancer d'abord pib.evaluate_forecasts. Fourchettes de long terme omises.")
         return
     evaluation = pd.read_csv(chemin)
-    erreurs = erreurs_prolongees(evaluation)
+    # Groupe de revenu connu à la date de l'édition : le groupe actuel introduirait un biais de sélection
+    erreurs = groupes_revenu.a_l_edition(erreurs_prolongees(evaluation), groupes_revenu.charger())
     synthese(erreurs).to_csv(os.path.join(processed, FICHIER_ERREURS), index=False, encoding="utf-8-sig")
     bandes, lois = lisser(quantiles_par_groupe(erreurs))
     bandes.to_csv(os.path.join(processed, FICHIER_BANDES), index=False, encoding="utf-8-sig")

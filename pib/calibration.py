@@ -33,6 +33,7 @@ import argparse
 import numpy as np
 import pandas as pd
 
+from pib import groupes_revenu
 from pib.evaluate_forecasts import (
     MIN_CAS_CELLULE,
     QUANTILES_FOURCHETTE,
@@ -320,7 +321,9 @@ def main():
     monde = lire_croissance_mondiale(args.data_dir)
     if monde is None:
         logging.warning("Croissance mondiale absente : pas de probabilités avec les crises mondiales à part.")
-    previsions = previsions_en_temps_reel(pd.read_csv(niveaux_csv), args.horizon, monde=monde)
+    # Cas passés classés selon le groupe de revenu connu à leur édition (voir `pib.groupes_revenu`)
+    niveaux = groupes_revenu.a_l_edition(pd.read_csv(niveaux_csv), groupes_revenu.charger())
+    previsions = previsions_en_temps_reel(niveaux, args.horizon, monde=monde)
     if previsions.empty:
         logging.warning("Aucune édition testable en temps réel.")
         return

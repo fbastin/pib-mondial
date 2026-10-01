@@ -38,6 +38,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from pib import groupes_revenu
 from pib.gdp_pipeline import unified_csv_path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -1125,11 +1126,14 @@ def evaluer_niveaux(evaluation: pd.DataFrame, base: pd.DataFrame, data_dir: str,
     monde = lire_croissance_mondiale(data_dir)
     if monde is None:
         logging.warning(f"{FICHIER_MONDE} absent : probabilités de récession sans les crises mondiales à part.")
-    fourchettes = fourchettes_projections(niveaux, croissance_projetee_actuelle(base, annee_edition, horizon),
+    # Cas passés classés selon le groupe de revenu connu à leur édition (voir `pib.groupes_revenu`) ;
+    # les projections actuelles gardent leur groupe actuel, qui est celui connu aujourd'hui
+    niveaux_passes = groupes_revenu.a_l_edition(niveaux, groupes_revenu.charger())
+    fourchettes = fourchettes_projections(niveaux_passes, croissance_projetee_actuelle(base, annee_edition, horizon),
                                           pd.read_csv(synthese_csv), annee_fin, annee_edition, monde)
     if fourchettes.empty:
         return
-    calibration = calibration_fourchettes(niveaux, horizon)
+    calibration = calibration_fourchettes(niveaux_passes, horizon)
     calibration.to_csv(os.path.join(processed, "gdp_projection_bands_calibration.csv"), index=False, encoding="utf-8-sig")
     logging.info("Calibration des fourchettes (test rétrospectif) :\n" + calibration.to_string(index=False))
     fourchettes.to_csv(os.path.join(processed, "gdp_projection_bands.csv"), index=False, encoding="utf-8-sig")
@@ -1140,7 +1144,7 @@ def evaluer_niveaux(evaluation: pd.DataFrame, base: pd.DataFrame, data_dir: str,
     # trajectoires des scénarios (voir `pib.scenarios`)
     synthese = pd.read_csv(synthese_csv)
     par_horizon = pd.concat([
-        fourchettes_projections(niveaux, croissance_projetee_actuelle(base, annee_edition, h), synthese,
+        fourchettes_projections(niveaux_passes, croissance_projetee_actuelle(base, annee_edition, h), synthese,
                                 annee_edition + h, annee_edition, monde).assign(year=annee_edition + h)
         for h in range(0, horizon + 1)], ignore_index=True)
     par_horizon.to_csv(os.path.join(processed, "gdp_projection_bands_by_horizon.csv"), index=False, encoding="utf-8-sig")
