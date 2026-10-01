@@ -9,6 +9,8 @@ Produit par `python produire_rapports.py`, ou seul par `python -m pib.scenarios 
 | `scenarios_pib_population.csv` | Une ligne par pays, année (de 2000 à 2050) et scénario |
 | `scenarios_pib_population_pays.csv` | Par pays : zone de croissance de long terme, origine des bornes au-delà de 2031, bornes et probabilités de recul d'ici 2031 |
 | `scenarios_pib_population_sources.json` | Sources et paramètres |
+| `scenarios_pib_tirages.csv` | 60 trajectoires conjointes de tous les pays, de 2026 à 2050 (`python -m pib.tirages`) |
+| `scenarios_pib_tirages_controle.csv` | Contrôle des tirages : part sous `bas` et au-dessus de `haut` par pays ; quantiles de quelques agrégats contre la somme des bornes |
 
 **Le nom ne change pas avec l'horizon** : lire ces fichiers plutôt que `gdp_unified_<début>_<fin>.csv`, dont le nom suit les bornes du run. La chaîne du projet trafic lisait `gdp_unified_2000_2030.csv`, remplacé depuis par `gdp_unified_2000_2031.csv`.
 
@@ -70,6 +72,42 @@ Sans `gdp_long_horizon_bands.csv`, `bas` et `haut` suivent à défaut le scénar
 
 **Probabilités de récession** (`scenarios_pib_population_pays.csv`) : au moins une année de recul entre 2027 et 2031, 64 % pour le Canada. Si une récession mondiale survient, 97 % ; sinon, 41 %. Une période de cinq ans contient une récession mondiale dans 41 % des cas depuis 1961.
 
+## Agréger plusieurs marchés : les trajectoires conjointes
+
+Les bornes `bas` et `haut` sont calculées **pays par pays**. Additionner la borne basse de chaque marché (Canada, États-Unis, Europe…) ne donne pas un « scénario bas à 80 % » de l'ensemble : cette combinaison n'a pas de probabilité connue. Les erreurs des pays sont liées, mais pas parfaitement.
+
+`scenarios_pib_tirages.csv` donne **60 trajectoires conjointes** de tous les pays, de 2026 à 2050 :
+
+| Colonne | Contenu |
+|---|---|
+| `tirage` | Édition du WEO rejouée (`S1990` à `F2019` : avril et octobre de 1990 à 2019) |
+| `country_code`, `year` | Pays, année |
+| `pib_reel_par_habitant_usd_2015` | PIB en volume par habitant, dollars constants de 2015 |
+
+**Construction** (rééchantillonnage de Schaake, Clark et al., 2004) :
+- **Jusqu'en 2031,** chaque tirage rejoue une édition passée. À chaque horizon, chaque pays y reçoit son rang parmi les 60 éditions de sa propre histoire, puis le quantile correspondant de **sa fourchette actuelle**. Exemple : l'édition où le Canada a le plus surestimé son niveau à 5 ans lui donne le plus bas des 60 niveaux de 2031. Chaque pays garde donc exactement sa fourchette, mais les crises communes restent communes.
+- **Pays absent d'une édition :** il prend le rang médian des pays de son groupe de revenu dans cette édition.
+- **Au-delà de 2031,** chaque tirage garde sa position relative dans la fourchette `bas`–`haut` de son pays.
+
+**Ce que ça change** (en % de la somme des `central_fmi`, population centrale ; intervalle à 95 % par bootstrap des années d'édition) :
+
+| Agrégat | Année | Tirages : 10e – 90e centile | Somme des `bas` – somme des `haut` |
+|---|---|---|---|
+| Tous les pays | 2031 | 90,2 (89,2 à 93,3) – 100,7 | 85,2 – 105,5 |
+| Tous les pays | 2050 | 73,4 (68,9 à 81,8) – 112,7 | 56,0 – 129,8 |
+| Canada, États-Unis, France, Royaume-Uni | 2031 | 87,7 (84,3 à 94,2) – 104,4 | 88,7 – 105,1 |
+| Canada, États-Unis, France, Royaume-Uni | 2050 | 57,3 (50,2 à 71,8) – 101,5 | 58,6 – 103,3 |
+| G7 | 2050 | 59,4 (56,2 à 75,2) – 96,0 | 58,6 – 103,3 |
+
+- **Pour le monde entier,** sommer les bornes exagère nettement l'incertitude : les erreurs des pays se compensent en partie.
+- **Pour quelques marchés riches,** la somme des bornes reste dans l'incertitude des tirages. Les États-Unis y pèsent environ 60 %, et les pires tirages rejouent pour tous les éditions de 2005 à 2008, prises de court par la crise financière.
+- **La meilleure façon de s'en servir :** faire passer chacun des 60 tirages dans le modèle de trafic, puis lire les quantiles du trafic total. La dépendance entre marchés est alors celle qu'ont connue les éditions passées.
+
+**Limites :**
+- **60 tirages, dont des paires voisines.** Les éditions d'avril et d'octobre d'une même année sont très proches : cela fait une trentaine d'épisodes indépendants. Les quantiles d'un agrégat se lisent à quelques points près ; d'où les intervalles du fichier de contrôle.
+- **Aucun choc nouveau après 2031 :** un tirage garde sa position relative dans la fourchette de chaque pays. L'élargissement des bornes après 2031 vient des erreurs passées des trajectoires prolongées (ci-dessus), qui ne disent rien de leur dépendance entre pays.
+- **PIB seulement :** la population reste celle du scénario central.
+
 ## Population
 
 - **Jusqu'en 2031 :** celle du pipeline (Banque Mondiale, puis FMI).
@@ -80,6 +118,7 @@ Sans `gdp_long_horizon_bands.csv`, `bas` et `haut` suivent à défaut le scénar
 
 - **Utiliser le PIB en volume par habitant.** Le prix normalisé rapporte un prix au revenu ; en volume, il ne mêle pas l'inflation à la croissance du revenu. La variante indexée, qui remplace le prix par `PIB_ref / PIB_par_habitant(t)`, n'a besoin que d'un rapport, sans unité : le volume convient directement. Le dollar courant n'est fourni que jusqu'en 2031, pour la continuité.
 - **Combiner les dimensions au besoin.** Les scénarios de PIB et les variantes de population sont indépendants : `bas` × population basse donne le cas le plus défavorable.
+- **Pour plusieurs marchés à la fois,** passer par les trajectoires conjointes (`scenarios_pib_tirages.csv`, ci-dessus) plutôt que d'additionner les bornes de chaque pays.
 - **Pour une crise ponctuelle**, `crise_mondiale` donne le niveau ; la pire année médiane (−3,7 % pour le Canada) et le profil de 2008 (`docs/cas_crise_2008.md`) donnent la forme de la trajectoire.
 - **La zone de chalandise n'est pas le pays.** Ces séries sont nationales ; le PIB métropolitain (Statistique Canada, tableau 36-10-0468-01) reste la piste identifiée par la feuille de route du projet trafic.
 

@@ -5,6 +5,19 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 🎲 Trajectoires Conjointes pour Agréger des Marchés (30 Septembre 2026)
+
+Les scénarios `bas` et `haut` sont calculés pays par pays. Une prévision de trafic qui additionne des marchés ne peut pas prendre la borne basse de chacun et l'appeler « scénario bas à 80 % ». Nouveau module `pib.tirages` : 60 trajectoires conjointes de tous les pays jusqu'en 2050 (`scenarios_pib_tirages.csv`), chacune rejouant une édition du WEO d'avril 1990 à octobre 2019.
+
+- **Rééchantillonnage de Schaake.** À chaque horizon, chaque pays reçoit le rang de l'édition rejouée dans sa propre histoire, puis le quantile correspondant de sa fourchette actuelle. Un premier essai prenait directement la position du pays dans sa cellule de l'époque : le biais propre de chaque pays y entrait (Canada sans aucun tirage hors de sa fourchette, Chine avec 37 % au-dessus). Le rang corrige cela : chaque pays a désormais exactement 10 % de tirages de chaque côté.
+- **Au-delà de 2031,** chaque tirage garde sa position relative dans la fourchette du pays.
+- **Ce que ça change :**
+  - pour tous les pays ensemble, en 2050, de 73 à 113 % de la trajectoire centrale, contre 56 à 130 % pour la somme des bornes ;
+  - pour le Canada, les États-Unis, la France et le Royaume-Uni, la somme des bornes reste dans l'incertitude des tirages (2031 : 88,7 % contre 87,7 %, intervalle de 84,3 à 94,2). Les États-Unis y pèsent 60 %, et les éditions de 2005 à 2008 frappent tous ces pays ensemble.
+- **Contrôle** (`scenarios_pib_tirages_controle.csv`) : part des tirages hors fourchette par pays, quantiles des agrégats avec intervalle par bootstrap des années d'édition.
+
+200 tests ; trois mutations (position brute au lieu du rang, position non normalisée au-delà de 2031, bootstrap qui séparerait avril et octobre), rattrapées.
+
 ## 🔀 Deux Jeux de Bornes : Classe × Groupe, et Groupe Seul (30 Septembre 2026)
 
 Avec le groupe de revenu connu à la date de l'édition, le seul groupe de revenu calibrait mieux, pondéré par le PIB, que la méthode retenue (score d'intervalle de 29,6 contre 31,9). Vérifié par sous-échantillon (`calibration.ecart_par_sous_echantillon`, `gdp_bands_realtime_subsamples.csv`) :

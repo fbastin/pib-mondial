@@ -1608,6 +1608,98 @@ class TestScenariosPourLeTrafic:
         assert pib[(2028, "bas")] == pytest.approx(104.0 * 1.01 ** 2 * 0.8 * 1.10 / 1.14)
 
 
+class TestTiragesConjoints:
+    """
+    Trajectoires conjointes de tous les pays : chaque tirage rejoue une édition passée,
+    chaque pays garde exactement sa fourchette, la dépendance entre pays est celle des rangs.
+    """
+
+    EDITIONS = [f"{s}{a}" for a in range(2000, 2010) for s in ("S", "F")]
+    PAYS = ["AAA", "BBB", "CCC", "DDD"]
+
+    @classmethod
+    def _entrees(cls, propre: dict = None):
+        """
+        Erreurs passées = choc commun de l'édition + écart propre au pays ; tous les cas dans
+        une seule cellule (« ensemble »). Fourchettes aux horizons 0 et 1 (2026, 2027),
+        scénarios jusqu'en 2029 avec une fourchette qui s'élargit.
+        """
+        rng = np.random.default_rng(0)
+        choc = dict(zip(cls.EDITIONS, rng.normal(0, 5, len(cls.EDITIONS))))
+        choc["F2008"] = 30.0                                  # la pire édition, pour tous
+        propre = propre or {}
+        niveaux = pd.DataFrame([dict(country_code=c, vintage=v, annee_millesime=int(v[1:]), horizon=h,
+                                     income_group="HIC" if c < "C" else "LIC",
+                                     croissance_prevue_cumulee_pct=2.0 + h,
+                                     erreur_niveau_vs_fmi_pct=choc[v] + propre.get(c, 0.0) + rng.normal(0, 1))
+                                for c in cls.PAYS for v in cls.EDITIONS for h in (0, 1)])
+        bandes = pd.DataFrame([dict(country_code=c, income_group="HIC" if c < "C" else "LIC", horizon=h,
+                                    year=2026 + h, classe_de_croissance=np.nan) for c in cls.PAYS for h in (0, 1)])
+        central = {2026: 100.0, 2027: 102.0, 2028: 104.0, 2029: 106.0}
+        largeur = {2026: 0.05, 2027: 0.10, 2028: 0.20, 2029: 0.30}
+        scenarios = pd.DataFrame([dict(country_code=c, year=a, scenario=s, population_millions_centrale=10.0,
+                                       pib_reel_par_habitant_usd_2015=central[a] * f)
+                                  for c in cls.PAYS for a in central
+                                  for s, f in (("central_fmi", 1.0), ("bas", np.exp(-largeur[a])),
+                                               ("haut", np.exp(largeur[a] / 2)))])
+        return niveaux, bandes, scenarios
+
+    def test_niveaux_de_quantile(self):
+        from pib.tirages import niveaux_de_quantile
+        u = pd.DataFrame({"S2000": [0.9, 0.1], "F2000": [0.2, 0.5], "S2001": [0.5, 0.3]}, index=["AAA", "BBB"])
+        n = niveaux_de_quantile(u)
+        assert n.loc["AAA"].tolist() == pytest.approx([5 / 6, 1 / 6, 3 / 6])
+        assert n.loc["BBB"].tolist() == pytest.approx([1 / 6, 5 / 6, 3 / 6])
+
+    def test_chaque_pays_garde_sa_fourchette(self):
+        from pib.tirages import tirages, niveaux_de_quantile
+        niveaux, bandes, scenarios = self._entrees(propre={"AAA": 20.0})      # AAA toujours surestimé
+        t = tirages(niveaux, bandes, scenarios, 2029, pays_min=1)
+        passe = niveaux[niveaux["horizon"] == 1]["erreur_niveau_vs_fmi_pct"].to_numpy()
+        n = len(self.EDITIONS)
+        attendu = np.sort(100 / (1 + np.quantile(passe, (np.arange(1, n + 1) - 0.5) / n) / 100))
+        for c in self.PAYS:
+            tire = t[(t["country_code"] == c) & (t["year"] == 2027)].sort_values("pib_reel_par_habitant_usd_2015")
+            # Le biais propre de AAA ne déplace pas sa fourchette : seuls les rangs comptent
+            assert np.sort(tire["pib_reel_par_habitant_usd_2015"].to_numpy() / 102.0 * 100) == pytest.approx(attendu)
+
+    def test_le_choc_commun_est_conserve(self):
+        from pib.tirages import tirages
+        niveaux, bandes, scenarios = self._entrees()
+        t = tirages(niveaux, bandes, scenarios, 2029, pays_min=1)
+        pire = t[t["year"] == 2027].loc[lambda d: d.groupby("country_code")["pib_reel_par_habitant_usd_2015"].idxmin()]
+        assert set(pire["tirage"]) == {"F2008"}
+
+    def test_position_constante_au_dela_de_l_horizon(self):
+        from pib.tirages import tirages
+        niveaux, bandes, scenarios = self._entrees()
+        t = tirages(niveaux, bandes, scenarios, 2029, pays_min=1).set_index(["tirage", "country_code", "year"])
+        largeur = {2027: 0.10, 2029: 0.30}
+        central = {2027: 102.0, 2029: 106.0}
+        for tirage in ("F2008", "S2003"):
+            z = {a: (np.log(t.loc[(tirage, "CCC", a), "pib_reel_par_habitant_usd_2015"] / central[a]) + largeur[a] / 4)
+                    / (largeur[a] * 3 / 4) for a in (2027, 2029)}
+            assert z[2029] == pytest.approx(z[2027])
+
+    def test_pays_absent_prend_la_mediane_de_son_groupe(self):
+        from pib.tirages import positions
+        passe = pd.DataFrame(dict(vintage=["S2000"] * 3 + ["F2000"] * 3, country_code=["AAA", "BBB", "CCC"] * 2,
+                                  u=[0.9, 0.7, 0.2, 0.1, 0.3, np.nan]))
+        groupes = pd.Series({"AAA": "HIC", "BBB": "HIC", "CCC": "LIC", "DDD": "HIC", "EEE": "UMC"})
+        u = positions(passe.dropna(), ["S2000", "F2000"], groupes)
+        assert u.loc["DDD", "S2000"] == pytest.approx(0.8)            # médiane de AAA et BBB
+        assert u.loc["CCC", "F2000"] == pytest.approx(0.2)            # seul LIC absent : médiane de tous
+        assert u.loc["EEE", "S2000"] == pytest.approx(0.7)            # groupe sans membre : médiane de tous
+
+    def test_intervalle_tire_les_annees_d_edition(self):
+        from pib.tirages import intervalle_des_quantiles
+        constant = pd.Series(95.0, index=self.EDITIONS)
+        assert intervalle_des_quantiles(constant, 0.1, tirages=50) == pytest.approx((95.0, 95.0))
+        # Avril et octobre d'une même année tirés ensemble : autant de 110 que de 90, médiane 100
+        total = pd.Series([110.0 if e.startswith("S") else 90.0 for e in self.EDITIONS], index=self.EDITIONS)
+        assert intervalle_des_quantiles(total, 0.5, tirages=200) == pytest.approx((100.0, 100.0))
+
+
 class TestGroupesDeRevenuALEdition:
     """
     Groupe de revenu connu à la date de l'édition : le groupe actuel rangerait parmi les pays

@@ -81,6 +81,7 @@ def main():
                 lancer("calibration", "--data-dir", data_dir)
                 lancer("long_terme", "--data-dir", data_dir)
                 lancer("scenarios", "--data-dir", data_dir)
+                lancer("tirages", "--data-dir", data_dir)
             else:
                 logging.warning(f"{classeur} absent : évaluation des prévisions omise.")
             lancer("millesimes_bm", "--data-dir", data_dir)
