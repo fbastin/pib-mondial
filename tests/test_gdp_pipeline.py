@@ -1541,8 +1541,113 @@ class TestScenariosPourLeTrafic:
         assert t.loc[(2028, "central_fmi"), "population_millions_centrale"] == pytest.approx(10.0 * 1.02 ** 2)
         assert t.loc[(2028, "central_fmi"), "population_millions_basse"] == pytest.approx(10.0 * 1.02 ** 2 * 0.9)
         assert t.loc[(2024, "central_fmi"), "population_millions_basse"] == pytest.approx(10.0)
-        assert fiches.iloc[0]["scenario_ocde_bas"] == "ET3" and fiches.iloc[0]["scenario_ocde_haut"] == "BAU2"
+        assert fiches.iloc[0]["bornes_long_terme"] == "scénarios de l'OCDE ET3 et BAU2"
         assert t.loc[(2028, "central_fmi"), "periode"] == "long terme"
+
+    @staticmethod
+    def _bandes_long_terme(groupe="HIC"):
+        h = np.arange(0, 41)
+        return pd.DataFrame({"groupe": groupe, "horizon": h, "p10_lisse": -1.0 * h, "p90_lisse": 2.0 * h})
+
+    def test_bornes_de_long_terme_elargies(self):
+        """Au-delà de l'horizon du FMI : fourchette du pays élargie comme les erreurs passées de son groupe."""
+        from pib.scenarios import construire_scenarios
+        table, fiches = construire_scenarios(*self._entrees(), regions={}, annee_fin=2028,
+                                             bandes_long_terme=self._bandes_long_terme())
+        pib = table.set_index(["year", "scenario"])["pib_reel_par_habitant_usd_2015"]
+        central = {2027: 104.0 * 1.01, 2028: 104.0 * 1.01 ** 2}
+        # Horizon du FMI 2026 = horizon 5 ; 2027 = 6 ; 2028 = 7
+        assert pib[(2027, "bas")] == pytest.approx(central[2027] * 0.8 * 1.10 / 1.12)
+        assert pib[(2028, "bas")] == pytest.approx(central[2028] * 0.8 * 1.10 / 1.14)
+        assert pib[(2028, "haut")] == pytest.approx(central[2028] * 1.1 * 0.95 / 0.93)
+        assert pib[(2026, "bas")] == pytest.approx(104.0 * 0.8)                 # continuité à l'horizon du FMI
+        assert pib[(2028, "central_fmi")] == pytest.approx(central[2028])        # centraux inchangés
+        assert fiches.iloc[0]["bornes_long_terme"] == "erreurs passées du FMI prolongé (HIC)"
+
+    def test_groupe_inconnu_prend_tous_les_pays(self):
+        from pib.scenarios import construire_scenarios
+        table, fiches = construire_scenarios(*self._entrees(), regions={}, annee_fin=2028,
+                                             bandes_long_terme=self._bandes_long_terme("tous"))
+        assert fiches.iloc[0]["bornes_long_terme"] == "erreurs passées du FMI prolongé (tous)"
+        pib = table.set_index(["year", "scenario"])["pib_reel_par_habitant_usd_2015"]
+        assert pib[(2028, "bas")] == pytest.approx(104.0 * 1.01 ** 2 * 0.8 * 1.10 / 1.14)
+
+
+class TestFourchettesDeLongTerme:
+    """
+    Au-delà de l'horizon du FMI : erreurs des trajectoires du FMI prolongées, en temps réel ;
+    quantiles par groupe de revenu lissés par une loi de puissance ; élargissement des bornes.
+    """
+
+    def test_derive_ne_voit_que_le_passe_connu(self):
+        from pib.long_terme import derive
+        reel = pd.Series(2.0, index=range(1990, 2030))
+        reel.loc[2009:] = 50.0                         # l'avenir et l'année v − 1 ne doivent pas compter
+        assert derive(reel, 2010) == pytest.approx(2.0)
+        lacunaire = pd.Series(2.0, index=range(2001, 2004))
+        assert np.isnan(derive(lacunaire, 2010))       # 3 années sur 10 : trop peu
+
+    def test_prolongements(self):
+        from pib.long_terme import croissances_prevues
+        fmi = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 297.0])
+        p = croissances_prevues(fmi, 2.5, h_max=7)
+        assert np.allclose(p["fmi_puis_derive"], [1, 2, 3, 4, 5, 297, 2.5, 2.5])
+        assert np.allclose(p["fmi_prolonge"], [1, 2, 3, 4, 5, 297, 5, 5])   # médiane des horizons 3 à 5
+        assert np.allclose(p["derive"], 2.5)
+
+    def test_erreurs_prolongees_enchainees(self):
+        from pib.long_terme import erreurs_prolongees
+        lignes = [dict(country_code="AAA", income_group="HIC", vintage="F2010", annee_millesime=2010, horizon=h,
+                       year=2010 + h, valeur=3.0, realise_fmi=1.0) for h in range(6)]
+        lignes += [dict(country_code="AAA", income_group="HIC", vintage="X", annee_millesime=1900, horizon=9,
+                        year=a, valeur=np.nan, realise_fmi=1.0) for a in range(1995, 2010)]
+        lignes += [dict(country_code="AAA", income_group="HIC", vintage="X", annee_millesime=1900, horizon=9,
+                        year=a, valeur=np.nan, realise_fmi=1.0) for a in range(2016, 2020)]
+        e = erreurs_prolongees(pd.DataFrame(lignes), h_max=9).set_index("horizon")
+        assert list(e.index) == list(range(10))
+        # Dérive : 1 % ; FMI : 3 % jusqu'à 5 ans, puis 1 % ; réalisé : 1 %
+        assert e.loc[9, "erreur_derive"] == pytest.approx(0.0, abs=1e-9)
+        assert e.loc[9, "erreur_fmi_puis_derive"] == pytest.approx(100 * ((1.03 / 1.01) ** 6 - 1))
+        assert e.loc[9, "erreur_fmi_prolonge"] == pytest.approx(100 * ((1.03 / 1.01) ** 10 - 1))
+
+    def test_loi_de_puissance_retrouvee_et_lissage(self):
+        from pib.long_terme import ajuster_loi, lisser
+        h = np.arange(1, 17)
+        p90 = 100 * np.expm1(0.03 * (h + 1) ** 0.9)
+        p10 = 100 * np.expm1(-0.015 * (h + 1) ** 1.1)
+        c, b = ajuster_loi(h, p90)
+        assert (c, b) == pytest.approx((0.03, 0.9))
+        c, b = ajuster_loi(h, p10)
+        assert (c, b) == pytest.approx((-0.015, 1.1))
+        q = pd.DataFrame({"groupe": "HIC", "horizon": np.r_[0, h, 30], "annees_edition": np.r_[25, [12] * 16, 2],
+                          "p10": np.r_[-1, p10, -90], "p90": np.r_[1, p90, 500], "p50": 0.0, "cas": 100})
+        bandes, lois = lisser(q)
+        assert lois.iloc[0]["horizon_max_ajuste"] == 16          # l'horizon 30 (2 années d'édition) est écarté
+        b30 = bandes.set_index("horizon").loc[30]
+        assert b30["p90_lisse"] == pytest.approx(100 * np.expm1(0.03 * 31 ** 0.9))
+        assert np.all(np.diff(bandes["p90_lisse"]) > 0) and np.all(np.diff(bandes["p10_lisse"]) < 0)
+
+    def test_elargissement(self):
+        from pib.long_terme import elargissement
+        h = np.arange(0, 41)
+        b = pd.DataFrame({"groupe": ["HIC"] * 41 + ["tous"] * 41, "horizon": np.r_[h, h],
+                          "p10_lisse": np.r_[-1.0 * h, -2.0 * h], "p90_lisse": np.r_[2.0 * h, 3.0 * h]})
+        assert elargissement(b, "HIC", 5, 5) == pytest.approx((1.0, 1.0))
+        bas, haut = elargissement(b, "HIC", 5, 10)
+        assert bas == pytest.approx(1.10 / 1.20) and haut == pytest.approx(0.95 / 0.90)
+        assert elargissement(b, "XYZ", 5, 10) == pytest.approx((1.15 / 1.30, 0.90 / 0.80))   # groupe inconnu : tous
+        assert elargissement(b, "HIC", 5, 99) == elargissement(b, "HIC", 5, 40)               # au-delà : dernier horizon
+
+    @pytest.mark.donnees
+    def test_fourchettes_de_long_terme_produites(self):
+        chemin = os.path.join("data", "processed", "gdp_long_horizon_bands.csv")
+        if not os.path.exists(chemin):
+            pytest.skip("pib.long_terme n'a pas tourné")
+        b = pd.read_csv(chemin)
+        apres = b[b["horizon"] >= 1]
+        assert (apres["p10_lisse"] < 0).all() and (apres["p90_lisse"] > 0).all()
+        for _, g in b.groupby("groupe"):
+            assert np.all(np.diff(g.sort_values("horizon")["p90_lisse"]) > 0)
 
 
 class TestCalibrationEnTempsReel:

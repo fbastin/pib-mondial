@@ -13,12 +13,17 @@ passées du FMI (voir `evaluate_forecasts.fourchettes_projections`, à chaque ho
 - `bas`, `haut` : bornes de la fourchette à 80 % ;
 - `crise_mondiale` : divisée par (1 + erreur médiane des périodes passées en crise mondiale).
 
-Au-delà, chaque scénario suit la croissance du PIB potentiel par habitant des scénarios de
-long terme de l'OCDE (Perspectives économiques n° 117) : celle du pays, à défaut de sa
-région, à défaut du monde. Les scénarios centraux et de crise suivent le scénario de
-référence de l'OCDE (`SCENARIO_OCDE_CENTRAL`) ; `bas` et `haut` le scénario le moins et le
-plus favorable pour la zone. Le niveau atteint à l'horizon du FMI est conservé : après une
-crise, pas de rattrapage (voir `docs/cas_crise_2008.md`).
+Au-delà, les scénarios centraux et de crise suivent la croissance du PIB potentiel par
+habitant du scénario de référence de l'OCDE (`SCENARIO_OCDE_CENTRAL`, Perspectives
+économiques n° 117) : celle du pays, à défaut de sa région, à défaut du monde. Le niveau
+atteint à l'horizon du FMI est conservé : après une crise, pas de rattrapage (voir
+`docs/cas_crise_2008.md`).
+
+`bas` et `haut` gardent, autour de la trajectoire `central_fmi`, la fourchette du pays à
+l'horizon du FMI, puis l'élargissent comme se sont élargies les erreurs passées des
+trajectoires du FMI prolongées, pour son groupe de revenu (`pib.long_terme`). Sans ces
+fourchettes de long terme, ils suivent à défaut le scénario de l'OCDE le moins et le plus
+favorable pour la zone, qui ne diffèrent que par le climat et la transition énergétique.
 
 Population : celle du pipeline (Banque Mondiale, puis FMI jusqu'à son horizon), prolongée
 par la croissance de la variante médiane de l'ONU (World Population Prospects 2024) ;
@@ -48,6 +53,7 @@ import requests
 
 from pib.gdp_pipeline import unified_csv_path
 from pib.http_utils import get_json
+from pib.long_terme import FICHIER_BANDES, H_FMI, TOUS, elargissement
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -160,10 +166,12 @@ def facteurs_par_scenario(bandes: pd.DataFrame) -> pd.DataFrame:
 
 
 def construire_scenarios(unifie: pd.DataFrame, bandes: pd.DataFrame, ocde: pd.DataFrame, wpp: pd.DataFrame,
-                         regions: dict, annee_fin: int = ANNEE_FIN) -> tuple:
+                         regions: dict, annee_fin: int = ANNEE_FIN, bandes_long_terme: pd.DataFrame = None) -> tuple:
     """
     Trajectoires par pays, année et scénario, de la première année de la série à `annee_fin`,
-    et table par pays (zone de croissance, scénarios de l'OCDE retenus). Voir le module.
+    et table par pays (zone de croissance, bornes de long terme retenues). Voir le module.
+    `bandes_long_terme` : fourchettes lissées de `pib.long_terme` ; à défaut, `bas` et `haut`
+    suivent les scénarios extrêmes de l'OCDE.
     """
     pays = unifie[~unifie["is_aggregate"].astype(bool)].sort_values(["country_code", "year"])
     derniere_obs = int(pays.loc[~pays["is_forecast"].astype(bool), "year"].max())
@@ -199,14 +207,25 @@ def construire_scenarios(unifie: pd.DataFrame, bandes: pd.DataFrame, ocde: pd.Da
         else:
             population["basse"] = population["haute"] = population["centrale"]
 
+        groupe = serie["income_group"].iloc[0] if "income_group" in serie else None
+        central = pd.Series({horizon_fmi: float(hab[horizon_fmi])})
+        for a in range(horizon_fmi + 1, annee_fin + 1):
+            central[a] = central[a - 1] * croissance["central"].get(a, np.nan)
         for scenario in SCENARIOS:
             niveau = hab.copy().astype(float)
             for a in range(derniere_obs + 1, horizon_fmi + 1):
                 f = facteurs[scenario].get((code, a), 1.0)
                 niveau[a] = hab[a] * (1.0 if pd.isna(f) else f)
-            voie = {"bas": croissance["bas"], "haut": croissance["haut"]}.get(scenario, croissance["central"])
-            for a in range(horizon_fmi + 1, annee_fin + 1):
-                niveau[a] = niveau[a - 1] * voie.get(a, np.nan)
+            if scenario in ("bas", "haut") and bandes_long_terme is not None:
+                # Fourchette du pays à l'horizon du FMI, élargie comme les erreurs passées
+                ecart = niveau[horizon_fmi] / hab[horizon_fmi]
+                for a in range(horizon_fmi + 1, annee_fin + 1):
+                    f_bas, f_haut = elargissement(bandes_long_terme, groupe, H_FMI, H_FMI + a - horizon_fmi)
+                    niveau[a] = central[a] * ecart * (f_bas if scenario == "bas" else f_haut)
+            else:
+                voie = {"bas": croissance["bas"], "haut": croissance["haut"]}.get(scenario, croissance["central"])
+                for a in range(horizon_fmi + 1, annee_fin + 1):
+                    niveau[a] = niveau[a - 1] * voie.get(a, np.nan)
             for a in annees:
                 periode = ("observé" if a <= derniere_obs else "projection du FMI" if a <= horizon_fmi else "long terme")
                 lignes.append({"country_code": code, "country_name": serie["country_name"].iloc[0],
@@ -218,9 +237,13 @@ def construire_scenarios(unifie: pd.DataFrame, bandes: pd.DataFrame, ocde: pd.Da
                                "population_millions_haute": population.loc[a, "haute"],
                                "pib_par_habitant_usd_courants": (serie["GDP_Per_Capita_USD"].get(a, np.nan)
                                                                  if scenario == "central_fmi" and a <= horizon_fmi else np.nan)})
+        if bandes_long_terme is not None:
+            source_bornes = f"erreurs passées du FMI prolongé ({groupe if groupe in set(bandes_long_terme['groupe']) else TOUS})"
+        else:
+            source_bornes = f"scénarios de l'OCDE {croissance['scenario_bas']} et {croissance['scenario_haut']}"
         fiches.append({"country_code": code, "country_name": serie["country_name"].iloc[0],
                        "zone_croissance_long_terme": zone, "niveau_zone": niveau_zone,
-                       "scenario_ocde_bas": croissance["scenario_bas"], "scenario_ocde_haut": croissance["scenario_haut"],
+                       "bornes_long_terme": source_bornes,
                        "population_onu_disponible": onu is not None})
     table = pd.DataFrame(lignes)
     table["pib_reel_milliards_usd_2015"] = table["pib_reel_par_habitant_usd_2015"] * table["population_millions_centrale"] / 1000
@@ -248,7 +271,13 @@ def main():
         return
 
     unifie = pd.read_csv(unified_csv_path(args.data_dir))
-    table, fiches = construire_scenarios(unifie, pd.read_csv(bandes_csv), ocde, wpp, regions, args.annee_fin)
+    chemin_long_terme = os.path.join(processed, FICHIER_BANDES)
+    long_terme = pd.read_csv(chemin_long_terme) if os.path.exists(chemin_long_terme) else None
+    if long_terme is None:
+        logging.warning(f"{chemin_long_terme} absent (pib.long_terme) : au-delà de l'horizon du FMI, "
+                        "bornes tirées des scénarios extrêmes de l'OCDE.")
+    table, fiches = construire_scenarios(unifie, pd.read_csv(bandes_csv), ocde, wpp, regions, args.annee_fin,
+                                         bandes_long_terme=long_terme)
 
     # Par pays : bornes et probabilités de recul à l'horizon du FMI
     bandes_csv_final = os.path.join(processed, "gdp_projection_bands.csv")
@@ -265,6 +294,12 @@ def main():
         json.dump({"ocde": {"flux": "OECD.ECO.MAD:DSD_EO_LTB@DF_EO_LTB(1.0)", "mesure": "GDPVTRD_CAP",
                             "scenario_central": SCENARIO_OCDE_CENTRAL, "url": OCDE},
                    "onu": {"source": "World Population Prospects 2024", "variantes": VARIANTES_WPP, "url": WPP},
+                   "bornes_long_terme": (
+                       {"methode": "fourchette du pays à l'horizon du FMI, élargie comme les erreurs passées des "
+                                   "trajectoires du FMI prolongées par la dérive, par groupe de revenu",
+                        "fichier": FICHIER_BANDES}
+                       if long_terme is not None else
+                       {"methode": "scénarios de l'OCDE le moins et le plus favorables pour la zone"}),
                    "annee_fin": args.annee_fin}, f, indent=2, ensure_ascii=False)
     apercu = table[(table["country_code"].isin(["CAN", "USA"])) & (table["year"].isin([2024, 2031, 2040, args.annee_fin]))]
     logging.info(f"Scénarios pour {table['country_code'].nunique()} pays, jusqu'en {args.annee_fin} :\n"

@@ -36,6 +36,7 @@ pib-mondial/
 │   ├── evaluate_forecasts.py     #   Évaluation : prévisions d'époque confrontées au réalisé, récessions
 │   ├── revisions_weo.py          #   Évaluation : révisions d'une édition du WEO à la suivante
 │   ├── calibration.py            #   Évaluation : fourchettes et probabilités éprouvées en temps réel
+│   ├── long_terme.py             #   Évaluation : fourchettes au-delà de l'horizon du FMI (trajectoires prolongées)
 │   ├── scenarios.py              #   Export : scénarios de PIB et de population jusqu'en 2050, pour le trafic
 │   ├── cas_de_crise.py           #   Évaluation : une récession mondiale (2009, 2020) dans les prévisions
 │   ├── millesimes_bm.py          #   Évaluation : éditions archivées des WDI, révisions du réalisé
@@ -97,6 +98,7 @@ python produire_rapports.py [--start-year 2000] [--end-year AAAA] [--fcst-end AA
 | Évaluation des prévisions | `python -m pib.evaluate_forecasts [--indicateur pcpi_pch]` |
 | Révisions d'une édition à la suivante | `python -m pib.revisions_weo` |
 | Fourchettes et probabilités de récession éprouvées en temps réel | `python -m pib.calibration [--horizon 5]` |
+| Fourchettes au-delà de l'horizon du FMI (erreurs des trajectoires prolongées) | `python -m pib.long_terme` |
 | Scénarios de PIB et de population jusqu'en 2050, pour le projet trafic | `python -m pib.scenarios [--annee-fin 2050]` |
 | Cas d'étude d'une récession mondiale (hors chaîne) | `python -m pib.cas_de_crise --annee 2009 [--trafic]` |
 | Éditions archivées des WDI : collecte, puis révisions du réalisé | `python -m pib.millesimes_bm --collecter` ; `python -m pib.millesimes_bm --data-dir data` |
@@ -134,7 +136,7 @@ jupyter nbconvert --to html --execute --ExecutePreprocessor.kernel_name=julia-1.
 ### Tests
 
 ```bash
-pytest                      # 179 tests, sans accès réseau
+pytest                      # 187 tests, sans accès réseau
 pytest -m "not donnees"     # sans les contrôles sur les fichiers produits
 ```
 
@@ -394,10 +396,16 @@ Les révisions penchent à la hausse (croissance +0,26 point en moyenne, niveau 
 
 **Scénarios pour le projet trafic** (`pib.scenarios`, détail dans `docs/scenarios_trafic.md`). Export de PIB en volume par habitant et de population, par pays, de 2000 à 2050, sous un nom qui ne change pas avec l'horizon (`scenarios_pib_population.csv`) :
 - **jusqu'en 2031**, cinq scénarios autour de la trajectoire du FMI, tirés des fourchettes calculées à chaque horizon : central du FMI, central corrigé de l'erreur médiane, bas et haut (bornes à 80 %), crise mondiale (erreur médiane des périodes passées en crise mondiale) ;
-- **ensuite**, la croissance du PIB potentiel par habitant des scénarios de long terme de l'OCDE (pays, sinon région) : le scénario de référence pour les centraux et la crise, le moins et le plus favorable pour le bas et le haut ;
+- **ensuite**, pour les scénarios centraux et de crise, la croissance du PIB potentiel par habitant du scénario de référence de l'OCDE (pays, sinon région). Les bornes `bas` et `haut` s'élargissent comme les erreurs passées des trajectoires du FMI prolongées, par groupe de revenu (`pib.long_terme`, ci-dessous) ;
 - **population :** celle du pipeline jusqu'en 2031, puis la croissance médiane de l'ONU (*World Population Prospects* 2024), avec les bornes de son intervalle à 80 %.
 
-Pour le Canada, le PIB par habitant de 2031 va de 43 059 $ (bas) à 52 261 $ (haut) autour de 48 883 $ ; en 2050, de 54 183 à 68 790 $ autour de 64 344 $.
+Pour le Canada, le PIB par habitant de 2031 va de 43 059 $ (bas) à 52 261 $ (haut) autour de 48 883 $ ; en 2050, de 35 248 à 82 620 $ autour de 64 344 $.
+
+**Au-delà de l'horizon du FMI** (`pib.long_terme`). Chaque édition du WEO depuis 1999 est prolongée au-delà de 5 ans, puis confrontée au réalisé jusqu'à la dernière année connue (8 930 trajectoires, jusqu'à 25 ans d'horizon) :
+- **Prolonger la croissance de moyen terme du FMI** (médiane de ses horizons 3 à 5) surestime le niveau de 12 % en médiane à 10 ans, de 28 % à 20 ans.
+- **Prolonger par la dérive**, la croissance moyenne des 10 dernières années connues à la date de l'édition, fait mieux que la dérive seule dans 56 à 64 % des cas.
+- **L'erreur croît presque linéairement avec l'horizon :** 80 % des erreurs de niveau restent sous 30 % à 10 ans, sous 50 % à 20 ans. Pour les pays à revenu élevé à 10 ans, de −11 % à +35 % (niveau prévu / réalisé − 1).
+- **Les quantiles par groupe de revenu,** lissés par une loi de puissance de l'horizon (ajustée jusqu'à 16 ans, extrapolée au-delà), donnent les bornes des scénarios après 2031. Avant, l'écart entre variantes de l'OCDE, qui ne diffèrent que par le climat et la transition énergétique, sous-estimait l'incertitude.
 
 **Autres indicateurs : lire les médianes.** La référence Banque Mondiale n'existe que pour la croissance du PIB : pour `pcpi_pch` (inflation) et `bca_gdp_bp6` (balance courante), seule la ré-estimation du FMI sert de référence. Pour l'inflation, les moyennes ne décrivent pas l'erreur typique : quelques projections d'hyperinflation (le Venezuela à 10 000 000 %) portent le biais moyen au-delà de 1 600 points à un an, quand la médiane reste à −0,1 point. La synthèse fournit donc aussi `mediane` et `erreur_absolue_mediane`, et le script avertit dès que l'erreur absolue moyenne dépasse dix fois la médiane.
 
@@ -436,6 +444,7 @@ Pour chaque rapport (`data/` et `outputs/` ; `plus_recent/` pour le plus récent
 | `data/processed/scenarios_pib_population.csv`, `…_pays.csv`, `…_sources.json` | Scénarios de PIB par habitant et de population jusqu'en 2050, pour le projet trafic |
 | `data/processed/weo_cas_<année>_*.csv` | Cas d'étude d'une récession mondiale, sur demande (`pib.cas_de_crise`) : croissance, reculs annoncés, rebond, niveaux ; avec `--trafic`, trafic aérien face au PIB (par pays, régressions, part expliquée) |
 | `data/processed/gdp_projection_bands_calibration.csv` | Test rétrospectif des fourchettes : part des erreurs contenues |
+| `data/processed/gdp_long_horizon_errors.csv`, `…_bands.csv`, `…_law.csv` | Au-delà de l'horizon du FMI : erreurs des trajectoires prolongées par horizon, quantiles observés et lissés par groupe de revenu, lois de puissance |
 | `data/processed/gdp_bands_realtime_scores.csv`, `…_coverage_by_cell.csv`, `…_coverage_by_edition.csv` | Fourchettes éprouvées en temps réel : couverture, largeur, score d'intervalle, CRPS par méthode, avec intervalles de confiance ; couverture par cellule et par édition |
 | `data/processed/recession_probability_realtime_scores.csv`, `recession_probability_reliability.csv` | Probabilités de récession en temps réel : score de Brier et compétence par méthode ; fiabilité par tranche |
 | `outputs/gdp_master_dataset.xlsx` | Classeur multi-onglets (voir ci-dessous) |
@@ -466,7 +475,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 
 ## ✅ Tests des invariants
 
-179 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
+187 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
 
 | Invariant | Ce qu'il empêche |
 |---|---|
@@ -495,7 +504,8 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 | Récessions : pire année des horizons 1 à h, interrompue au premier réalisé manquant ; premières économies comptées par édition | Un recul de l'année de l'édition compté comme imprévu, ou « 20 premières économies » qui n'en comptaient que 10 |
 | Révisions entre éditions consécutives seulement, étapes dans l'ordre ; historique contrôlé sur une année observée | Une révision calculée par-dessus une édition manquante, ou une révision de l'inflation prévue prise pour un changement d'année de base |
 | Commentaires de la page déduits des chiffres | Une conclusion écrite d'avance que la prochaine édition démentirait |
-| Scénarios pour le trafic : bornes et corrections dans le bon sens, croissance de l'OCDE du pays sinon de sa région, scénarios le moins et le plus favorables, variantes de population de l'ONU appliquées aux seules années projetées | Un scénario bas plus haut que le central, ou une population « basse » qui modifie le passé observé |
+| Scénarios pour le trafic : bornes et corrections dans le bon sens, croissance de l'OCDE du pays sinon de sa région, variantes de population de l'ONU appliquées aux seules années projetées | Un scénario bas plus haut que le central, ou une population « basse » qui modifie le passé observé |
+| Au-delà de l'horizon du FMI : dérive tirée des seules années connues à la date de l'édition ; loi ajustée sur les horizons assez fournis ; fourchette du pays conservée à l'horizon du FMI puis élargie, bornes basse et haute dans le bon sens | Une dérive qui connaît l'année en cours, une loi tirée de deux éditions, ou une fourchette qui saute en 2032 |
 | Crises mondiales à part : récessions et historique mondial connus à la date de l'édition ; repli sans période en crise ; mélange pondéré dans le bon sens | Une probabilité qui connaît les crises à venir, ou vide faute d'exemple |
 | Calibration en temps réel : aucune erreur encore inconnue à la date de l'édition ; score d'intervalle, CRPS et compétence de Brier exacts ; méthodes comparées sur les mêmes cas | Une calibration flatteuse parce qu'elle voit l'avenir, ou des méthodes comparées sur des échantillons différents |
 | Millésimes des WDI : champs lus par nom, chaque édition archivée une fois, première publication réelle seulement, valeur en temps réel à la fin de l'année suivante | Une révision mesurée depuis une édition qui n'était pas la première, ou une référence « en temps réel » qui connaît l'avenir |

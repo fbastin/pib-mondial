@@ -7,7 +7,7 @@ Produit par `python produire_rapports.py`, ou seul par `python -m pib.scenarios 
 | Fichier | Contenu |
 |---|---|
 | `scenarios_pib_population.csv` | Une ligne par pays, année (de 2000 à 2050) et scénario |
-| `scenarios_pib_population_pays.csv` | Par pays : zone de croissance de long terme, scénarios de l'OCDE retenus, bornes et probabilités de recul d'ici 2031 |
+| `scenarios_pib_population_pays.csv` | Par pays : zone de croissance de long terme, origine des bornes au-delà de 2031, bornes et probabilités de recul d'ici 2031 |
 | `scenarios_pib_population_sources.json` | Sources et paramètres |
 
 **Le nom ne change pas avec l'horizon** : lire ces fichiers plutôt que `gdp_unified_<début>_<fin>.csv`, dont le nom suit les bornes du run. La chaîne du projet trafic lisait `gdp_unified_2000_2030.csv`, remplacé depuis par `gdp_unified_2000_2031.csv`.
@@ -35,12 +35,31 @@ Les années observées sont identiques dans tous les scénarios : chacun est une
 - `bas`, `haut` : bornes de l'intervalle à 80 % (−11,9 % et +6,9 % en 2031 pour le Canada), calibrées en temps réel (79 % de couverture, voir le README) ;
 - `crise_mondiale` : divisée par (1 + erreur médiane des périodes passées qui contenaient une récession mondiale).
 
-**De 2032 à 2050**, chaque scénario suit la croissance du PIB potentiel par habitant des scénarios de long terme de l'OCDE (*Perspectives économiques* n° 117) :
-- celle du pays s'il est couvert (49 pays, dont le Canada et les États-Unis), sinon celle de sa région (135 pays) ;
-- le scénario de référence de l'OCDE (`BAU1`) pour les scénarios centraux et de crise ;
-- le moins et le plus favorable pour `bas` et `haut`.
+**De 2032 à 2050, les scénarios centraux et de crise** suivent la croissance du PIB potentiel par habitant du scénario de référence de l'OCDE (`BAU1`, *Perspectives économiques* n° 117). C'est celle du pays s'il est couvert (49 pays, dont le Canada et les États-Unis), sinon celle de sa région (135 pays). Le niveau atteint en 2031 est conservé : après une crise, pas de rattrapage, comme après 2008.
 
-Le niveau atteint en 2031 est conservé : après une crise, pas de rattrapage, comme après 2008.
+**Les bornes `bas` et `haut` s'élargissent avec l'horizon,** comme se sont élargies les erreurs passées des trajectoires du FMI prolongées (`pib.long_terme`) :
+- **La mesure :** chaque édition du WEO depuis 1999 est prolongée au-delà de 5 ans par la dérive (croissance moyenne des 10 dernières années connues à sa date), puis confrontée au réalisé jusqu'à la dernière année connue. Cela fait jusqu'à 25 ans d'horizon, 8 930 trajectoires.
+- **Le lissage :** par groupe de revenu, les quantiles à 10 et 90 % de l'erreur de niveau sont lissés par une loi de puissance de l'horizon (`gdp_long_horizon_bands.csv`, paramètres dans `gdp_long_horizon_law.csv`).
+- **Le raccord :** la fourchette propre au pays en 2031 est conservée, puis élargie de 2031 à l'année visée comme ces quantiles entre 5 ans et l'horizon correspondant.
+
+Pour le Canada (revenu élevé), en % de `central_fmi` :
+
+| | `bas` | `haut` |
+|---|---|---|
+| 2031 | 88 % | 107 % |
+| 2040 | 70 % | 117 % |
+| 2050 | 55 % | 128 % |
+
+Soit, en 2050, de 35 248 $ à 82 620 $ autour de 64 344 $, contre 54 183 $ à 68 790 $ quand les bornes suivaient les scénarios extrêmes de l'OCDE.
+
+**La fourchette est asymétrique :** le réalisé est plus souvent tombé sous les trajectoires prolongées qu'au-dessus.
+
+**Ce que dit l'évaluation des prolongements** (`gdp_long_horizon_errors.csv`) :
+- **Prolonger la croissance de moyen terme du FMI** (médiane de ses horizons 3 à 5) surestime le niveau de 12 % en médiane à 10 ans, de 28 % à 20 ans. La trajectoire centrale suit donc l'OCDE après 2031, pas le FMI.
+- **Le FMI jusqu'à 5 ans, puis la dérive,** fait mieux que la dérive seule dans 56 à 64 % des cas, de 5 à 20 ans.
+- **80 % de ses erreurs de niveau** restent sous 30 % à 10 ans, sous 50 % à 20 ans.
+
+Sans `gdp_long_horizon_bands.csv`, `bas` et `haut` suivent à défaut le scénario de l'OCDE le moins et le plus favorable pour la zone (colonne `bornes_long_terme` du fichier par pays).
 
 **Probabilités de récession** (`scenarios_pib_population_pays.csv`) : au moins une année de recul entre 2027 et 2031, 65 % pour le Canada. Si une récession mondiale survient, 98 % ; sinon, 42 %. Une période de cinq ans contient une récession mondiale dans 41 % des cas depuis 1961.
 
@@ -59,6 +78,10 @@ Le niveau atteint en 2031 est conservé : après une crise, pas de rattrapage, c
 
 ## Limites
 
-- **Les fourchettes ne sont calibrées que jusqu'à 5 ans.** Au-delà, l'écart entre scénarios est celui de 2031, plus celui des scénarios de l'OCDE. Ceux-ci ne diffèrent que par la transition énergétique et les dommages climatiques, pas par l'incertitude macroéconomique : l'écart ne s'élargit donc guère après 2031, alors que l'incertitude réelle, elle, continue de croître. Piste : extrapoler l'écart-type de l'erreur avec l'horizon, comme le propose la note d'Aéroports de Paris sur la prévision probabilisée de PIB (Sallier, 2010 ; voir `docs/revue_litterature.md`, § 3.3).
+- **Au-delà de 2031, les fourchettes sont tirées des erreurs passées, avec trois réserves :**
+  - **Extrapolation au-delà de 16 ans.** Les lois de puissance sont ajustées jusqu'à 16 ans, dernier horizon qui compte au moins 10 années d'édition. Au-delà, donc de 2043 à 2050, elles sont extrapolées. Les quantiles observés à 20 ans, sur 6 années d'édition seulement, toutes traversées par 2009 et 2020, sont plus étroits que la loi (90e centile de 56 % contre 72 % pour les pays à revenu élevé). Les bornes de ces années-là sont à lire comme indicatives.
+  - **Groupe de revenu, pas pays.** Les quantiles sont ceux du groupe : le Canada reçoit ceux des pays à revenu élevé, dont la Grèce de 2010 ou l'Irlande de 2015. Les groupes sont les actuels : des pays devenus riches depuis élargissent la queue basse de ce groupe.
+  - **PIB total, appliqué au PIB par habitant.** Les erreurs portent sur le PIB en volume ; l'incertitude de la population est traitée à part, par les variantes de l'ONU.
+- **La dérive tient lieu de croissance de long terme** dans la mesure des erreurs : les scénarios passés de l'OCDE ne sont pas archivés.
 - **La croissance de long terme de l'OCDE** porte sur le PIB potentiel en parité de pouvoir d'achat ; seule sa croissance est utilisée, appliquée au niveau en dollars de 2015.
 - **Rien ne mesure encore l'optimisme éventuel des scénarios de l'OCDE**, comme ce dépôt l'a fait pour le FMI.

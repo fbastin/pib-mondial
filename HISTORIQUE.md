@@ -5,6 +5,21 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 🔭 Fourchettes au-delà de l'Horizon du FMI (30 Septembre 2026)
+
+Les bornes `bas` et `haut` des scénarios suivaient, après 2031, les scénarios de l'OCDE le moins et le plus favorables. Ceux-ci ne diffèrent que par le climat et la transition énergétique : l'écart ne s'élargissait guère (84 à 107 % de la trajectoire centrale en 2050 pour le Canada), alors que l'incertitude, elle, croît avec l'horizon. Nouveau module `pib.long_terme`, dans la chaîne avant `pib.scenarios`.
+
+- **Évaluation des trajectoires prolongées :** chaque édition du WEO depuis 1999, prolongée au-delà de 5 ans, est confrontée au réalisé jusqu'à la dernière année connue (8 930 trajectoires, jusqu'à 25 ans d'horizon).
+  - Prolonger la croissance de moyen terme du FMI surestime le niveau de 12 % en médiane à 10 ans, de 28 % à 20 ans.
+  - « FMI puis dérive » bat la dérive seule dans 56 à 64 % des cas. Ses erreurs croissent presque linéairement : 80 % sous 30 % à 10 ans, sous 50 % à 20 ans.
+- **Fourchettes :** quantiles à 10 et 90 % par groupe de revenu, lissés par une loi de puissance de l'horizon (ajustée jusqu'à 16 ans, extrapolée au-delà). La fourchette du pays en 2031 est conservée, puis élargie comme ces quantiles.
+- **Canada en 2050 :** de 55 à 128 % de la trajectoire centrale, au lieu de 84 à 107 %.
+- **Dérive en temps réel :** tirée des ré-estimations du FMI des années v − 11 à v − 2, connues à la date de l'édition, comme la prévision naïve de `evaluate_forecasts`.
+- **Repli :** sans les fourchettes de long terme, les bornes reprennent les scénarios extrêmes de l'OCDE (colonne `bornes_long_terme` du fichier par pays).
+- **Réserve :** les quantiles observés à 20 ans (6 années d'édition, toutes traversées par 2009 et 2020) sont plus étroits que la loi extrapolée ; les bornes de 2043 à 2050 sont indicatives.
+
+187 tests ; trois mutations (dérive qui voit l'année en cours, bornes inversées, fourchette du pays oubliée), toutes rattrapées.
+
 ## ✈️ Scénarios de PIB et de Population pour le Projet Trafic (30 Septembre 2026)
 
 Chantier 3. Le projet de prévision de long terme pour Aéroports de Montréal (méthode de Kenza) lisait notre PIB par habitant courant dans `gdp_unified_2000_2030.csv`, disparu avec le passage à l'horizon 2031. Son incertitude se résumait à une marge forfaitaire de ±20 %. Nouveau module `pib.scenarios`, dans la chaîne, et note d'utilisation `docs/scenarios_trafic.md`.

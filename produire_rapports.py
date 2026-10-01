@@ -6,8 +6,8 @@ Chaîne complète en une commande : collecte et calcul (`pib.gdp_pipeline`), ajo
 éditions récentes du WEO servies par l'API du FMI (`pib.update_weo_editions`) et des
 éditions archivées des WDI de la Banque Mondiale (`pib.millesimes_bm`), puis, pour
 chaque rapport produit — la référence, et le cas échéant le plus récent, dans
-`plus_recent/` —, évaluation des prévisions et de leurs révisions, graphiques et page de
-résultats.
+`plus_recent/` —, évaluation des prévisions et de leurs révisions, fourchettes au-delà de
+l'horizon du FMI et scénarios pour le trafic, graphiques et page de résultats.
 
     python produire_rapports.py
 
@@ -79,6 +79,7 @@ def main():
                        "--classeur", classeur)
                 lancer("revisions_weo", "--data-dir", data_dir, "--classeur", classeur)
                 lancer("calibration", "--data-dir", data_dir)
+                lancer("long_terme", "--data-dir", data_dir)
                 lancer("scenarios", "--data-dir", data_dir)
             else:
                 logging.warning(f"{classeur} absent : évaluation des prévisions omise.")
