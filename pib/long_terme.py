@@ -204,14 +204,16 @@ def lisser(quantiles: pd.DataFrame, annees_min: int = ANNEES_MIN, h_max: int = H
     """
     Pour chaque groupe : lois des 10e et 90e centiles (`ajuster_loi`), ajustées de l'horizon 1
     au dernier horizon qui compte au moins `annees_min` années d'édition, et quantiles lissés
-    de l'horizon 0 à `h_max`. Rend (fourchettes lissées jointes aux observées, lois).
+    de l'horizon 1 à `h_max`. L'horizon 0, hors de la plage d'ajustement, n'est pas extrapolé :
+    la loi y donnait parfois un 90e centile sous le 10e. Rend (fourchettes lissées jointes aux
+    observées, lois).
     """
     lissees, lois = [], []
     for groupe, g in quantiles.groupby("groupe"):
         fiable = g[(g["horizon"] >= 1) & (g["annees_edition"] >= annees_min)]
         if len(fiable) < 3:
             continue
-        h = np.arange(0, h_max + 1)
+        h = np.arange(1, h_max + 1)
         ligne_loi = {"groupe": groupe, "horizon_max_ajuste": int(fiable["horizon"].max())}
         lisse = pd.DataFrame({"groupe": groupe, "horizon": h})
         for q in ("p10", "p90"):
