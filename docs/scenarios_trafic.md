@@ -18,7 +18,7 @@ Produit par `python produire_rapports.py`, ou seul par `python -m pib.scenarios 
 
 La chaîne du projet trafic lit le PIB par `julia/run/build_macro_series.jl --source …/GDP/data/processed/gdp_unified_2000_2030.csv`. Ce fichier ne suit plus les mises à jour : son nom portait les bornes du run, devenues 2000-2031.
 
-**En attendant, rien à changer.** L'ancien fichier, figé au 29 septembre 2026, est remis à sa place sur le Drive (`Transport Aerien/GDP/data/processed/gdp_unified_2000_2030.csv`). La commande du README du projet trafic fonctionne telle quelle. Il restera là jusqu'au passage au fichier stable, mais ne sera plus mis à jour.
+**En attendant, rien à changer.** L'ancien fichier, figé au 29 septembre 2026, reste à sa place sur le Drive (`Transport Aerien/GDP/data/processed/gdp_unified_2000_2030.csv`). La commande du README du projet trafic fonctionne telle quelle. Il restera là jusqu'au passage au fichier stable, mais ne sera plus mis à jour. La procédure ci-dessous est aussi dans `Pour_Chama_PIB_projet_trafic.txt`, à côté du fichier.
 
 **Le passage ne change aucun chiffre.** Sur toutes les années communes, `GDP_Per_Capita_USD` est identique dans l'ancien fichier, dans `gdp_unified_2000_2031.csv` et dans `scenarios_pib_population.csv` (scénario `central_fmi`, colonne `pib_par_habitant_usd_courants`), à l'arrondi près (0,00005 $). La seule différence : l'année 2031 s'ajoute aux projections.
 
