@@ -2627,6 +2627,26 @@ class TestCasDeCrise:
         niveau = indice_de_niveau(pd.Series({2008: 10.0, 2009: -10.0}), 2008, 2009)
         assert list(niveau.round(6)) == [110.0, 99.0]
 
+    def test_du_choc_a_la_reprise(self):
+        """
+        Croissance suivie de 2009 à 2013 (choc, rebond, reprise), niveaux en 2010 aussi.
+        Avril 2009 : 2008 + 1 point par an ; ré-estimations à un an −1 % ; actuel +2 %.
+        """
+        from pib.cas_de_crise import croissance_par_edition, niveaux_par_edition
+        lignes = [dict(country_code="USA", year=a, vintage="S2009", saison="S", annee_millesime=2009,
+                       horizon=a - 2009, valeur=float(a - 2008)) for a in range(2008, 2015)]
+        lignes += [dict(country_code="USA", year=a, vintage=f"F{a + 1}", saison="F", annee_millesime=a + 1,
+                        horizon=-1, valeur=-1.0) for a in range(2009, 2014)]
+        base = pd.DataFrame(lignes)
+        actuel = pd.Series({("USA", a): 2.0 for a in range(2008, 2014)}).rename_axis(["country_code", "year"])
+        codes = {"USA": "États-Unis"}
+        t = croissance_par_edition(base, 2009, codes, actuel).set_index("annee_visee")
+        assert list(t.index) == [2009, 2010, 2011, 2012, 2013]
+        assert (t.loc[2013, "S2009"], t.loc[2013, "realise_fmi"], t.loc[2013, "estimation_actuelle"]) == (5.0, -1.0, 2.0)
+        n = niveaux_par_edition(base, 2009, codes, actuel).set_index("source")
+        assert n.loc["estimation_actuelle", "niveau_2010"] == pytest.approx(100 * 1.02 ** 3, abs=0.01)
+        assert n.loc["S2009", "niveau_2010"] == pytest.approx(100 * 1.01 * 1.02, abs=0.01)
+
     def test_lecture_jsonstat_eurostat(self):
         """Indice linéaire du JSON-stat : la dernière dimension (le temps) varie le plus vite ; valeurs absentes omises."""
         from pib.cas_de_crise import decoder_jsonstat

@@ -77,7 +77,41 @@ PIB en volume, base 100 en 2007 :
 - **Deux ans plus tard, beaucoup d'économies avancées finissent sous la projection d'après-choc.** En 2013, le niveau réalisé est inférieur à celui projeté en avril 2009 de 2,4 % pour les États-Unis, 2,3 % pour le Royaume-Uni, 6,7 % pour l'Italie et 8,7 % pour l'Espagne. La crise de la zone euro de 2011-2013 n'était pas prévue.
 - **Pour le monde, la projection d'avril 2009 tombe juste en 2013 (119,0 contre 120,1), mais par compensation** : rebond émergent sous-estimé d'un côté, rechute européenne ignorée de l'autre.
 
-## 4. Le test sur le trafic aérien
+## 4. Les États-Unis : rebond sous-estimé, reprise surestimée
+
+Épicentre de la crise, les États-Unis n'en sont pas l'économie la plus touchée.
+- **En 2009, leur PIB recule de 2,6 %** : moins que la moyenne des économies avancées (−3,2 %), l'Allemagne (−4,7 %) ou le Japon (−5,2 %).
+- **En 2013, il reste 5,4 % sous la trajectoire d'octobre 2008**, contre 8,5 à 17,8 % pour le Japon, le Royaume-Uni, l'Italie et l'Espagne (section 3).
+
+| Croissance des États-Unis (%) | 2010 | 2011 | 2012 | 2013 | Niveau 2010 | Niveau 2013 |
+|---|---|---|---|---|---|---|
+| Octobre 2008 | +2,0 | +3,1 | +2,7 | +2,3 | 103,7 | 112,4 |
+| Avril 2009 | 0,0 | +3,5 | +3,6 | +3,3 | 98,3 | 108,9 |
+| Octobre 2009 | +1,5 | +2,8 | +2,6 | +2,5 | 99,2 | 107,2 |
+| Avril 2010 | +3,1 | +2,6 | +2,4 | +2,5 | 101,0 | 108,7 |
+| Octobre 2010 | +2,6 | +2,3 | +3,0 | +2,9 | | |
+| *Réalisé, ré-estimé un an après* | *+3,0* | *+1,8* | *+2,8* | *+2,2* | *100,8* | *107,8* |
+| *Réalisé, estimation actuelle* | *+2,7* | *+1,6* | *+2,3* | *+2,1* | *100,2* | *106,3* |
+
+Niveaux : PIB en volume, base 100 en 2007 (`weo_cas_2009_niveaux.csv`, éditions d'octobre 2008 à avril 2010).
+
+- **Le rebond de 2010 a été sous-estimé.**
+  - Avril 2009 prévoyait 0,0 % et octobre 2009 +1,5 %, pour +3,0 % réalisés (+2,7 % aujourd'hui). Avril 2010 tombe juste (+3,1 %).
+  - Le PIB retrouve son niveau de 2007 dès 2010 (100,2), quand les éditions de 2009 ne l'attendaient qu'en 2011 (98,3 et 99,2 en 2010).
+- **La reprise qui a suivi a été surestimée.**
+  - Pour 2011, les six éditions de 2008 à 2010 prévoyaient de +2,3 à +3,7 %, pour +1,8 % réalisés.
+  - De 2010 à 2013, la croissance cumulée projetée va de +7,6 % (avril 2010) à +10,8 % (avril 2009). Réalisée : +7,0 % selon les ré-estimations à un an, +6,1 % aujourd'hui.
+  - Les révisions des comptes ont creusé l'écart : la croissance de 2012, d'abord estimée à +2,8 %, est aujourd'hui de +2,3 %.
+- **En niveau, les deux erreurs se compensent en 2011, puis la seconde l'emporte.**
+  - En 2011, le niveau réalisé égale celui projeté en avril 2009 (101,7 contre 101,8).
+  - En 2013, il est sous chacune des projections faites après le choc : de 0,9 % (octobre 2009) à 2,4 % (avril 2009).
+- **Les prévisions attendaient un rattrapage, il n'est pas venu.** Un rebond vif suivi d'une reprise molle : c'est le profil des sorties de crise bancaire (Reinhart et Rogoff, 2009 et 2014 ; Cerra et Saxena, 2008).
+- **L'Allemagne a connu l'inverse au début.**
+  - Avril 2009 y prévoyait −1,0 % pour 2010 et +1,5 % pour 2011, pour +3,6 et +3,1 % réalisés. En 2011, le niveau dépasse la projection de 7,2 %.
+  - Ensuite, 2012 et 2013 y sont surestimées à leur tour (+1,8 et +2,0 % prévus en avril 2009, +0,9 et +0,5 % réalisés).
+  - La reprise sous-estimée de 2008 est allemande et émergente, pas américaine.
+
+## 5. Le test sur le trafic aérien
 
 `python -m pib.cas_de_crise --annee 2009 --trafic`, tableaux `weo_cas_2009_trafic*.csv`.
 
@@ -126,5 +160,6 @@ Compagnies à bas coûts, faillites (SkyEurope en 2009), fiscalité et intégrat
 
 - **Le constat général sur les récessions** (voir le README) : un choc n'est vu que dans l'année même, et la prévision suivante devient trop pessimiste. Les années qui suivent une crise sont donc celles où le biais optimiste moyen décrit le plus mal l'erreur.
 - **Une projection faite avant un choc surestime le niveau pour des années, même quand la croissance rebondit vite.** Une projection faite juste après le choc peut encore surestimer le niveau des économies avancées quelques années plus loin.
+- **Un rebond sous-estimé n'annonce pas une reprise sous-estimée.** Aux États-Unis, le rebond de 2010 a dépassé toutes les prévisions de 2009. La croissance cumulée de 2011 à 2013 est ensuite restée sous toutes les prévisions, celles de 2010 comprises.
 - **Le trafic aérien a pris un retard dont le PIB explique environ un tiers.** C'est vrai en Europe comme aux États-Unis, mais pas les différences entre pays. La note du dossier *Transport Aérien* sur Google Drive en tire les conséquences pour le projet trafic.
 - **La comparaison avec la pandémie de 2020** est dans `docs/cas_crise_2020.md`.

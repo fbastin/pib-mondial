@@ -8,8 +8,9 @@ la trajectoire attendue avant le choc ?
 
 Quatre tableaux, écrits dans `data/processed/` :
 
-- `weo_cas_<année>_croissance.csv` : croissance de l'année du choc et de la suivante,
-  selon chaque édition, pour le monde, les grands agrégats et les premières économies ;
+- `weo_cas_<année>_croissance.csv` : croissance de l'année du choc et des quatre
+  suivantes, selon chaque édition, pour le monde, les grands agrégats et les premières
+  économies ;
 - `weo_cas_<année>_reculs.csv` : pays dont chaque édition annonçait le recul l'année du
   choc, face à ceux qui ont reculé ;
 - `weo_cas_<année>_rebond.csv` : erreur de chaque édition sur la croissance de l'année
@@ -64,8 +65,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 AGREGATS = {CODE_MONDE: "Monde", "G110": "Économies avancées", "G200": "Économies émergentes et en développement"}
 PREMIERES_ECONOMIES = 10
 
-# Années après le choc où le niveau est comparé : le rebond, puis la moyenne période
-ANNEES_NIVEAU = (0, 2, 4)
+# Années après le choc où le niveau est comparé : le choc, le rebond, puis la moyenne période
+ANNEES_NIVEAU = (0, 1, 2, 4)
 
 # Trafic aérien. Eurostat (`avia_paoc`, passagers transportés, par pays déclarant) : codes
 # du pays vers ISO3. Les États-Unis viennent de la Banque Mondiale (`IS.AIR.PSGR`).
@@ -106,13 +107,14 @@ def estimation_actuelle(archive: str) -> pd.Series:
 
 def croissance_par_edition(base: pd.DataFrame, annee: int, codes: dict, actuel: pd.Series) -> pd.DataFrame:
     """
-    Croissance de `annee` et de `annee + 1` selon chaque édition (`editions_autour`),
-    la ré-estimation du FMI un an après (`realise_fmi`) et l'estimation actuelle (`actuel`).
+    Croissance de `annee` à la dernière année des niveaux (`ANNEES_NIVEAU`) : le choc, le
+    rebond, puis la reprise. Selon chaque édition (`editions_autour`), la ré-estimation du
+    FMI un an après (`realise_fmi`) et l'estimation actuelle (`actuel`).
     """
     editions = editions_autour(annee)
     premier = realise_selon_fmi(base).set_index(["country_code", "year"])["realise_fmi"]
     lignes = []
-    for visee in (annee, annee + 1):
+    for visee in range(annee, annee + max(ANNEES_NIVEAU) + 1):
         d = base[(base["year"] == visee) & base["vintage"].isin(editions) & base["country_code"].isin(codes)]
         t = d.pivot_table(index="country_code", columns="vintage", values="valeur").reindex(index=list(codes),
                                                                                            columns=editions)

@@ -5,6 +5,16 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 🇺🇸 Crise de 2008 : les États-Unis, Rebond Sous-Estimé, Reprise Surestimée (2 Octobre 2026)
+
+Les prévisions du FMI ont-elles sous-estimé la reprise américaine après 2008 ? Le cas d'étude ne suivait la croissance que pour 2009 et 2010 : `pib.cas_de_crise` la suit désormais jusqu'à quatre ans après le choc (2013 pour 2009, 2024 pour 2020), et les niveaux gagnent l'année du rebond. Nouvelle section 4 de `docs/cas_crise_2008.md`.
+
+- **Le rebond de 2010 a été sous-estimé :** 0,0 % prévu en avril 2009, +1,5 % en octobre 2009, pour +3,0 % réalisés. Le PIB retrouve son niveau de 2007 dès 2010, un an plus tôt que prévu.
+- **La reprise suivante a été surestimée :** de 2010 à 2013, chaque édition de 2008 à 2010 projetait de +7,6 à +10,8 % de croissance cumulée, pour +7,0 % ré-estimé un an après et +6,1 % aujourd'hui. En 2013, le niveau est 0,9 à 2,4 % sous chaque projection d'après-choc.
+- **La reprise sous-estimée de 2008 est allemande et émergente,** pas américaine. Les États-Unis, épicentre de la crise, n'en sont pas non plus l'économie la plus touchée (−2,6 % en 2009, contre −3,2 % pour les économies avancées).
+
+223 tests ; deux mutations (croissance limitée à deux ans, niveau du rebond retiré), rattrapées.
+
 ## 🔁 Préparer les Relances : Chiffres Clés Suivis (1er Octobre 2026)
 
 La documentation cite en clair des dizaines de chiffres tirés des sorties ; chaque édition du WEO les change, et deux séries de corrections à la main le même jour en ont laissé passer. Nouveau module `pib.chiffres_cles` : 19 chiffres suivis (fourchettes et population du Canada, Inde, tirages conjoints, calibration en temps réel, couverture des bornes de l'ONU), mis en forme comme dans le texte. Après une relance, il liste ceux qui ont changé, avec les fichiers et lignes où l'ancienne valeur apparaît encore ; `--enregistrer` publie les nouvelles valeurs (`docs/chiffres_cles.json`). Dernière étape de `produire_rapports.py`. Procédure de relance dans le README.
