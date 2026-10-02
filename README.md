@@ -52,7 +52,7 @@ pib-mondial/
 ├── docs/                         # Documentation technique (LaTeX et PDF), cas d'étude
 ├── data/
 │   ├── raw/                      # Sources : classeur WEO historique, complément API, LISEZ-MOI
-│   │   ├── weo_archive/          # Éditions complètes du WEO, archivées à leur parution
+│   │   ├── weo_archive/          # Éditions complètes du WEO et métadonnées des pays, archivées à leur parution
 │   │   ├── wdi_archive/          # Éditions archivées des WDI (non versionné, re-téléchargeable)
 │   │   └── scenarios_long_terme/ # Scénarios de l'OCDE et population de l'ONU (non versionné)
 │   ├── processed/                # Rapport de référence : séries, synthèse, évaluation
@@ -67,7 +67,7 @@ pib-mondial/
 └── .github/workflows/tests.yml   # Tests à chaque push
 ```
 
-**Versionné ou régénéré.** Le dépôt ne versionne que le code, la documentation et les sources qui ne se re-téléchargent pas par script : `data/raw/WEOhistorical.xlsx` (le site du FMI refuse les scripts), son complément `data/raw/weo_editions_api.csv`, et l'archive des éditions complètes du WEO, `data/raw/weo_archive/`, que l'API ne sert plus une fois l'édition suivante parue. Tout le reste — `data/processed/`, `data/plus_recent/`, `data/extraction_metadata.json`, `data/raw/gdp_imf_weo_raw.json`, `outputs/` — se régénère par `python produire_rapports.py` et n'est pas versionné.
+**Versionné ou régénéré.** Le dépôt ne versionne que le code, la documentation et les sources qui ne se re-téléchargent pas par script : `data/raw/WEOhistorical.xlsx` (le site du FMI refuse les scripts), son complément `data/raw/weo_editions_api.csv`, et l'archive des éditions complètes du WEO et de leurs métadonnées, `data/raw/weo_archive/`, que l'API ne sert plus une fois l'édition suivante parue. Tout le reste — `data/processed/`, `data/plus_recent/`, `data/extraction_metadata.json`, `data/raw/gdp_imf_weo_raw.json`, `outputs/` — se régénère par `python produire_rapports.py` et n'est pas versionné.
 
 ---
 
@@ -108,7 +108,7 @@ Les chiffres suivis (`docs/chiffres_cles.json`) ne couvrent pas tout : les autre
 | Étape | Commande |
 |---|---|
 | Collecte, séries unifiées, synthèse et Excel | `python -m pib.gdp_pipeline [--start-year …] [--end-year …] [--fcst-start …] [--fcst-end …]` |
-| Éditions récentes du WEO, depuis l'API, et archivage des éditions complètes | `python -m pib.update_weo_editions [--sans-archive]` |
+| Éditions récentes du WEO, depuis l'API, et archivage des éditions complètes et de leurs métadonnées | `python -m pib.update_weo_editions [--sans-archive]` |
 | Évaluation des prévisions | `python -m pib.evaluate_forecasts [--indicateur pcpi_pch]` |
 | Révisions d'une édition à la suivante | `python -m pib.revisions_weo` |
 | Fourchettes et probabilités de récession éprouvées en temps réel | `python -m pib.calibration [--horizon 5]` |
@@ -393,7 +393,14 @@ Recul : croissance annuelle en volume négative, selon la ré-estimation du FMI 
 
 **Ce que corrige chaque édition.** `pib.revisions_weo` compare chaque prévision à celle de l'édition précédente, pour le même pays et la même année visée. Les éditions à deux ans et plus de l'année visée ne révisent presque pas (au plus 0,03 point en moyenne) ; **la correction vient tard** : l'édition d'avril de l'année visée retire 0,61 point en moyenne (0,29 hors 2009 et 2020), celle d'octobre 0,32. Mises bout à bout, les révisions font −1,09 point : à peu de chose près le biais à 5 ans, qui se résorbe donc dans les dernières éditions. Une révision n'en annonce guère une autre (test de Nordhaus) : la corrélation entre deux révisions successives va de −0,09 à +0,18, légèrement positive à l'approche de l'année visée. Ce qui se prévoit, c'est le sens des révisions tardives, pas leur enchaînement (`weo_forecast_revisions_ngdp_rpch.csv`).
 
-**Ce que change la dernière édition.** L'archive des éditions complètes permet de comparer les deux dernières sur les niveaux. Le rapport raccorde les projections du FMI au dernier niveau observé par la Banque Mondiale, `niveau[y] = observé[base] × FMI[y] / FMI[base]` : ce qui passe dans ses projections est la révision de la croissance cumulée projetée. Entre octobre 2025 et avril 2026, celle de 2024-2030 change de plus de 2 % en volume pour 52 pays sur 189 (médiane 1,0 %), de plus de 5 % en dollars courants pour 64 (médiane 3,2 %) — Russie −9,0 %, Japon −6,3 %, Inde −3,2 %, États-Unis +2,3 % en dollars. Les révisions du niveau de l'historique, elles, s'éliminent dans le raccord ; elles se lisent sur une année observée dans les deux éditions (l'année de l'ancienne édition moins deux, 2023 ici) : 14 pays ont changé d'année de base de leurs prix constants (Inde, Royaume-Uni, Norvège…), et le PIB en dollars de 10 pays a été révisé de plus de 5 %. Contrôlé sur 2025, encore estimée par l'édition d'octobre 2025, le même test signalait 31 pays au lieu de 14 : il prenait des révisions de l'inflation estimée pour des changements d'année de base. Détail : `weo_edition_revisions.csv`.
+**Ce que change la dernière édition.** L'archive des éditions complètes permet de comparer les deux dernières sur les niveaux. Le rapport raccorde les projections du FMI au dernier niveau observé par la Banque Mondiale, `niveau[y] = observé[base] × FMI[y] / FMI[base]` : ce qui passe dans ses projections est la révision de la croissance cumulée projetée. Entre octobre 2025 et avril 2026, celle de 2024-2030 change de plus de 2 % en volume pour 52 pays sur 189 (médiane 1,0 %), de plus de 5 % en dollars courants pour 64 (médiane 3,2 %) — Russie −9,0 %, Japon −6,3 %, Inde −3,2 %, États-Unis +2,3 % en dollars. Les révisions du niveau de l'historique, elles, s'éliminent dans le raccord. Elles se lisent sur une année observée dans les deux éditions (l'année de l'ancienne édition moins deux, 2023 ici) : sur une année encore estimée, une révision de l'inflation passerait pour un changement de prix de référence. Le PIB en dollars de 11 pays a été révisé de plus de 5 %.
+
+**Changements de norme et d'année de base.** Ils viennent des métadonnées que le FMI attache à chaque pays : norme des comptes nationaux, année de base, chaînage des volumes, notes. L'API ne les sert que pour les deux dernières éditions ; `pib.update_weo_editions` les archive à chaque édition, à côté des données. Entre octobre 2025 et avril 2026 :
+- **16 pays ont changé d'année de base** : Japon (2015 → 2020), Inde (2011-12 → 2022-23), Royaume-Uni, Australie, Suisse, Norvège, Bolivie (1990 → 2017)…
+- **3 pays ont changé de norme** : l'Azerbaïdjan, les Bahamas et la Guinée sont passés du SCN 1993 au SCN 2008. Pour la Guinée, seules les métadonnées changent : ses données restent celles d'octobre.
+- **Le critère utilisé jusqu'ici n'en retrouvait que 12.** Une révision de plus de 5 % du déflateur de l'historique manque les pays à faible inflation, où changer d'année de base déplace à peine le déflateur (Japon −1,1 %, Suisse +1,7 %, Australie −2,5 %). Il signalait en revanche 4 pays sans changement annoncé (Liban, Nauru, Togo, Tonga). Il reste publié comme « forte révision du déflateur ».
+
+Détail : `weo_edition_revisions.csv`, qui garde aussi les pays sans projection jusqu'à l'année cible (Bolivie, Liban).
 
 **La crise de 2008, cas d'étude** (`docs/cas_crise_2008.md`, reproduit par `python -m pib.cas_de_crise --annee 2009`). La chute de 2009 n'a été vue que dans l'année même : l'édition d'octobre 2008, trois semaines après la faillite de Lehman Brothers, annonçait encore +3,0 % pour le monde et un recul pour sept pays, quand 89 pays (77 % du PIB mondial) ont reculé. Le rebond de 2010 ne l'a pas été davantage : l'édition d'avril 2009 le sous-estime pour 77 % des pays (−3,0 points pondéré par le PIB). En niveau, le rebond a relevé la croissance, pas la trajectoire : en 2013, le PIB mondial reste 6,4 % sous le niveau projeté en octobre 2008, celui des économies avancées 7,4 %, celui de l'Espagne 17,8 % ; celui des États-Unis, du Royaume-Uni, de l'Italie et de l'Espagne finit même sous la projection d'avril 2009, faute d'avoir prévu la crise de la zone euro. Aux États-Unis, le rebond de 2010 a été sous-estimé (0,0 % prévu en avril 2009, +3,0 % réalisé), puis la reprise surestimée : de 2010 à 2013, chaque édition de 2008 à 2010 projetait au moins +7,6 % de croissance cumulée, pour +6,1 % selon l'estimation actuelle.
 
@@ -466,7 +473,7 @@ Pour chaque rapport (`data/` et `outputs/` ; `plus_recent/` pour le plus récent
 | `data/processed/weo_recession_by_horizon_ngdp_rpch.csv` | Années de recul annoncées et survenues, par horizon |
 | `data/processed/weo_recession_risk_ngdp_rpch.csv` | Au moins une année de recul sur les h années suivant l'édition, par groupe |
 | `data/processed/weo_forecast_revisions_ngdp_rpch.csv` | Révisions d'une édition à la suivante : sens, enchaînement (test de Nordhaus) |
-| `data/processed/weo_edition_revisions.csv` | Ce que change la dernière édition archivée, par pays ; changements d'année de base |
+| `data/processed/weo_edition_revisions.csv` | Ce que change la dernière édition archivée, par pays : projections, historique, forte révision du déflateur ; norme et année de base selon les métadonnées du FMI, et leurs changements |
 | `data/processed/wdi_growth_revisions.csv`, `wdi_level_revisions.csv` | Révisions de la croissance et du niveau de la Banque Mondiale depuis leur première publication, par délai et groupe de revenu |
 | `data/processed/wdi_largest_level_revisions.csv` | Plus fortes révisions du niveau parmi les 50 premières économies |
 | `data/processed/weo_forecast_bias_by_reference_ngdp_rpch.csv` | Biais du FMI contre sa ré-estimation, la Banque Mondiale en temps réel et sa série actuelle |
@@ -534,10 +541,10 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 | Fourchette par classe de croissance projetée et groupe de revenu, calibration vérifiée sur une période ultérieure ; bornes dans le bon sens | Une fourchette tirée d'un biais national qui ne se reproduit pas, ou une fourchette inversée |
 | Pente d'efficience et croissance cumulée projetée exactes | Un biais mesuré sans tenir compte de l'ampleur de la croissance annoncée |
 | Prévision naïve limitée à ce que le FMI savait ; avril et octobre séparés ; monde contre le seul FMI | Un étalon qui voit l'avenir, deux éditions confondues, ou un biais mondial gonflé par une pondération différente |
-| Archive : chaque édition une seule fois, telle que servie | Une publication d'époque remplacée par une version corrigée après coup |
+| Archive : chaque édition et ses métadonnées une seule fois, telles que servies | Une publication d'époque remplacée par une version corrigée après coup |
 | PIB en volume par habitant = volume / population raccordée, observé comme projeté ; une population manquante laisse la case vide | Un PIB par habitant projeté sur une population d'une autre source, ou inventé |
 | Récessions : pire année des horizons 1 à h, interrompue au premier réalisé manquant ; premières économies comptées par édition | Un recul de l'année de l'édition compté comme imprévu, ou « 20 premières économies » qui n'en comptaient que 10 |
-| Révisions entre éditions consécutives seulement, étapes dans l'ordre ; historique contrôlé sur une année observée | Une révision calculée par-dessus une édition manquante, ou une révision de l'inflation prévue prise pour un changement d'année de base |
+| Révisions entre éditions consécutives seulement, étapes dans l'ordre ; historique contrôlé sur une année observée ; changements de norme et d'année de base lus dans les métadonnées du FMI, indéterminés quand elles manquent | Une révision calculée par-dessus une édition manquante, une révision de l'inflation prévue prise pour un changement d'année de base, ou un changement d'année de base manqué faute d'inflation |
 | Commentaires de la page déduits des chiffres | Une conclusion écrite d'avance que la prochaine édition démentirait |
 | Scénarios pour le trafic : bornes et corrections dans le bon sens, croissance de l'OCDE du pays sinon de sa région, variantes de population de l'ONU appliquées aux seules années projetées | Un scénario bas plus haut que le central, ou une population « basse » qui modifie le passé observé |
 | Au-delà de l'horizon du FMI : dérive tirée des seules années connues à la date de l'édition ; loi ajustée sur les horizons assez fournis, y compris quand un quantile change de signe ; fourchette du pays conservée à l'horizon du FMI puis élargie, bornes basse et haute dans le bon sens | Une dérive qui connaît l'année en cours, une loi tirée de deux éditions, ou une fourchette qui saute en 2032 |

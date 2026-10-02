@@ -5,6 +5,18 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 📐 Normes des Comptes Nationaux et Années de Base : les Métadonnées du FMI (2 Octobre 2026)
+
+La définition du PIB a-t-elle changé pendant la période d'analyse ? Le FMI attache à chaque pays sa norme des comptes nationaux (SCN 1993, SCN 2008, SEC 2010…), son année de base, le chaînage de ses volumes et des notes. L'API ne les sert que dans son format CSV, et pour les deux dernières éditions seulement. `pib.update_weo_editions` les archive désormais à chaque édition (`data/raw/weo_archive/WEO_<édition>_metadonnees.csv`), avant que l'édition d'octobre 2026 ne fasse disparaître celle d'octobre 2025.
+
+- **État en avril 2026** (calcul ponctuel, PIB de 2024) **:** 153 pays sur 197, 97 % du PIB mondial, suivent le SCN 2008 ou le SEC 2010 ; 37 le SCN 1993 (2 %). L'hétérogénéité est surtout dans le chaînage : 80 pays chaînent leurs volumes (67 % du PIB), les autres, dont la Chine, l'Inde et le Brésil, les mesurent aux prix d'une année de base.
+- **Défaut corrigé :** `pib.revisions_weo` déduisait les changements d'année de base d'une révision de plus de 5 % du déflateur de l'historique. Entre octobre 2025 et avril 2026, les métadonnées en comptent 16 ; le critère n'en retrouvait que 12. Là où l'inflation est faible, changer d'année de base déplace à peine le déflateur : Japon −1,1 %, Suisse +1,7 %, Australie −2,5 %. Il signalait en revanche 4 pays sans changement annoncé (Liban, Nauru, Togo, Tonga).
+- **Désormais :** les changements de norme et d'année de base viennent des métadonnées (`changement_de_norme`, `changement_annee_de_base`, indéterminés quand elles manquent). Le critère du déflateur reste publié sous le nom `forte_revision_deflateur`. 3 pays ont changé de norme (Azerbaïdjan, Bahamas, Guinée, du SCN 1993 au SCN 2008).
+- **Autre défaut corrigé :** `weo_edition_revisions.csv` écartait les pays sans projection jusqu'à l'année cible, même quand leur historique était révisé. La Bolivie, passée de la base 1990 à 2017, n'y figurait pas ; elle y est, avec le Liban.
+- **Les fiches du FMI ne sont pas exemptes d'erreurs :** le début du chaînage de cinq pays européens change sans raison apparente d'une édition à l'autre.
+
+231 tests ; six mutations (indéterminé compté comme changement, « Not applicable » pris pour une norme, pays sans projection écartés, une ligne par observation, indéterminés signalés sur la page, métadonnées réécrites), rattrapées.
+
 ## 🇺🇸 Crise de 2008 : les États-Unis, Rebond Sous-Estimé, Reprise Surestimée (2 Octobre 2026)
 
 Les prévisions du FMI ont-elles sous-estimé la reprise américaine après 2008 ? Le cas d'étude ne suivait la croissance que pour 2009 et 2010 : `pib.cas_de_crise` la suit désormais jusqu'à quatre ans après le choc (2013 pour 2009, 2024 pour 2020), et les niveaux gagnent l'année du rebond. Nouvelle section 4 de `docs/cas_crise_2008.md`.

@@ -22,8 +22,9 @@ l'édition courante et la précédente. Archiver chaque édition dès sa parutio
 
 Dès maintenant, `python -m pib.revisions_weo` (lancé par `produire_rapports.py`) compare
 les deux dernières éditions archivées : révision de la croissance cumulée projetée, en
-volume et en dollars, et révisions de l'historique — changement d'année de base, nouvelle
-estimation des comptes (`data/processed/weo_edition_revisions.csv`).
+volume et en dollars, révisions de l'historique — nouvelle estimation des comptes, forte
+révision du déflateur —, et changements de norme et d'année de base selon les métadonnées
+(`data/processed/weo_edition_revisions.csv`).
 
 ## Format
 
@@ -39,3 +40,27 @@ compressé, lisible directement par `pandas.read_csv` :
 
 Premières éditions archivées le 29 septembre 2026 : `F2025` (flux `WEO_2025_OCT_VINTAGE`)
 et `S2026` (flux `WEO`).
+
+## Métadonnées des pays
+
+`WEO_<édition>_metadonnees.csv`, en CSV simple : une ligne par pays et agrégat, avec les
+métadonnées que le FMI attache à la croissance de son PIB réel. Elles disent sur quelle
+définition reposent les chiffres de chaque pays ; leur suite, édition après édition, dira
+quand il en a changé. L'API ne les sert que pour les deux dernières éditions, et
+seulement dans son format CSV : en JSON, leurs valeurs ne sont pas rattachées à leur pays.
+
+| Colonne | Contenu |
+|---|---|
+| `country_code` | Code du FMI, comme dans les données |
+| `METHODOLOGY` | Norme des comptes nationaux : SCN 1993, SCN 2008, SEC 2010… |
+| `BASE_YEAR` | Année de base des prix constants (`2017`, `FY2022/23`…) |
+| `CHAIN_WEIGHTED` | Volumes chaînés, et depuis quand (`Yes, from 1980`, `No`) |
+| `METHODOLOGY_NOTES` | Notes du FMI : changements de base récents, sources, particularités |
+| `LATEST_ACTUAL_ANNUAL_DATA` | Dernière année observée ; les suivantes sont estimées ou projetées |
+| `HISTORICAL_DATA_SOURCE` | Source des données historiques |
+| `COUNTRY_UPDATE_DATE` | Date de mise à jour des données du pays |
+| `extrait_le` | Date d'extraction |
+
+Premières métadonnées archivées le 2 octobre 2026, pour `F2025` et `S2026`. Les fiches ne
+sont pas exemptes d'erreurs : entre ces deux éditions, le début du chaînage de cinq pays
+européens change sans raison apparente (Pologne : « depuis 2020 », puis « depuis 1995 »).

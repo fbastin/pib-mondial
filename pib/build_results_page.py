@@ -662,8 +662,8 @@ def nom_edition(edition: str) -> str:
 
 
 def pays_signales(table: pd.DataFrame, colonne: str, maximum: int = 8) -> str:
-    """Pays signalés par `colonne`, des plus grandes économies aux plus petites."""
-    noms = table[table[colonne]].sort_values("taille", ascending=False)["country_name"].dropna().tolist()
+    """Pays signalés par `colonne` (vrai ; faux ou indéterminé sinon), des plus grandes économies aux plus petites."""
+    noms = table[table[colonne].eq(True)].sort_values("taille", ascending=False)["country_name"].dropna().tolist()
     if len(noms) > maximum:
         return f"{', '.join(noms[:maximum])} et {len(noms) - maximum} autres"
     return liste_pays(noms) if noms else ""
@@ -822,14 +822,21 @@ def revisions_de_la_derniere_edition(processed: str, synthese: pd.DataFrame, c: 
         f'<td class="num">{signe(ti.loc[code, "revision_pib_usd_cible_pct"], 1)} %</td>',
     ] for code in tete]
 
-    base_changee = pays_signales(t, "changement_annee_de_base")
+    def compte(colonne):
+        return int(t[colonne].eq(True).sum()) if colonne in t.columns else 0
+
+    norme_changee = pays_signales(t, "changement_de_norme") if compte("changement_de_norme") else ""
+    base_changee = pays_signales(t, "changement_annee_de_base") if compte("changement_annee_de_base") else ""
     historique = pays_signales(t, "revision_de_l_historique")
     signalements = []
     if base_changee:
-        signalements.append(f"les comptes de {int(t['changement_annee_de_base'].sum())} pays ont changé "
-                            f"d'année de base ({base_changee})")
+        signalements.append(f"les comptes de {compte('changement_annee_de_base')} pays ont changé d'année de base "
+                            f"selon les métadonnées du FMI ({base_changee})")
+    if norme_changee:
+        signalements.append(f"{compte('changement_de_norme')} pays ont changé de norme des comptes nationaux "
+                            f"({norme_changee})")
     if historique:
-        signalements.append(f"le PIB {controle} en dollars de {int(t['revision_de_l_historique'].sum())} pays a été "
+        signalements.append(f"le PIB {controle} en dollars de {compte('revision_de_l_historique')} pays a été "
                             f"révisé de plus de {nb(SEUIL_REVISION_HISTORIQUE)} % ({historique})")
     historique_phrase = (f"""
     <p class="col">Entre les deux éditions, {" ; ".join(signalements)}. Le rapport raccorde les

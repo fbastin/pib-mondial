@@ -29,13 +29,25 @@ def get_json(url: str, params: Optional[Dict[str, Any]] = None,
     pause croissante ; la dernière est levée en `RuntimeError`. `headers` complète les
     en-têtes par défaut (l'API SDMX du FMI ne répond en JSON que sur demande).
     """
+    return _interroger(url, params, tentatives, pause, timeout, headers, lambda r: r.json())
+
+
+def get_texte(url: str, params: Optional[Dict[str, Any]] = None,
+              tentatives: int = 3, pause: float = 2.0, timeout: int = 30,
+              headers: Optional[Dict[str, str]] = None) -> str:
+    """Comme `get_json`, mais retourne le texte de la réponse (CSV de l'API SDMX du FMI)."""
+    return _interroger(url, params, tentatives, pause, timeout, headers, lambda r: r.text)
+
+
+def _interroger(url, params, tentatives, pause, timeout, headers, lire) -> Any:
+    """Requête GET retentée (voir `get_json`) ; `lire` extrait le contenu de la réponse."""
     derniere = None
     for essai in range(1, tentatives + 1):
         try:
             response = requests.get(url, params=params, headers={**HEADERS, **(headers or {})},
                                     timeout=timeout)
             response.raise_for_status()
-            return response.json()
+            return lire(response)
         except (requests.RequestException, ValueError) as e:
             derniere = e
             if essai < tentatives:

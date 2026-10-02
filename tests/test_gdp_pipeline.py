@@ -1149,6 +1149,49 @@ class TestArchiveDesEditions:
         assert list(index["edition"]) == ["F2025", "S2026"]
         assert list(index["flux"]) == ["WEO_2025_OCT_VINTAGE", "WEO"]
 
+    @staticmethod
+    def _csv_metadonnees(colonnes=update_weo_editions.ATTRIBUTS_METHODE):
+        """Réponse CSV de l'API : les attributs répétés à chaque observation, ici deux années pour la France."""
+        lignes = [dict(DATAFLOW="IMF.RES:WEO(9.0.0)", COUNTRY=c, TIME_PERIOD=a, OBS_VALUE=1.0,
+                       **{col: f"{col} {c}" for col in colonnes})
+                  for c, a in (("FRA", 2026), ("FRA", 2025), ("KOS", 2026))]
+        return pd.DataFrame(lignes).to_csv(index=False)
+
+    def test_lecture_des_metadonnees(self, monkeypatch):
+        requetes = []
+
+        def get_texte(url, params=None, **kwargs):
+            requetes.append((url, params, kwargs.get("headers")))
+            return self._csv_metadonnees()
+
+        monkeypatch.setattr(update_weo_editions, "get_texte", get_texte)
+        meta = update_weo_editions.lire_metadonnees("WEO", "S2026").set_index("country_code")
+        assert list(meta.index) == ["FRA", "KOS"]                        # une ligne par pays
+        assert meta.loc["FRA", "BASE_YEAR"] == "BASE_YEAR FRA"
+        url, params, headers = requetes[0]
+        assert params == {"startPeriod": "2026", "endPeriod": "2026"} and "csv" in headers["Accept"]
+
+    def test_metadonnees_absentes_echec_explicite(self, monkeypatch):
+        monkeypatch.setattr(update_weo_editions, "get_texte",
+                            lambda url, **kwargs: self._csv_metadonnees(colonnes=("METHODOLOGY",)))
+        with pytest.raises(RuntimeError, match="BASE_YEAR"):
+            update_weo_editions.lire_metadonnees("WEO", "S2026")
+
+    def test_archivage_unique_des_metadonnees(self, tmp_path, monkeypatch):
+        appels = []
+
+        def lire(flux, edition):
+            appels.append(flux)
+            return pd.DataFrame(dict(country_code=["FRA"], METHODOLOGY=[edition]))
+
+        monkeypatch.setattr(update_weo_editions, "lire_metadonnees", lire)
+        noms = {"WEO": "S2026", "WEO_2025_OCT_VINTAGE": "F2025"}
+        assert update_weo_editions.archiver_metadonnees(noms, str(tmp_path)) == ["F2025", "S2026"]
+        assert update_weo_editions.archiver_metadonnees(noms, str(tmp_path)) == []
+        assert len(appels) == 2
+        meta = pd.read_csv(tmp_path / "WEO_F2025_metadonnees.csv")
+        assert meta.loc[0, "METHODOLOGY"] == "F2025" and "extrait_le" in meta.columns
+
 
 class TestLecturesComplementaires:
     """Avril face à octobre, le FMI face à une prévision naïve, et la croissance mondiale."""
@@ -2536,11 +2579,11 @@ class TestRevisionsDesEditions:
         table = revisions_de_niveau(self._niveaux({code: ancien for code in nouveau}), self._niveaux(nouveau),
                                     2024, 2030).set_index("country_code")
         assert table.loc["IND", "revision_croissance_reelle_pct"] == pytest.approx(0.0)
-        assert table.loc["IND", "changement_annee_de_base"] and not table.loc["IND", "revision_de_l_historique"]
-        assert not table.loc["BGR", ["changement_annee_de_base", "revision_de_l_historique"]].any()
+        assert table.loc["IND", "forte_revision_deflateur"] and not table.loc["IND", "revision_de_l_historique"]
+        assert not table.loc["BGR", ["forte_revision_deflateur", "revision_de_l_historique"]].any()
         assert table.loc["JPN", "revision_croissance_usd_pct"] == pytest.approx(5.0)
         assert table.loc["JPN", "revision_croissance_reelle_pct"] == pytest.approx(2.0)
-        assert table.loc["NGA", "revision_de_l_historique"] and not table.loc["NGA", "changement_annee_de_base"]
+        assert table.loc["NGA", "revision_de_l_historique"] and not table.loc["NGA", "forte_revision_deflateur"]
         assert table.loc["NGA", "revision_croissance_usd_pct"] == pytest.approx(0.0)
         assert table.loc["NGA", "revision_pib_usd_cible_pct"] == pytest.approx(20.0)
 
@@ -2554,12 +2597,62 @@ class TestRevisionsDesEditions:
         ancien = {(ind, annee): 100.0 for ind in ("NGDP", "NGDP_R", "NGDPD") for annee in (2023, 2025, 2030)}
         nouveau = {**ancien, ("NGDP", 2025): 110.0}
         a, n = self._niveaux({"EST": ancien}), self._niveaux({"EST": nouveau})
-        assert revisions_de_niveau(a, n, 2025, 2030)["changement_annee_de_base"].iloc[0]
-        assert not revisions_de_niveau(a, n, 2025, 2030, annee_controle=2023)["changement_annee_de_base"].iloc[0]
+        assert revisions_de_niveau(a, n, 2025, 2030)["forte_revision_deflateur"].iloc[0]
+        assert not revisions_de_niveau(a, n, 2025, 2030, annee_controle=2023)["forte_revision_deflateur"].iloc[0]
+
+    def test_pays_sans_projection_garde_son_historique(self):
+        """La Bolivie, que le FMI ne projette pas jusqu'à l'année cible, change de base : elle reste signalée."""
+        from pib.revisions_weo import revisions_de_niveau
+        ancien = {("NGDP", 2023): 300.0, ("NGDP_R", 2023): 50.0, ("NGDPD", 2023): 45.0}
+        nouveau = {("NGDP", 2023): 360.0, ("NGDP_R", 2023): 340.0, ("NGDPD", 2023): 52.0}
+        table = revisions_de_niveau(self._niveaux({"BOL": ancien}), self._niveaux({"BOL": nouveau}),
+                                    2024, 2030, annee_controle=2023).set_index("country_code")
+        assert pd.isna(table.loc["BOL", "revision_croissance_reelle_pct"])
+        assert table.loc["BOL", "forte_revision_deflateur"] and table.loc["BOL", "revision_de_l_historique"]
+
+    @staticmethod
+    def _metadonnees(pays: dict) -> pd.DataFrame:
+        """Format de `lire_metadonnees` : norme et année de base, par pays."""
+        return pd.DataFrame([dict(country_code=c, METHODOLOGY=norme, BASE_YEAR=base) for c, (norme, base) in pays.items()]
+                            ).set_index("country_code")
+
+    def test_changements_de_norme_et_d_annee_de_base(self):
+        """
+        Le Japon change d'année de base, l'Azerbaïdjan de norme, les États-Unis de rien. Le
+        Yémen n'a plus de norme (« Not applicable ») et le Nigeria n'est que dans la nouvelle
+        édition : leurs changements de norme sont indéterminés, pas faux.
+        """
+        from pib.revisions_weo import changements_de_methode
+        scn93, scn08 = "System of National Accounts (SNA) 1993", "System of National Accounts (SNA) 2008"
+        ancienne = self._metadonnees({"JPN": (scn08, "2015"), "AZE": (scn93, "2005"), "USA": (scn08, "2017"),
+                                      "YEM": (scn93, "1990")})
+        nouvelle = self._metadonnees({"JPN": (scn08, "2020"), "AZE": (scn08, "2005"), "USA": (scn08, " 2017"),
+                                      "YEM": ("Not applicable", "2015"), "NGA": (scn08, "2019")})
+        t = changements_de_methode(ancienne, nouvelle).set_index("country_code")
+        assert t.loc["JPN", "changement_annee_de_base"] and not t.loc["JPN", "changement_de_norme"]
+        assert t.loc["AZE", "changement_de_norme"] and not t.loc["AZE", "changement_annee_de_base"]
+        assert t.loc["AZE", "norme_nouvelle"] == scn08
+        assert not t.loc["USA", ["changement_de_norme", "changement_annee_de_base"]].any()
+        assert pd.isna(t.loc["YEM", "changement_de_norme"]) and t.loc["YEM", "changement_annee_de_base"]
+        assert pd.isna(t.loc["NGA", "changement_de_norme"]) and pd.isna(t.loc["NGA", "changement_annee_de_base"])
+
+    def test_metadonnees_non_archivees(self, tmp_path):
+        """Sans métadonnées archivées, les changements de méthode sont inconnus, sans erreur."""
+        from pib.revisions_weo import changements_de_methode, lire_metadonnees
+        t = changements_de_methode(lire_metadonnees(str(tmp_path), "F2024"), lire_metadonnees(str(tmp_path), "S2025"))
+        assert t.empty and {"changement_de_norme", "changement_annee_de_base"} <= set(t.columns)
+
+    def test_metadonnees_lues_aux_codes_de_la_banque_mondiale(self, tmp_path):
+        from pib.revisions_weo import lire_metadonnees
+        pd.DataFrame(dict(country_code=["KOS", "FRA"], METHODOLOGY="European System of Accounts (ESA) 2010",
+                          BASE_YEAR=["2016", "2020"])).to_csv(tmp_path / "WEO_S2026_metadonnees.csv", index=False)
+        meta = lire_metadonnees(str(tmp_path), "S2026")
+        assert meta.loc["XKX", "BASE_YEAR"] == "2016"
 
     def test_editions_archivees_dans_l_ordre(self, tmp_path):
         from pib.revisions_weo import editions_archivees
-        for nom in ("WEO_S2026.csv.gz", "WEO_F2025.csv.gz", "WEO_F2024.csv.gz", "index.csv", "LISEZ-MOI.md"):
+        for nom in ("WEO_S2026.csv.gz", "WEO_F2025.csv.gz", "WEO_F2024.csv.gz", "WEO_S2026_metadonnees.csv",
+                    "index.csv", "LISEZ-MOI.md"):
             (tmp_path / nom).write_text("")
         assert editions_archivees(str(tmp_path)) == ["F2024", "F2025", "S2026"]
         assert editions_archivees(str(tmp_path / "absent")) == []
@@ -2571,6 +2664,13 @@ class TestRevisionsDesEditions:
         niveaux = lire_niveaux(str(tmp_path), "S2026")
         assert niveaux.loc["XKX", ("NGDPD", 2024)] == pytest.approx(10.0)
         assert "LP" not in niveaux.columns.get_level_values("indicator")
+
+    def test_pays_signales_sans_les_indetermines(self):
+        """Un changement indéterminé (métadonnées absentes, lu vide dans le CSV) n'est pas signalé."""
+        from pib.build_results_page import pays_signales
+        t = pd.DataFrame(dict(country_name=["Japon", "Bolivie", "France"], taille=[4000.0, 50.0, 3000.0],
+                              changement_annee_de_base=[True, np.nan, False]))
+        assert pays_signales(t, "changement_annee_de_base") == "Japon"
 
     def test_zero_arrondi_sans_signe_negatif(self):
         from pib.build_results_page import signe

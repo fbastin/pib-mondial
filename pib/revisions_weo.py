@@ -9,9 +9,10 @@ Révisions des prévisions du FMI, d'une édition du WEO à la suivante. Deux le
   toute l'information disponible produit des révisions imprévisibles ; s'il ne l'intègre
   que par étapes, une révision en annonce une autre de même sens (test de Nordhaus).
 - Entre les deux dernières éditions archivées (`data/raw/weo_archive/`) : ce qui change
-  dans les projections du rapport, et les révisions de l'historique — changement d'année
-  de base, nouvelle estimation des comptes — que le raccord sur la Banque Mondiale
-  neutralise.
+  dans les projections du rapport, et les révisions de l'historique — nouvelle estimation
+  des comptes, forte révision du déflateur — que le raccord sur la Banque Mondiale
+  neutralise. Les changements de norme des comptes nationaux et d'année de base viennent
+  des métadonnées du FMI, archivées à côté des éditions.
 
     python -m pib.revisions_weo
 """
@@ -45,7 +46,10 @@ INDICATEUR = "ngdp_rpch"
 NIVEAUX = ("NGDP", "NGDP_R", "NGDPD")
 
 # Révision du niveau d'une année passée au-delà de laquelle ce n'est plus un ajustement
-# ordinaire, mais un changement d'année de base ou une nouvelle estimation des comptes
+# ordinaire, mais une nouvelle estimation des comptes, ou pour le déflateur un changement
+# de prix de référence. Un changement d'année de base n'y suffit pas toujours : là où
+# l'inflation est faible, il déplace à peine le déflateur (Japon, 2015 -> 2020 : −1 %).
+# Les changements d'année de base se lisent donc dans les métadonnées du FMI.
 SEUIL_REVISION_HISTORIQUE = 5.0
 
 # Année de contrôle de ces révisions, avant l'année de l'ancienne édition : l'année
@@ -59,6 +63,13 @@ SEUIL_REVISION_VOLUME = 2.0
 SEUIL_REVISION_DOLLARS = SEUIL_REVISION_HISTORIQUE
 
 FICHIER_ARCHIVE = re.compile(r"WEO_([SF]\d{4})\.csv\.gz")
+
+# Métadonnées de méthode archivées (`pib.update_weo_editions`) : attribut lu, nom donné à
+# sa valeur, nom donné à son changement
+METHODE = {"METHODOLOGY": ("norme", "changement_de_norme"),
+           "BASE_YEAR": ("annee_de_base", "changement_annee_de_base")}
+# Valeurs qui ne renseignent rien
+SANS_VALEUR = {"Not applicable"}
 
 
 def ordre_edition(annee, saison):
@@ -171,11 +182,13 @@ def revisions_de_niveau(ancienne: pd.DataFrame, nouvelle: pd.DataFrame,
 
     - `revision_historique_usd_pct` : PIB en dollars — nouvelle estimation des comptes, ou
       du taux de change ;
-    - `revision_deflateur_historique_pct` : rapport du PIB courant au PIB en volume — un
-      changement d'année de base des prix constants, qui change le niveau en volume sans
-      rien changer à l'économie mesurée.
+    - `revision_deflateur_historique_pct` : rapport du PIB courant au PIB en volume — le
+      plus souvent un changement d'année de base des prix constants, qui change le niveau
+      en volume sans rien changer à l'économie mesurée.
 
-    Chacune est signalée au-delà de `SEUIL_REVISION_HISTORIQUE`. En %, sauf les signaux.
+    Chacune est signalée au-delà de `SEUIL_REVISION_HISTORIQUE` (`revision_de_l_historique`,
+    `forte_revision_deflateur`). En %, sauf les signaux. Un pays sans projection jusqu'à
+    `annee_cible` reste dans la table si son historique est connu.
     """
     controle = annee_base if annee_controle is None else annee_controle
     pays = ancienne.index.intersection(nouvelle.index)
@@ -200,10 +213,42 @@ def revisions_de_niveau(ancienne: pd.DataFrame, nouvelle: pd.DataFrame,
         "revision_historique_usd_pct": revision(valeur(n, "NGDPD", controle), valeur(a, "NGDPD", controle)),
         "revision_deflateur_historique_pct": revision(deflateur(n), deflateur(a)),
     }, index=pays)
-    table["changement_annee_de_base"] = table["revision_deflateur_historique_pct"].abs() > SEUIL_REVISION_HISTORIQUE
+    table["forte_revision_deflateur"] = table["revision_deflateur_historique_pct"].abs() > SEUIL_REVISION_HISTORIQUE
     table["revision_de_l_historique"] = table["revision_historique_usd_pct"].abs() > SEUIL_REVISION_HISTORIQUE
-    table = table.dropna(subset=["revision_croissance_reelle_pct", "revision_croissance_usd_pct"], how="all")
+    table = table.dropna(subset=["revision_croissance_reelle_pct", "revision_croissance_usd_pct",
+                                 "revision_historique_usd_pct", "revision_deflateur_historique_pct"], how="all")
     return table.rename_axis("country_code").reset_index().round(3)
+
+
+def lire_metadonnees(dossier: str, edition: str) -> pd.DataFrame:
+    """
+    Métadonnées de méthode archivées d'une édition (`WEO_<édition>_metadonnees.csv`), aux
+    codes de la Banque Mondiale. Vide, avec les colonnes de `METHODE`, si elles n'ont pas
+    été archivées : l'API ne les sert que pour les deux dernières éditions.
+    """
+    chemin = os.path.join(dossier, f"WEO_{edition}_metadonnees.csv")
+    if not os.path.exists(chemin):
+        return pd.DataFrame(columns=list(METHODE)).rename_axis("country_code")
+    d = pd.read_csv(chemin, dtype=str)
+    return d.assign(country_code=d["country_code"].replace(WEO_VERS_ISO3)).set_index("country_code")
+
+
+def changements_de_methode(ancienne: pd.DataFrame, nouvelle: pd.DataFrame) -> pd.DataFrame:
+    """
+    Norme des comptes nationaux (SCN 1993, SCN 2008, SEC 2010…) et année de base des prix
+    constants de chaque pays, dans deux éditions successives (`lire_metadonnees`), et leurs
+    changements : `norme_ancienne`, `norme_nouvelle`, `changement_de_norme`, et de même pour
+    `annee_de_base`. Un changement est indéterminé (NA) si l'une des éditions ne renseigne
+    pas le pays ; « Not applicable » ne renseigne rien.
+    """
+    pays = ancienne.index.union(nouvelle.index)
+    table = pd.DataFrame(index=pays.rename("country_code"))
+    for attribut, (nom, changement) in METHODE.items():
+        avant, apres = (t[attribut].reindex(pays).str.strip().mask(lambda v: v.isin(SANS_VALEUR))
+                        for t in (ancienne, nouvelle))
+        table[f"{nom}_ancienne"], table[f"{nom}_nouvelle"] = avant, apres
+        table[changement] = (avant != apres).where(avant.notna() & apres.notna()).astype("boolean")
+    return table.reset_index()
 
 
 def main():
@@ -249,8 +294,12 @@ def main():
     annee_cible = min(bornes["prevision"][1], *(int(t.columns.get_level_values("year").max())
                                                for t in (niveaux_a, niveaux_n)))
     annee_controle = int(ancienne[1:]) - RECUL_ANNEE_CONTROLE
-    table = exclure_agregats(revisions_de_niveau(niveaux_a, niveaux_n, annee_base, annee_cible, annee_controle),
-                             args.data_dir)
+    table = revisions_de_niveau(niveaux_a, niveaux_n, annee_base, annee_cible, annee_controle)
+    methode = changements_de_methode(lire_metadonnees(archive, ancienne), lire_metadonnees(archive, nouvelle))
+    if methode.empty:
+        logging.info(f"Métadonnées de {ancienne} ou {nouvelle} non archivées : "
+                     "changements de norme et d'année de base inconnus.")
+    table = exclure_agregats(table.merge(methode, on="country_code", how="outer"), args.data_dir)
 
     synthese_csv = os.path.join(processed, "gdp_country_summary.csv")
     if os.path.exists(synthese_csv):
@@ -264,13 +313,18 @@ def main():
     table.to_csv(os.path.join(processed, "weo_edition_revisions.csv"), index=False, encoding="utf-8-sig")
 
     reel, usd = table["revision_croissance_reelle_pct"].abs(), table["revision_croissance_usd_pct"].abs()
+
+    def signales(colonne):
+        return ", ".join(table.loc[table[colonne].eq(True), "country_code"]) or "aucun"
+
     logging.info(f"Révisions {ancienne} → {nouvelle}, croissance cumulée {annee_base}-{annee_cible}, "
-                 f"{len(table)} pays : au-delà de {SEUIL_REVISION_VOLUME:g} % en volume pour "
-                 f"{int((reel > SEUIL_REVISION_VOLUME).sum())}, de {SEUIL_REVISION_DOLLARS:g} % en dollars "
-                 f"pour {int((usd > SEUIL_REVISION_DOLLARS).sum())}. Sur {annee_controle}, changements d'année de base : "
-                 f"{', '.join(table.loc[table['changement_annee_de_base'], 'country_code']) or 'aucun'} ; "
-                 f"révisions de l'historique : "
-                 f"{', '.join(table.loc[table['revision_de_l_historique'], 'country_code']) or 'aucune'}.")
+                 f"{int((reel.notna() | usd.notna()).sum())} pays : au-delà de {SEUIL_REVISION_VOLUME:g} % "
+                 f"en volume pour {int((reel > SEUIL_REVISION_VOLUME).sum())}, de {SEUIL_REVISION_DOLLARS:g} % "
+                 f"en dollars pour {int((usd > SEUIL_REVISION_DOLLARS).sum())}. Selon les métadonnées du FMI, "
+                 f"changements de norme : {signales('changement_de_norme')} ; d'année de base : "
+                 f"{signales('changement_annee_de_base')}. Sur {annee_controle}, fortes révisions du déflateur : "
+                 f"{signales('forte_revision_deflateur')} ; révisions de l'historique : "
+                 f"{signales('revision_de_l_historique')}.")
 
 
 if __name__ == "__main__":

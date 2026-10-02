@@ -19,11 +19,14 @@ le classeur fait foi.
 Chaque édition servie est en outre archivée en entier — tous pays, tous indicateurs,
 PIB en dollars courants compris — dans `data/raw/weo_archive/`. Le classeur historique
 ne contient que des taux : ces archives permettront, édition après édition, de mesurer
-aussi les erreurs sur les niveaux en dollars courants.
+aussi les erreurs sur les niveaux en dollars courants. Les métadonnées de méthode de
+chaque pays (norme des comptes nationaux, année de base, chaînage) y sont archivées à
+côté : leur suite dira quand chaque pays a changé de norme ou d'année de base.
 
     python -m pib.update_weo_editions
 """
 
+import io
 import os
 import re
 import sys
@@ -33,7 +36,7 @@ from datetime import date
 
 import pandas as pd
 
-from pib.http_utils import get_json
+from pib.http_utils import get_json, get_texte
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -42,6 +45,9 @@ AGENCE = "IMF.RES"
 FLUX_COURANT = "WEO"
 MOTIF_ARCHIVE = re.compile(r"^WEO_(\d{4})_([A-Z]{3})_VINTAGE$")
 JSON = {"Accept": "application/json"}
+# Les métadonnées de chaque pays ne sont rattachées à leur série que dans le format CSV :
+# en JSON, leurs valeurs sont listées sans le pays auquel chacune s'applique
+CSV = {"Accept": "application/vnd.sdmx.data+csv;version=1.0.0"}
 
 # Onglets du classeur et indicateurs SDMX correspondants. Valeurs identiques, vérifié le
 # 29 septembre 2026 sur les éditions d'avril 2026 et d'octobre 2025.
@@ -53,6 +59,12 @@ INDICATEURS_SDMX = {
 
 # Comme le classeur : chaque édition ré-estime deux ans de passé et projette cinq ans
 HORIZONS = range(-2, 6)
+
+# Métadonnées de méthode que le FMI attache à la croissance du PIB réel de chaque pays :
+# norme des comptes nationaux (SCN 1993, SCN 2008, SEC 2010…), année de base des prix
+# constants, chaînage des volumes, notes, dernière année observée, source, mise à jour
+ATTRIBUTS_METHODE = ("METHODOLOGY", "BASE_YEAR", "CHAIN_WEIGHTED", "METHODOLOGY_NOTES",
+                     "LATEST_ACTUAL_ANNUAL_DATA", "HISTORICAL_DATA_SOURCE", "COUNTRY_UPDATE_DATE")
 
 CLASSEUR = os.path.join("data", "raw", "WEOhistorical.xlsx")
 COMPLEMENT = os.path.join("data", "raw", "weo_editions_api.csv")
@@ -185,6 +197,46 @@ def archiver_editions(noms: dict, dossier: str = ARCHIVE) -> list:
     return ajoutees
 
 
+def lire_metadonnees(flux: str, edition: str) -> pd.DataFrame:
+    """
+    Métadonnées de méthode (`ATTRIBUTS_METHODE`) de chaque pays et agrégat d'un flux, telles
+    que le FMI les attache à la croissance du PIB réel : une ligne par entité, codes du FMI.
+    Elles valent pour toute la série : seule l'année de l'édition est demandée.
+    """
+    annee = edition[1:]
+    texte = get_texte(f"{SDMX}/data/{AGENCE},{flux}/.{INDICATEURS_SDMX['ngdp_rpch']}.A",
+                      params={"startPeriod": annee, "endPeriod": annee}, headers=CSV, timeout=120)
+    d = pd.read_csv(io.StringIO(texte), dtype=str)
+    manquants = [c for c in ("COUNTRY", *ATTRIBUTS_METHODE) if c not in d.columns]
+    if d.empty or manquants:
+        raise RuntimeError(f"Flux {flux} : métadonnées absentes"
+                           + (f" ({', '.join(manquants)})." if manquants else "."))
+    return (d.drop_duplicates("COUNTRY").rename(columns={"COUNTRY": "country_code"})
+            [["country_code", *ATTRIBUTS_METHODE]].sort_values("country_code", ignore_index=True))
+
+
+def archiver_metadonnees(noms: dict, dossier: str = ARCHIVE) -> list:
+    """
+    Archive les métadonnées de méthode (`lire_metadonnees`) de chaque édition servie qui ne
+    les a pas encore, dans `WEO_<édition>_metadonnees.csv`, avec leur date d'extraction.
+
+    Comme les données, elles ne sont jamais réécrites. L'API ne les sert que pour les deux
+    dernières éditions : c'est leur suite, archivée édition après édition, qui dira quand
+    chaque pays a changé de norme ou d'année de base. Retourne les éditions ajoutées.
+    """
+    os.makedirs(dossier, exist_ok=True)
+    ajoutees = []
+    for flux, edition in sorted(noms.items(), key=lambda x: (int(x[1][1:]), x[1][0] == "F")):
+        chemin = os.path.join(dossier, f"WEO_{edition}_metadonnees.csv")
+        if os.path.exists(chemin):
+            continue
+        meta = lire_metadonnees(flux, edition).assign(extrait_le=date.today().isoformat())
+        meta.to_csv(chemin, index=False, encoding="utf-8")
+        ajoutees.append(edition)
+        logging.info(f"-> Métadonnées de l'édition {edition} archivées ({flux}) : {len(meta)} entités.")
+    return ajoutees
+
+
 def editions_servies() -> tuple:
     """Éditions servies par l'API, nommées ({flux: édition}), et le flux courant (NGDP_RPCH)."""
     flux = lister_flux()
@@ -255,7 +307,8 @@ def main():
                         help="Fichier complément (par défaut : weo_editions_api.csv à côté du classeur)")
     parser.add_argument("--archive", type=str, default=None,
                         help="Dossier d'archive des éditions complètes (par défaut : weo_archive/ à côté du classeur)")
-    parser.add_argument("--sans-archive", action="store_true", help="Ne pas archiver les éditions complètes")
+    parser.add_argument("--sans-archive", action="store_true",
+                        help="Ne pas archiver les éditions complètes ni leurs métadonnées")
     args = parser.parse_args()
 
     dossier = os.path.dirname(args.classeur)
@@ -264,7 +317,9 @@ def main():
         noms, courant = editions_servies()
         mettre_a_jour(args.classeur, complement, noms, courant)
         if not args.sans_archive:
-            archiver_editions(noms, args.archive or os.path.join(dossier, "weo_archive"))
+            archive = args.archive or os.path.join(dossier, "weo_archive")
+            archiver_editions(noms, archive)
+            archiver_metadonnees(noms, archive)
     except RuntimeError as e:
         logging.error(f"Mise à jour des éditions du WEO interrompue : {e}")
         sys.exit(1)
