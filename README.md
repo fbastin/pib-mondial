@@ -45,6 +45,7 @@ pib-mondial/
 │   ├── chiffres_cles.py          #   Documentation : chiffres cités qui ont changé après une relance, et où
 │   ├── cas_de_crise.py           #   Évaluation : une récession mondiale (2009, 2020) dans les prévisions
 │   ├── millesimes_bm.py          #   Évaluation : éditions archivées des WDI, révisions du réalisé
+│   ├── classeur.py               #   Livrables : classeur Excel, et sa reconstruction depuis les CSV
 │   ├── visualize_gdp.py          #   Livrables : graphiques et tableau de bord
 │   └── build_results_page.py     #   Livrables : page de résultats HTML
 ├── notebooks/                    # Analyse interactive (Python et Julia) et générateurs
@@ -122,6 +123,7 @@ Les chiffres suivis (`docs/chiffres_cles.json`) ne couvrent pas tout : les autre
 | Page de résultats | `python -m pib.build_results_page [--pays FRA]` |
 | Chiffres cités dans la documentation qui ont changé, et où les corriger ; puis publication des nouvelles valeurs | `python -m pib.chiffres_cles [--enregistrer]` |
 | Copie du dépôt et de ses sorties vers un dossier partagé (seulement ce qui a changé, sans rien supprimer) | `python miroir.py --destination DOSSIER [--simulation]` |
+| Classeur Excel reconstruit depuis les CSV d'un rapport (sorties d'une sauvegarde qui n'a gardé que les données) | `python -m pib.classeur [--data-dir data] [--output-dir outputs]` |
 | Collecte seule, historique | `python -m pib.fetch_historical_gdp --start-year 2000 --end-year 2025` |
 | Collecte seule, prévisions | `python -m pib.fetch_forecast_gdp --forecast-start 2025` |
 
@@ -154,7 +156,7 @@ jupyter nbconvert --to html --execute --ExecutePreprocessor.kernel_name=julia-1.
 ### Tests
 
 ```bash
-pytest                      # 231 tests, sans accès réseau
+pytest                      # 233 tests, sans accès réseau
 pytest -m "not donnees"     # sans les contrôles sur les fichiers produits
 ```
 
@@ -517,7 +519,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 
 ## ✅ Tests des invariants
 
-231 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
+233 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
 
 | Invariant | Ce qu'il empêche |
 |---|---|
@@ -545,6 +547,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 | PIB en volume par habitant = volume / population raccordée, observé comme projeté ; une population manquante laisse la case vide | Un PIB par habitant projeté sur une population d'une autre source, ou inventé |
 | Récessions : pire année des horizons 1 à h, interrompue au premier réalisé manquant ; premières économies comptées par édition | Un recul de l'année de l'édition compté comme imprévu, ou « 20 premières économies » qui n'en comptaient que 10 |
 | Révisions entre éditions consécutives seulement, étapes dans l'ordre ; historique contrôlé sur une année observée ; changements de norme et d'année de base lus dans les métadonnées du FMI, indéterminés quand elles manquent | Une révision calculée par-dessus une édition manquante, une révision de l'inflation prévue prise pour un changement d'année de base, ou un changement d'année de base manqué faute d'inflation |
+| Classeur reconstruit depuis les CSV identique, cellule par cellule, à celui du pipeline, fourchettes comprises ; flottants relus sans arrondi | Des sorties restaurées dont le classeur arrondit, omet ou intervertit des données |
 | Commentaires de la page déduits des chiffres | Une conclusion écrite d'avance que la prochaine édition démentirait |
 | Scénarios pour le trafic : bornes et corrections dans le bon sens, croissance de l'OCDE du pays sinon de sa région, variantes de population de l'ONU appliquées aux seules années projetées | Un scénario bas plus haut que le central, ou une population « basse » qui modifie le passé observé |
 | Au-delà de l'horizon du FMI : dérive tirée des seules années connues à la date de l'édition ; loi ajustée sur les horizons assez fournis, y compris quand un quantile change de signe ; fourchette du pays conservée à l'horizon du FMI puis élargie, bornes basse et haute dans le bon sens | Une dérive qui connaît l'année en cours, une loi tirée de deux éditions, ou une fourchette qui saute en 2032 |

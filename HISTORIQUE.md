@@ -5,6 +5,16 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 🗂️ Reconstruire le Classeur Excel depuis les CSV (16 Octobre 2026)
+
+Peut-on restaurer les sorties d'une sauvegarde qui n'a gardé que les données ? La relance d'octobre a remplacé sur le Drive les sorties d'avril avant qu'elles soient copiées ; seuls `data/processed/` et `data/plus_recent/` l'avaient été. Graphiques, tableaux de bord et pages de résultats se régénèrent depuis ces CSV par `pib.visualize_gdp` et `pib.build_results_page` : avec le code de `bb750f9`, les graphiques d'avril restés en place sont reproduits octet pour octet. Le classeur Excel, lui, n'était écrit que par le pipeline, depuis les données en mémoire.
+
+- **Nouveau module `pib.classeur` :** le pipeline et l'évaluation écrivent le classeur par les mêmes fonctions (`ecrire`, `ajouter_fourchettes`) que la reconstruction (`python -m pib.classeur --data-dir … --output-dir …`). Chaque onglet reprend un CSV du rapport : le classeur reconstruit est celui du pipeline, cellule par cellule, vérifié sur les deux rapports d'octobre.
+- **Défaut évité :** relus par défaut, les flottants d'un CSV perdent leur dernier chiffre pour environ un nombre sur cinq (6 cellules de l'extraction de la Banque Mondiale, écart relatif de 10⁻¹⁴). Ils sont relus avec `float_precision="round_trip"`.
+- **Ne se reconstruit pas :** `data/raw/gdp_imf_weo_raw.json`, réponse brute de l'API DataMapper, qui ne sert que l'édition en cours.
+
+233 tests ; cinq mutations (lecture par défaut des flottants, onglet des fourchettes daté de la dernière année observée, fourchettes oubliées, extractions interverties, onglet vide sans fourchettes), rattrapées.
+
 ## 🔄 Édition d'Octobre 2026 du WEO : Première Relance (16 Octobre 2026)
 
 L'API SDMX du FMI sert l'édition d'octobre 2026 (flux `WEO`, horizon 2031), celle d'avril 2026 passant en archive (`WEO_2026_APR_VINTAGE`). Celle d'octobre 2025 reste servie, contrairement à ce qu'on attendait. `pib.update_weo_editions` a ajouté `F2026` au complément du classeur et l'a archivée en entier, métadonnées comprises (210 entités), sans téléchargement. La Banque Mondiale a mis à jour ses indicateurs le 8 octobre, toujours sans le PIB 2025 des Émirats, des Bahamas et d'Aruba : la référence reste 2024, et `plus_recent/` reste en place.

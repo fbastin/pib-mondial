@@ -38,7 +38,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from pib import groupes_revenu
+from pib import classeur, groupes_revenu
 from pib.gdp_pipeline import unified_csv_path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -1159,10 +1159,9 @@ def evaluer_niveaux(evaluation: pd.DataFrame, base: pd.DataFrame, data_dir: str,
         for h in range(0, horizon + 1)], ignore_index=True)
     par_horizon.to_csv(os.path.join(processed, "gdp_projection_bands_by_horizon.csv"), index=False, encoding="utf-8-sig")
 
-    excel = os.path.join(output_dir, "gdp_master_dataset.xlsx")
+    excel = os.path.join(output_dir, classeur.NOM)
     if os.path.exists(excel):
-        with pd.ExcelWriter(excel, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
-            fourchettes.to_excel(writer, sheet_name=f"Fourchettes_{annee_fin}", index=False)
+        classeur.ajouter_fourchettes(excel, fourchettes, annee_fin)
         logging.info(f"Onglet Fourchettes_{annee_fin} ajouté à {excel}")
 
 

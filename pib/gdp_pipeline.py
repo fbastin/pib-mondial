@@ -27,6 +27,7 @@ import numpy as np
 from pib.fetch_historical_gdp import (fetch_all_historical_gdp, fetch_world_per_capita_growth,
                                      WB_INDICATORS, WB_LAST_UPDATED)
 from pib.fetch_forecast_gdp import fetch_all_forecasts, IMF_INDICATORS, IMF_API_INFO, BASE_URL
+from pib import classeur
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -707,13 +708,10 @@ def write_report(report: dict, data_dir: str, output_dir: str, rapport: dict) ->
     write_extraction_metadata(data_dir, years, end_year + 1, report["hist"], report["fcst"],
                               report["unified"], report["summary"], rapport)
 
-    excel_path = os.path.join(output_dir, "gdp_master_dataset.xlsx")
-    with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
-        report["summary"].head(30).to_excel(writer, sheet_name="Top30_Economies", index=False)
-        report["summary"].to_excel(writer, sheet_name="Synthese_Pays", index=False)
-        report["unified"].to_excel(writer, sheet_name=f"Series_Temporelles_{start_year}_{fcst_end}", index=False)
-        report["hist"].to_excel(writer, sheet_name="Donnees_Historiques_Brutes", index=False)
-        report["fcst"].to_excel(writer, sheet_name="Previsions_FMI_Brutes", index=False)
+    # Les onglets reprennent ces CSV : `pib.classeur` sait le reconstruire depuis eux
+    excel_path = os.path.join(output_dir, classeur.NOM)
+    classeur.ecrire(excel_path, report["summary"], report["unified"], report["hist"], report["fcst"],
+                    start_year, fcst_end)
     logging.info(f"Classeur Excel enregistré : {excel_path}")
 
 

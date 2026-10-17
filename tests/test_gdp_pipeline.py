@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from pib import http_utils, gdp_pipeline, fetch_historical_gdp, fetch_forecast_gdp, update_weo_editions
+from pib import http_utils, gdp_pipeline, fetch_historical_gdp, fetch_forecast_gdp, update_weo_editions, classeur
 from pib.gdp_pipeline import (
     calculate_cagr,
     reference_years,
@@ -1773,6 +1773,41 @@ class TestMiroir:
         (src / "a.txt").write_text("x")
         assert miroir.copier(["a.txt"], str(src), str(dst), simulation=True)["copies"] == ["a.txt"]
         assert not (dst / "a.txt").exists()
+
+
+class TestClasseur:
+    """
+    Le classeur Excel se reconstruit depuis les CSV du rapport : restaurer les sorties d'une
+    sauvegarde qui n'a gardé que les données doit redonner le classeur du pipeline, cellule
+    par cellule, onglet des fourchettes compris.
+    """
+
+    @staticmethod
+    def _identiques(a, b):
+        a, b = pd.read_excel(a, sheet_name=None), pd.read_excel(b, sheet_name=None)
+        assert list(a) == list(b)
+        for onglet in a:
+            pd.testing.assert_frame_equal(a[onglet], b[onglet], check_exact=True, obj=onglet)
+        return list(a)
+
+    def test_reconstruit_le_classeur_du_pipeline(self, tmp_path, monkeypatch):
+        data, sorties = TestDeuxRapports._run(tmp_path, monkeypatch, pays_c_publie=True)
+        horizon = TestDeuxRapports._meta(data)["bornes"]["prevision"][1]
+        # -0.39631458987390566 : la lecture par défaut de pandas en arrondit le dernier chiffre
+        fourchettes = pd.DataFrame({"country_code": ["AAA", "BBB"], "income_group": ["HIC", None],
+                                    "borne_basse_pct": [-0.39631458987390566, -11.0]})
+        fourchettes.to_csv(data / "processed" / classeur.FOURCHETTES, index=False, encoding="utf-8-sig")
+        classeur.ajouter_fourchettes(str(sorties / classeur.NOM), fourchettes, horizon)
+
+        restaure = classeur.reconstruire(str(data), str(tmp_path / "restaure"))
+        onglets = self._identiques(sorties / classeur.NOM, restaure)
+        assert onglets[0] == "Top30_Economies" and onglets[-1] == f"Fourchettes_{horizon}"
+
+    def test_sans_fourchettes(self, tmp_path, monkeypatch):
+        """Avant l'évaluation, le classeur n'a pas d'onglet des fourchettes : la reconstruction non plus."""
+        data, sorties = TestDeuxRapports._run(tmp_path, monkeypatch, pays_c_publie=True)
+        restaure = classeur.reconstruire(str(data), str(tmp_path / "restaure"))
+        assert not any(o.startswith("Fourchettes") for o in self._identiques(sorties / classeur.NOM, restaure))
 
 
 class TestPopulationONU:
