@@ -9,7 +9,7 @@ Produit par `python produire_rapports.py`, ou seul par `python -m pib.scenarios 
 | `scenarios_pib_population.csv` | Une ligne par pays, année (de 2000 à 2050) et scénario |
 | `scenarios_pib_population_pays.csv` | Par pays : zone de croissance de long terme, origine des bornes au-delà de 2031, bornes et probabilités de recul d'ici 2031 |
 | `scenarios_pib_population_sources.json` | Sources et paramètres |
-| `scenarios_pib_tirages.csv` | 60 trajectoires conjointes de tous les pays, PIB par habitant et population, de 2026 à 2050 (`python -m pib.tirages`) |
+| `scenarios_pib_tirages.csv` | 61 trajectoires conjointes de tous les pays, PIB par habitant et population, de 2026 à 2050 (`python -m pib.tirages`) |
 | `scenarios_pib_tirages_controle.csv` | Contrôle des tirages : part sous `bas` et au-dessus de `haut` par pays ; quantiles de quelques agrégats contre la somme des bornes |
 
 **Le nom ne change pas avec l'horizon** : lire ces fichiers plutôt que `gdp_unified_<début>_<fin>.csv`, dont le nom suit les bornes du run. Ils sont mis à jour sous le même nom à chaque édition du WEO (avril et octobre).
@@ -23,7 +23,7 @@ Produit par `python produire_rapports.py`, ou seul par `python -m pib.scenarios 
 | Population | `population_millions_centrale` ; fourchette : `population_millions_basse_calibree` et `…_haute_calibree` (celles de l'ONU sont trop étroites) |
 | Une crise mondiale | Scénario `crise_mondiale` ; la forme de la trajectoire dans `docs/cas_crise_2008.md` |
 | Probabilité d'une année de recul d'ici 2031 | `scenarios_pib_population_pays.csv`, `probabilite_recul_pct` (et si une récession mondiale survient, ou non) |
-| Plusieurs marchés à la fois | `scenarios_pib_tirages.csv` : faire passer chacun des 60 tirages (PIB par habitant, population) dans le modèle, puis lire les quantiles du trafic total, plutôt qu'additionner les bornes |
+| Plusieurs marchés à la fois | `scenarios_pib_tirages.csv` : faire passer chacun des 61 tirages (PIB par habitant, population) dans le modèle, puis lire les quantiles du trafic total, plutôt qu'additionner les bornes |
 
 Le détail de chaque choix suit.
 
@@ -80,20 +80,20 @@ Les années observées sont identiques dans tous les scénarios : chacun est une
 **Jusqu'en 2031**, autour de la trajectoire du FMI, d'après ses erreurs de niveau passées au même horizon, parmi les projections comparables (même classe de croissance projetée, même groupe de revenu, celui-ci tel qu'il était connu à la date de chaque édition passée) :
 
 - `central_fmi` : la trajectoire du FMI ;
-- `central_corrige` : divisée par (1 + erreur médiane passée), soit 2,9 % plus bas en 2031 pour le Canada et les États-Unis ;
-- `bas`, `haut` : bornes de l'intervalle à 80 % (−11,3 % et +5,1 % en 2031 pour le Canada), calibrées en temps réel (79 % de couverture, voir le README) ;
+- `central_corrige` : divisée par (1 + erreur médiane passée), soit 2,8 % plus bas en 2031 pour le Canada et les États-Unis ;
+- `bas`, `haut` : bornes de l'intervalle à 80 % (−11,0 % et +5,5 % en 2031 pour le Canada), calibrées en temps réel (79 % de couverture, voir le README) ;
 - `crise_mondiale` : divisée par (1 + erreur médiane des périodes passées qui contenaient une récession mondiale) ;
 - `bas_groupe_seul`, `haut_groupe_seul` : les bornes à 80 % tirées du seul groupe de revenu, sans la classe de croissance projetée, élargies de même après 2031.
 - `bas_elargi`, `haut_elargi` : pour les pays à revenu élevé, les bornes `bas` et `haut` élargies après 2031 (ci-dessous) ; pour les autres, les mêmes que `bas` et `haut`.
 
 **Pourquoi deux jeux de bornes.** Éprouvées en temps réel, les deux méthodes se valent, sans pondération comme hors de la Chine et de l'Inde. Pondéré par le PIB sur les éditions 2000-2007, le groupe seul l'emporte : la croissance de ces deux pays dépassait alors les projections, et la méthode retenue penche vers le bas la fourchette des pays à forte croissance projetée. La méthode retenue est conservée ; la variante montre ce que coûterait l'autre choix.
-- **Pour le Canada et les pays riches,** même borne haute ; borne basse un peu plus basse avec le groupe seul (−13,6 % en 2031, contre −11,3 %).
-- **Pour les pays à forte croissance projetée,** l'écart est plus net : Inde 2031, de −19,6 à +8,4 % avec le groupe seul, contre −25,0 à +4,6 %.
+- **Pour le Canada et les pays riches,** même borne haute ; borne basse un peu plus basse avec le groupe seul (−13,5 % en 2031, contre −11,0 %).
+- **Pour les pays à forte croissance projetée,** l'écart est plus net : Inde 2031, de −19,6 à +8,5 % avec le groupe seul, contre −25,0 à +4,5 %.
 
-**De 2032 à 2050, les scénarios centraux et de crise** suivent la croissance du PIB potentiel par habitant du scénario de référence de l'OCDE (`BAU1`, *Perspectives économiques* n° 117). C'est celle du pays s'il est couvert (49 pays, dont le Canada et les États-Unis), sinon celle de sa région (135 pays). Le niveau atteint en 2031 est conservé : après une crise, pas de rattrapage, comme après 2008.
+**De 2032 à 2050, les scénarios centraux et de crise** suivent la croissance du PIB potentiel par habitant du scénario de référence de l'OCDE (`BAU1`, *Perspectives économiques* n° 117). C'est celle du pays s'il est couvert (49 pays, dont le Canada et les États-Unis), sinon celle de sa région (136 pays). Le niveau atteint en 2031 est conservé : après une crise, pas de rattrapage, comme après 2008.
 
 **Les bornes `bas` et `haut` s'élargissent avec l'horizon,** comme se sont élargies les erreurs passées des trajectoires du FMI prolongées (`pib.long_terme`) :
-- **La mesure :** chaque édition du WEO depuis 1999 est prolongée au-delà de 5 ans par la dérive (croissance moyenne des 10 dernières années connues à sa date), puis confrontée au réalisé jusqu'à la dernière année connue. Cela fait jusqu'à 25 ans d'horizon, 8 930 trajectoires.
+- **La mesure :** chaque édition du WEO depuis 1999 est prolongée au-delà de 5 ans par la dérive (croissance moyenne des 10 dernières années connues à sa date), puis confrontée au réalisé jusqu'à la dernière année connue. Cela fait jusqu'à 25 ans d'horizon, 9 296 trajectoires.
 - **Le lissage :** par groupe de revenu connu à la date de l'édition, les quantiles à 10 et 90 % de l'erreur de niveau sont lissés par une loi de l'horizon, log(1 + q) = α + β (h + 1)^b (`gdp_long_horizon_bands.csv`, paramètres dans `gdp_long_horizon_law.csv`).
 - **Le raccord :** la fourchette propre au pays en 2031 est conservée, puis élargie de 2031 à l'année visée comme ces quantiles entre 5 ans et l'horizon correspondant.
 
@@ -103,37 +103,37 @@ Pour le Canada (revenu élevé), en % de `central_fmi` :
 |---|---|---|
 | 2031 | 89 % | 105 % |
 | 2040 | 72 % | 104 % |
-| 2050 | 59 % | 101 % |
+| 2050 | 60 % | 102 % |
 
-Soit, en 2050, de 37 852 $ à 65 010 $ autour de 64 344 $, contre 54 183 $ à 68 790 $ quand les bornes suivaient les scénarios extrêmes de l'OCDE.
+Soit, en 2050, de 38 394 $ à 65 366 $ autour de 64 338 $, contre 54 728 $ à 67 863 $ quand les bornes suivaient les scénarios extrêmes de l'OCDE.
 
-**La variante élargie des pays riches** (`bas_elargi`, `haut_elargi`). La fourchette ci-dessus est à peu près symétrique autour de son propre milieu, en logarithme : 97 % du central en 2031, 77 % en 2050. Ce n'est donc pas sa largeur qui écrase le haut, c'est ce décalage, l'optimisme passé du FMI prolongé. Le biais lui-même est solide : chacune des 31 éditions de 1999 à 2014 a surestimé le niveau du Canada à 10 ans, de 2 à 18 %. Son extrapolation jusqu'en 2050 l'est moins, d'où deux ajustements, au-delà de 2031 :
-- **Le milieu de la fourchette est figé** au-delà de 16 ans, dernier horizon où la loi de long terme est ajustée (2042). Le décalage venait des éditions 1999-2009, toutes traversées par la crise de 2008. Pour les pays riches, l'erreur médiane à 10 ans des éditions 2010-2014 est de +9 %, contre +12 à +15 % avant, et leur 10e centile de −6 % montre une vraie possibilité de hausse.
+**La variante élargie des pays riches** (`bas_elargi`, `haut_elargi`). La fourchette ci-dessus est à peu près symétrique autour de son propre milieu, en logarithme : 97 % du central en 2031, 78 % en 2050. Ce n'est donc pas sa largeur qui écrase le haut, c'est ce décalage, l'optimisme passé du FMI prolongé. Le biais lui-même est solide : chacune des 31 éditions de 1999 à 2014 a surestimé le niveau du Canada à 10 ans, de 2 à 18 %. Son extrapolation jusqu'en 2050 l'est moins, d'où deux ajustements, au-delà de 2031 :
+- **Le milieu de la fourchette est figé** au-delà de 17 ans, dernier horizon où la loi de long terme est ajustée (2043). Le décalage venait des éditions 1999-2009, toutes traversées par la crise de 2008. Pour les pays riches, l'erreur médiane à 10 ans des éditions 2010-2014 est de +9 %, contre +12 à +15 % avant, et leur 10e centile de −6 % montre une vraie possibilité de hausse.
 - **La largeur ne descend pas sous un plancher** tiré de Müller, Stock et Watson (2022). Leur intervalle à 67 % pour la croissance moyenne des États-Unis sur 50 ans, de 0,6 à 2,7 % par an, donne un écart-type du logarithme du niveau d'au moins 0,011 par année d'horizon. Le plancher suppose la croissance moyenne au moins aussi incertaine sur moins de 50 ans que sur 50, comme dans leur modèle entre 50 et 100 ans. Il joue dès 2040.
 
 | Canada, % de `central_fmi` | `bas` | `haut` | `bas_elargi` | `haut_elargi` |
 |---|---|---|---|---|
 | 2031 | 89 % | 105 % | 89 % | 105 % |
 | 2040 | 72 % | 104 % | 71 % | 105 % |
-| 2050 | 59 % | 101 % | 60 % | 117 % |
+| 2050 | 60 % | 102 % | 60 % | 117 % |
 
-Le bas bouge à peine ; le haut gagne 16 points en 2050. Pour un aéroport, le haut compte autant que le bas : il dimensionne la capacité. Au prix normalisé du Canada, la loi de Kenza amortit toutefois l'effet du PIB sur le trafic (élasticité au revenu d'environ 0,4). Le haut de la population calibrée (+23 % en 2050, ci-dessous) pèse alors davantage.
+Le bas bouge à peine ; le haut gagne 15 points en 2050. Pour un aéroport, le haut compte autant que le bas : il dimensionne la capacité. Au prix normalisé du Canada, la loi de Kenza amortit toutefois l'effet du PIB sur le trafic (élasticité au revenu d'environ 0,4). Le haut de la population calibrée (+22 % en 2050, ci-dessous) pèse alors davantage.
 
 **La fourchette est très asymétrique.** Pour les pays déjà riches à la date de l'édition, le réalisé n'a presque jamais dépassé de beaucoup les trajectoires prolongées : le haut de la fourchette reste près de `central_fmi`. Le bas s'éloigne, lui, d'environ 1,5 point de `central_fmi` par an.
 
-**Le groupe de revenu compte.** Classés selon leur groupe actuel, les cas passés auraient compté parmi les riches des pays devenus riches depuis, en dépassant les prévisions (Chili, Pologne, pays baltes). Cela donnait au Canada un haut de 128 % en 2050. Pour les pays à revenu intermédiaire, la marge à la hausse est plus large : Inde, 47 à 122 % de `central_fmi` en 2050.
+**Le groupe de revenu compte.** Classés selon leur groupe actuel, les cas passés auraient compté parmi les riches des pays devenus riches depuis, en dépassant les prévisions (Chili, Pologne, pays baltes). Cela donnerait au Canada un haut de 114 % en 2050. Pour les pays à revenu intermédiaire, la marge à la hausse est plus large : Inde, 47 à 120 % de `central_fmi` en 2050.
 
 **Les trajectoires qui prolongent un effondrement sont écartées des fourchettes.** Pour 5 % des trajectoires, la croissance des dix années passées était négative : la prolonger, c'est extrapoler un effondrement. Les éditions de 1999 à 2003 l'ont fait pour les économies issues de l'URSS, dont le réalisé a ensuite atteint jusqu'à 16 fois la trajectoire prolongée (Géorgie, Kazakhstan, Turkménistan, Ukraine). Les scénarios, eux, suivent après 2031 la croissance de l'OCDE, qui ne prolonge aucun effondrement : ces erreurs ne disent rien de leur incertitude. Elles gonflaient le haut des fourchettes des pays non riches, et d'autant plus que l'horizon est long, puisque seules les premières éditions y sont évaluables :
-- **Inde 2050 :** 47 à 122 % du central, au lieu de 49 à 193 % ; Nigeria, 52 à 125 % au lieu de 55 à 197 % ; Éthiopie, 64 à 173 % au lieu de 66 à 253 %.
-- **Pays riches :** à peine touchés (Canada 2050 : 59 à 101 %, au lieu de 59 à 103 %).
+- **Inde 2050 :** 47 à 120 % du central, au lieu de 49 à 186 % ; Nigeria, 53 à 124 % au lieu de 55 à 191 % ; Éthiopie, 63 à 168 % au lieu de 65 à 239 %.
+- **Pays riches :** à peine touchés (Canada 2050 : 60 à 102 %, au lieu de 59 à 103 %).
 - **Le bas** bouge de 3 points au plus.
 
 Même sans ces cas, la queue haute des pays non riches reste portée par les premières éditions : à 10 ans, le 90e centile du réalisé passe, pour le revenu intermédiaire inférieur, de 140 % du prévu pour les éditions 1999-2004 à 106 % pour celles de 2010-2014.
 
 **Ce que dit l'évaluation des prolongements** (`gdp_long_horizon_errors.csv`) :
 - **Prolonger la croissance de moyen terme du FMI** (médiane de ses horizons 3 à 5) surestime le niveau de 12 % en médiane à 10 ans, de 28 % à 20 ans. La trajectoire centrale suit donc l'OCDE après 2031, pas le FMI.
-- **Le FMI jusqu'à 5 ans, puis la dérive,** fait mieux que la dérive seule dans 56 à 64 % des cas, de 5 à 20 ans.
-- **80 % de ses erreurs de niveau** restent sous 30 % à 10 ans, sous 50 % à 20 ans.
+- **Le FMI jusqu'à 5 ans, puis la dérive,** fait mieux que la dérive seule dans 57 à 63 % des cas, de 5 à 20 ans.
+- **80 % de ses erreurs de niveau** restent sous 30 % à 10 ans, sous 51 % à 20 ans.
 
 Sans `gdp_long_horizon_bands.csv`, `bas` et `haut` suivent à défaut le scénario de l'OCDE le moins et le plus favorable pour la zone (colonne `bornes_long_terme` du fichier par pays).
 
@@ -143,11 +143,11 @@ Sans `gdp_long_horizon_bands.csv`, `bas` et `haut` suivent à défaut le scénar
 
 Les bornes `bas` et `haut` sont calculées **pays par pays**. Additionner la borne basse de chaque marché (Canada, États-Unis, Europe…) ne donne pas un « scénario bas à 80 % » de l'ensemble : cette combinaison n'a pas de probabilité connue. Les erreurs des pays sont liées, mais pas parfaitement.
 
-`scenarios_pib_tirages.csv` donne **60 trajectoires conjointes** de tous les pays, de 2026 à 2050 :
+`scenarios_pib_tirages.csv` donne **61 trajectoires conjointes** de tous les pays, de 2026 à 2050 :
 
 | Colonne | Contenu |
 |---|---|
-| `tirage` | Édition du WEO rejouée (`S1990` à `F2019` : avril et octobre de 1990 à 2019) |
+| `tirage` | Édition du WEO rejouée (`S1990` à `F2020` : avril et octobre de 1990 à 2020, sauf avril 2020, qui ne projetait pas au-delà de 2021) |
 | `country_code`, `year` | Pays, année |
 | `pib_reel_par_habitant_usd_2015` | PIB en volume par habitant, dollars constants de 2015 |
 | `population_millions` | Population, millions |
@@ -155,38 +155,38 @@ Les bornes `bas` et `haut` sont calculées **pays par pays**. Additionner la bor
 | `pib_reel_milliards_usd_2015` | PIB en volume total, milliards de dollars constants de 2015 |
 
 **Construction** (rééchantillonnage de Schaake, Clark et al., 2004) :
-- **Jusqu'en 2031,** chaque tirage rejoue une édition passée. À chaque horizon, chaque pays y reçoit son rang parmi les 60 éditions de sa propre histoire, puis le quantile correspondant de **sa fourchette actuelle**. Exemple : l'édition où le Canada a le plus surestimé son niveau à 5 ans lui donne le plus bas des 60 niveaux de 2031. Chaque pays garde donc exactement sa fourchette, mais les crises communes restent communes.
+- **Jusqu'en 2031,** chaque tirage rejoue une édition passée. À chaque horizon, chaque pays y reçoit son rang parmi les 61 éditions de sa propre histoire, puis le quantile correspondant de **sa fourchette actuelle**. Exemple : l'édition où le Canada a le plus surestimé son niveau à 5 ans lui donne le plus bas des 61 niveaux de 2031. Chaque pays garde donc exactement sa fourchette, mais les crises communes restent communes.
 - **Pays absent d'une édition :** il prend le rang médian des pays de son groupe de revenu dans cette édition.
 - **Au-delà de 2031,** chaque tirage garde sa position relative dans la fourchette `bas`–`haut` de son pays.
-- **La population se tire à part,** de la même façon, sur les révisions de l'ONU de 1998 à 2017 et leurs erreurs à 5 ans : chaque pays garde exactement sa fourchette calibrée (10 % des tirages sous `population_millions_basse_calibree`, 10 % au-dessus de la haute), et les surprises communes à plusieurs pays restent communes. Chaque révision sert à 6 tirages consécutifs. À part, car les erreurs passées de population et de PIB ne sont pas liées : corrélation de rang de 0,00 à 0,04 aux mêmes horizons, entre pays comme dans le temps.
-- **Le PIB par habitant suit la population tirée.** Les erreurs du FMI portent sur le PIB total, qui ne dépend pas de la population : le PIB par habitant d'un tirage est son PIB total divisé par sa population. Une population plus forte que prévu abaisse donc le PIB par habitant. Par pays, il est ainsi plus dispersé que `bas`–`haut`, qui ignorent l'incertitude de la population : en 2050, en moyenne 15 % des tirages sous `bas` et 13,5 % au-dessus de `haut`, au lieu de 10 %. Pour le Canada, 8 % et 5 %, à cause de l'appariement d'une révision à six éditions consécutives.
+- **La population se tire à part,** de la même façon, sur les révisions de l'ONU de 1998 à 2017 et leurs erreurs à 5 ans : chaque pays garde exactement sa fourchette calibrée (10 % des tirages sous `population_millions_basse_calibree`, 10 % au-dessus de la haute), et les surprises communes à plusieurs pays restent communes. Chaque révision sert à 6 tirages consécutifs (7 pour la première). À part, car les erreurs passées de population et de PIB ne sont pas liées : corrélation de rang de 0,00 à 0,04 aux mêmes horizons, entre pays comme dans le temps.
+- **Le PIB par habitant suit la population tirée.** Les erreurs du FMI portent sur le PIB total, qui ne dépend pas de la population : le PIB par habitant d'un tirage est son PIB total divisé par sa population. Une population plus forte que prévu abaisse donc le PIB par habitant. Par pays, il est ainsi plus dispersé que `bas`–`haut`, qui ignorent l'incertitude de la population : en 2050, en moyenne 15,5 % des tirages sous `bas` et 14 % au-dessus de `haut`, au lieu de 10 %. Pour le Canada, 10 % et 5 %, à cause de l'appariement d'une révision à six éditions consécutives.
 
 **Ce que ça change** (en % de la somme des `central_fmi`, population centrale ; intervalle à 95 % par bootstrap des années d'édition) :
 
 | Agrégat | Année | Tirages : 10e – 90e centile | Somme des `bas` – somme des `haut` |
 |---|---|---|---|
-| Tous les pays | 2031 | 90,2 (89,2 à 93,3) – 100,7 | 85,2 – 105,5 |
-| Tous les pays | 2050 | 70,1 (66,9 à 78,4) – 105,8 | 55,6 – 116,7 |
-| Canada, États-Unis, France, Royaume-Uni | 2031 | 87,7 (84,3 à 94,2) – 104,4 | 88,7 – 105,1 |
-| Canada, États-Unis, France, Royaume-Uni | 2050 | 57,5 (50,6 à 71,3) – 99,3 | 58,8 – 101,0 |
-| G7 | 2050 | 59,5 (56,5 à 74,6) – 94,1 | 58,8 – 101,0 |
+| Tous les pays | 2031 | 90,6 (89,4 à 93,5) – 101,2 | 85,5 – 105,8 |
+| Tous les pays | 2050 | 70,1 (66,8 à 77,7) – 104,8 | 56,2 – 115,0 |
+| Canada, États-Unis, France, Royaume-Uni | 2031 | 87,7 (84,5 à 94,5) – 104,8 | 89,0 – 105,5 |
+| Canada, États-Unis, France, Royaume-Uni | 2050 | 57,5 (51,3 à 72,0) – 99,8 | 59,7 – 101,6 |
+| G7 | 2050 | 60,2 (57,1 à 75,0) – 94,4 | 59,7 – 101,6 |
 
 - **Pour le monde entier,** sommer les bornes exagère nettement l'incertitude : les erreurs des pays se compensent en partie.
 - **Pour quelques marchés riches,** la somme des bornes reste dans l'incertitude des tirages. Les États-Unis y pèsent environ 60 %, et les pires tirages rejouent pour tous les éditions de 2005 à 2008, prises de court par la crise financière.
-- **La meilleure façon de s'en servir :** faire passer chacun des 60 tirages dans le modèle de trafic, puis lire les quantiles du trafic total. La dépendance entre marchés est alors celle qu'ont connue les éditions passées.
+- **La meilleure façon de s'en servir :** faire passer chacun des 61 tirages dans le modèle de trafic, puis lire les quantiles du trafic total. La dépendance entre marchés est alors celle qu'ont connue les éditions passées.
 
 **Limites :**
-- **60 tirages, dont des paires voisines.** Les éditions d'avril et d'octobre d'une même année sont très proches : cela fait une trentaine d'épisodes indépendants. Les quantiles d'un agrégat se lisent à quelques points près ; d'où les intervalles du fichier de contrôle.
+- **61 tirages, dont des paires voisines.** Les éditions d'avril et d'octobre d'une même année sont très proches : cela fait une trentaine d'épisodes indépendants. Les quantiles d'un agrégat se lisent à quelques points près ; d'où les intervalles du fichier de contrôle.
 - **Aucun choc nouveau après 2031 :** un tirage garde sa position relative dans la fourchette de chaque pays. L'élargissement des bornes après 2031 vient des erreurs passées des trajectoires prolongées (ci-dessus), qui ne disent rien de leur dépendance entre pays.
 - **Quelques pays aux bornes de population très larges.** Pour des territoires et des États du Golfe à forte migration, les bornes de l'ONU elles-mêmes sont très larges (Hong Kong 2050 : −33 à +74 %), et les bornes calibrées davantage (−33 à +119 %). Leurs PIB par habitant tirés sont donc très dispersés.
-- **Population : dix révisions seulement.** Chaque pays n'a que 10 positions de population distinctes, chacune répétée 6 fois. Les quantiles d'une population agrégée sont donc grossiers. Pour les quatre marchés en 2050, ils vont de 99,7 à 107,0 % de la population centrale, contre 92,7 à 115,0 % en sommant les bornes calibrées.
+- **Population : dix révisions seulement.** Chaque pays n'a que 10 positions de population distinctes, chacune répétée 6 ou 7 fois. Les quantiles d'une population agrégée sont donc grossiers. Pour les quatre marchés en 2050, ils vont de 100,3 à 110,0 % de la population centrale, contre 92,7 à 115,0 % en sommant les bornes calibrées.
 
 ## Population
 
 - **Jusqu'en 2031 :** celle du pipeline (Banque Mondiale, puis FMI).
 - **Ensuite :** prolongée par la croissance de la variante médiane de l'ONU (*World Population Prospects* 2024).
-- **Variantes basse et haute :** le rapport des bornes à 80 % de l'ONU à sa médiane, appliqué à la centrale dès la première année projetée. Pour le Canada en 2050 : 42,1 à 51,5 millions, autour de 46,6.
-- **Variantes calibrées, à préférer :** `population_millions_basse_calibree` et `…_haute_calibree`. Pour le Canada en 2050 : 42,1 à 57,0 millions.
+- **Variantes basse et haute :** le rapport des bornes à 80 % de l'ONU à sa médiane, appliqué à la centrale dès la première année projetée. Pour le Canada en 2050 : 41,9 à 51,3 millions, autour de 46,4.
+- **Variantes calibrées, à préférer :** `population_millions_basse_calibree` et `…_haute_calibree`. Pour le Canada en 2050 : 41,9 à 56,8 millions.
 
 **Pourquoi calibrer** (`pib.population`). Les révisions de l'ONU de 1998 à 2022, relues dans ses archives, ont été confrontées aux estimations de la révision 2024 :
 - **Les bornes de l'ONU sont trop étroites.** Appliquées aux erreurs passées des mêmes pays au même horizon, celles de 2024 n'en contiennent que 19 % à 1 an, 39 % à 5 ans, 54 % à 20 ans, au lieu de 80 %. Elles ignorent notamment les révisions de la population de départ, de l'ordre de 2 % en médiane dès la première année.
@@ -196,11 +196,11 @@ Les bornes `bas` et `haut` sont calculées **pays par pays**. Additionner la bor
 
 | Canada, millions | Centrale | ONU | Calibrées |
 |---|---|---|---|
-| 2031 | 42,8 | 41,8 – 44,0 | 40,9 – 46,2 |
-| 2040 | 44,9 | 42,4 – 47,7 | 41,9 – 51,1 |
-| 2050 | 46,6 | 42,1 – 51,5 | 42,1 – 57,0 |
+| 2031 | 42,7 | 41,7 – 43,9 | 40,8 – 46,0 |
+| 2040 | 44,7 | 42,3 – 47,5 | 41,8 – 50,9 |
+| 2050 | 46,4 | 41,9 – 51,3 | 41,9 – 56,8 |
 
-À comparer au PIB par habitant : en 2050, de 59 à 101 % du central pour le Canada. L'incertitude de la population est plus faible, mais elle va dans l'autre sens : vers le haut.
+À comparer au PIB par habitant : en 2050, de 60 à 102 % du central pour le Canada. L'incertitude de la population est plus faible, mais elle va dans l'autre sens : vers le haut.
 
 **Limites :**
 - **Les horizons de 20 à 25 ans** ne reposent que sur les révisions de 1998 à 2004, toutes prises de court par l'immigration des années 2000 et 2010.
@@ -212,15 +212,15 @@ Les bornes `bas` et `haut` sont calculées **pays par pays**. Additionner la bor
 - **Utiliser le PIB en volume par habitant.** Le prix normalisé rapporte un prix au revenu ; en volume, il ne mêle pas l'inflation à la croissance du revenu. La variante indexée, qui remplace le prix par `PIB_ref / PIB_par_habitant(t)`, n'a besoin que d'un rapport, sans unité : le volume convient directement. Le dollar courant n'est fourni que jusqu'en 2031, pour la continuité.
 - **Combiner les dimensions au besoin.** Les scénarios de PIB et les variantes de population sont indépendants : `bas` × population basse donne le cas le plus défavorable. Préférer les variantes de population calibrées, plus larges que celles de l'ONU.
 - **Pour plusieurs marchés à la fois,** passer par les trajectoires conjointes (`scenarios_pib_tirages.csv`, ci-dessus) plutôt que d'additionner les bornes de chaque pays.
-- **Pour une crise ponctuelle**, `crise_mondiale` donne le niveau ; la pire année médiane (−3,7 % pour le Canada) et le profil de 2008 (`docs/cas_crise_2008.md`) donnent la forme de la trajectoire.
+- **Pour une crise ponctuelle**, `crise_mondiale` donne le niveau ; la pire année médiane (−3,8 % pour le Canada) et le profil de 2008 (`docs/cas_crise_2008.md`) donnent la forme de la trajectoire.
 - **La zone de chalandise n'est pas le pays.** Ces séries sont nationales ; le PIB métropolitain (Statistique Canada, tableau 36-10-0468-01) reste la piste identifiée par la feuille de route du projet trafic.
 
 ## Limites
 
 - **Au-delà de 2031, les fourchettes sont tirées des erreurs passées, avec trois réserves :**
-  - **Extrapolation au-delà de 16 ans.** Les lois sont ajustées jusqu'à 16 ans, dernier horizon qui compte au moins 10 années d'édition. Au-delà, donc de 2043 à 2050, elles sont extrapolées. Les quantiles observés à 20 ans, sur 6 années d'édition seulement, toutes traversées par 2009 et 2020, sont un peu plus étroits que la loi (90e centile de 60 % contre 66 % pour les pays à revenu élevé). Les bornes de ces années-là sont à lire comme indicatives.
+  - **Extrapolation au-delà de 17 ans.** Les lois sont ajustées jusqu'à 17 ans, dernier horizon qui compte au moins 10 années d'édition. Au-delà, donc de 2044 à 2050, elles sont extrapolées. Les quantiles observés à 20 ans, sur 7 années d'édition seulement, toutes traversées par 2009 et 2020, sont un peu plus étroits que la loi (90e centile de 60 % contre 64 % pour les pays à revenu élevé). Les bornes de ces années-là sont à lire comme indicatives.
   - **Groupe de revenu, pas pays.** Les quantiles sont ceux du groupe connu à la date de chaque édition : le Canada reçoit ceux des pays alors à revenu élevé, dont la Grèce de 2010 ou l'Irlande de 2015.
-  - **Un échantillon dominé par 2008-2009.** Pour les pays riches, les éditions évaluables au-delà de 10 ans (1999 à 2009) n'avaient pas vu venir la perte de niveau de 2008-2009. Un haut de fourchette proche de la trajectoire centrale reflète cet épisode ; une période plus favorable l'aurait relevé. Le modèle de long terme de Müller, Stock et Watson (2022) va dans ce sens. Leur intervalle à 67 % pour la croissance moyenne des États-Unis sur 50 ans, de 0,6 à 2,7 % par an, correspond à un écart-type du logarithme du niveau de 0,54, contre 0,34 pour notre loi des pays riches prolongée jusque-là, sans hausse possible. À 25 ans, il correspond à au moins 0,27, contre 0,23 pour la nôtre. Le haut de la fourchette des pays riches est donc probablement trop bas : d'où la variante élargie.
+  - **Un échantillon dominé par 2008-2009.** Pour les pays riches, les éditions évaluables au-delà de 10 ans (1999 à 2009) n'avaient pas vu venir la perte de niveau de 2008-2009. Un haut de fourchette proche de la trajectoire centrale reflète cet épisode ; une période plus favorable l'aurait relevé. Le modèle de long terme de Müller, Stock et Watson (2022) va dans ce sens. Leur intervalle à 67 % pour la croissance moyenne des États-Unis sur 50 ans, de 0,6 à 2,7 % par an, correspond à un écart-type du logarithme du niveau de 0,54, contre 0,33 pour notre loi des pays riches prolongée jusque-là, sans hausse possible. À 25 ans, il correspond à au moins 0,27, contre 0,23 pour la nôtre. Le haut de la fourchette des pays riches est donc probablement trop bas : d'où la variante élargie.
   - **PIB total, appliqué au PIB par habitant.** Les erreurs portent sur le PIB en volume ; l'incertitude de la population est traitée à part, par les variantes de l'ONU.
 - **La dérive tient lieu de croissance de long terme** dans la mesure des erreurs : les scénarios passés de l'OCDE ne sont pas archivés.
 - **La croissance de long terme de l'OCDE** porte sur le PIB potentiel en parité de pouvoir d'achat ; seule sa croissance est utilisée, appliquée au niveau en dollars de 2015.

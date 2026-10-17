@@ -17,7 +17,7 @@ La *WEO Historical Forecasts Database* (`../WEOhistorical.xlsx`) ne contient que
 croissance, inflation, balance courante. Elle permet d'évaluer les prévisions de croissance,
 et d'en déduire l'erreur sur le niveau du PIB en volume, mais pas l'erreur sur le PIB en
 dollars courants, qui ajoute les erreurs de change et d'inflation. Or l'API ne sert que
-l'édition courante et la précédente. Archiver chaque édition dès sa parution constitue,
+l'édition courante et quelques-unes des précédentes (en octobre 2026 : avril 2026 et octobre 2025). Archiver chaque édition dès sa parution constitue,
 édition après édition, la base qui permettra de mesurer ces erreurs.
 
 Dès maintenant, `python -m pib.revisions_weo` (lancé par `produire_rapports.py`) compare
@@ -39,7 +39,8 @@ compressé, lisible directement par `pandas.read_csv` :
 | `value` | Valeur, dans l'unité de l'indicateur |
 
 Premières éditions archivées le 29 septembre 2026 : `F2025` (flux `WEO_2025_OCT_VINTAGE`)
-et `S2026` (flux `WEO`).
+et `S2026` (flux `WEO`). Puis `F2026` (flux `WEO`) le 16 octobre 2026, `S2026` passant au
+flux `WEO_2026_APR_VINTAGE`.
 
 ## Métadonnées des pays
 
@@ -61,6 +62,7 @@ seulement dans son format CSV : en JSON, leurs valeurs ne sont pas rattachées �
 | `COUNTRY_UPDATE_DATE` | Date de mise à jour des données du pays |
 | `extrait_le` | Date d'extraction |
 
-Premières métadonnées archivées le 2 octobre 2026, pour `F2025` et `S2026`. Les fiches ne
+Premières métadonnées archivées le 2 octobre 2026, pour `F2025` et `S2026` ; celles de `F2026`
+le 16 octobre 2026. Les fiches ne
 sont pas exemptes d'erreurs : entre ces deux éditions, le début du chaînage de cinq pays
 européens change sans raison apparente (Pologne : « depuis 2020 », puis « depuis 1995 »).

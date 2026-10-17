@@ -33,7 +33,7 @@ de l'horizon du FMI (`elargir`), publiée à côté. Deux ajustements, en logari
 à `central_fmi` :
 
 - **le milieu de la fourchette est figé** au-delà du dernier horizon où la loi de long terme
-  est ajustée (16 ans) : le décalage sous la trajectoire centrale, l'optimisme passé du FMI
+  est ajustée (au moins 10 années d'édition : 17 ans en octobre 2026) : le décalage sous la trajectoire centrale, l'optimisme passé du FMI
   prolongé, n'est plus extrapolé. Il venait des éditions 1999-2009, toutes traversées par la
   crise de 2008 ; les éditions 2010-2014 montrent un biais plus faible ;
 - **la demi-largeur ne descend pas sous un plancher** tiré de Müller, Stock et Watson

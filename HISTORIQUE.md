@@ -5,6 +5,18 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 🔄 Édition d'Octobre 2026 du WEO : Première Relance (16 Octobre 2026)
+
+L'API SDMX du FMI sert l'édition d'octobre 2026 (flux `WEO`, horizon 2031), celle d'avril 2026 passant en archive (`WEO_2026_APR_VINTAGE`). Celle d'octobre 2025 reste servie, contrairement à ce qu'on attendait. `pib.update_weo_editions` a ajouté `F2026` au complément du classeur et l'a archivée en entier, métadonnées comprises (210 entités), sans téléchargement. La Banque Mondiale a mis à jour ses indicateurs le 8 octobre, toujours sans le PIB 2025 des Émirats, des Bahamas et d'Aruba : la référence reste 2024, et `plus_recent/` reste en place.
+
+- **Ce que change l'édition dans l'évaluation :** la ré-estimation de 2025 rend évaluables les projections qui la visaient. 71 425 projections au lieu de 69 345 ; biais moyen à un an +0,96 point au lieu de +1,00. Les fourchettes en temps réel vont jusqu'à l'édition d'octobre 2020 (7 050 projections, couverture 78,9 %). Celle d'avril 2020 ne projetait pas au-delà de 2021 : elle n'entre ni dans la calibration ni dans les tirages (61 au lieu de 60). La loi de long terme est ajustée jusqu'à 17 ans au lieu de 16.
+- **Dans les projections :** Inde, croissance projetée de 2025 à 2031 de 49,3 % au lieu de 46,0 % ; Canada 2050, de 60 à 102 % du central au lieu de 59 à 101 %.
+- **Révisions d'avril à octobre 2026** (`weo_edition_revisions.csv`) : la croissance cumulée 2024-2031 change de plus de 2 % en volume pour 43 pays sur 188, de plus de 5 % en dollars pour 48. 9 pays ont changé d'année de base, 2 de norme (Centrafrique, Panama). Le critère du déflateur n'en retrouve que 3 : le Royaume-Uni, l'Irlande et la Suède avancent leur base d'un an, ce qui déplace à peine le déflateur. La Guinée, passée au SCN 2008 en avril sans que ses données suivent, révise cette fois son PIB en dollars de 2024 de +58 %.
+- **Défaut corrigé :** le sous-échantillon « éditions 2008-2019 » de `pib.calibration` retenait toutes les éditions depuis 2008. Avec octobre 2020, son nom ne disait plus ce qu'il contenait : il devient « éditions depuis 2008 ». Les autres périodes publiées sont calculées sur les données (`editions_testees`, `editions_de_test`).
+- **Documentation :** les 14 chiffres suivis que signalait `pib.chiffres_cles`, et ceux des sections touchées, sont recalculés sur les sorties. Les contrefactuels cités (dérive négative incluse, groupe de revenu actuel, bornes des scénarios extrêmes de l'OCDE) sont relancés sur une copie : Inde 2050, 47 à 120 % au lieu de 49 à 186 %. Restent en l'état les cas de crise, hors chaîne et datés de l'édition d'avril 2026, et les constats ponctuels d'analyses passées, qui gardent leur période (score de Brier sur 2008-2019, première version des fourchettes). Le README annonçait 222 tests : il y en a 231.
+
+231 tests, inchangés.
+
 ## 📐 Normes des Comptes Nationaux et Années de Base : les Métadonnées du FMI (2 Octobre 2026)
 
 La définition du PIB a-t-elle changé pendant la période d'analyse ? Le FMI attache à chaque pays sa norme des comptes nationaux (SCN 1993, SCN 2008, SEC 2010…), son année de base, le chaînage de ses volumes et des notes. L'API ne les sert que dans son format CSV, et pour les deux dernières éditions seulement. `pib.update_weo_editions` les archive désormais à chaque édition (`data/raw/weo_archive/WEO_<édition>_metadonnees.csv`), avant que l'édition d'octobre 2026 ne fasse disparaître celle d'octobre 2025.

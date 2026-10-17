@@ -75,8 +75,10 @@ trois onglets, sur les horizons −2 à +5. Correspondance des indicateurs :
 * Le fichier est **cumulatif** : l'API ne garde que les éditions récentes, une édition
   qu'elle ne sert plus reste dans le complément. Il est versionné, comme le classeur.
 * Le **classeur fait foi** : une édition qu'il contient sort du complément.
+* **Contenu au 16 octobre 2026 :** `F2026`, l'édition d'octobre 2026. Celle d'avril 2026
+  (`S2026`) est déjà dans le classeur.
 * Le flux courant ne dit pas quelle édition il porte. Le script la déduit de la plus récente
-  archive (après `F2025`, c'est `S2026`) et vérifie que la dernière année servie vaut
+  archive (après `S2026`, c'est `F2026`) et vérifie que la dernière année servie vaut
   l'année de l'édition + 5 ; sinon il s'arrête plutôt que de deviner.
 
 ## Archive des éditions complètes

@@ -246,7 +246,7 @@ SOUS_ECHANTILLONS = {
     "sans la Chine ni l'Inde": lambda t: t[~t["country_code"].isin(["CHN", "IND"])],
     "sans la Chine, l'Inde ni l'Indonésie": lambda t: t[~t["country_code"].isin(["CHN", "IND", "IDN"])],
     "éditions 2000-2007": lambda t: t[t["annee_millesime"] <= 2007],
-    "éditions 2008-2019": lambda t: t[t["annee_millesime"] >= 2008],
+    "éditions depuis 2008": lambda t: t[t["annee_millesime"] >= 2008],
     "revenu élevé": lambda t: t[t["income_group"] == "HIC"],
     "autres groupes de revenu": lambda t: t[t["income_group"] != "HIC"],
 }
