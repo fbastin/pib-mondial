@@ -7,7 +7,8 @@ Chaîne complète en une commande : collecte et calcul (`pib.gdp_pipeline`), ajo
 éditions archivées des WDI de la Banque Mondiale (`pib.millesimes_bm`), puis, pour
 chaque rapport produit — la référence, et le cas échéant le plus récent, dans
 `plus_recent/` —, évaluation des prévisions et de leurs révisions, fourchettes au-delà de
-l'horizon du FMI et scénarios pour le trafic, graphiques et page de résultats.
+l'horizon du FMI et scénarios pour le trafic, graphiques et page de résultats. Le notebook
+Julia est ensuite exporté en HTML, si son noyau Jupyter est installé.
 
     python produire_rapports.py
 
@@ -27,6 +28,8 @@ from pib.gdp_pipeline import SOUS_DOSSIER_RECENT
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 DOSSIER = os.path.dirname(os.path.abspath(__file__))
+NOTEBOOK_JULIA = os.path.join(DOSSIER, "notebooks", "gdp_analysis_notebook_julia.ipynb")
+NOYAU_JULIA = "julia-1.12"
 
 
 def lancer(module: str, *arguments: str) -> None:
@@ -35,6 +38,38 @@ def lancer(module: str, *arguments: str) -> None:
     logging.info(f"$ python -m pib.{module} {' '.join(arguments)}")
     subprocess.run([sys.executable, "-m", f"pib.{module}", *arguments], check=True,
                    env={**os.environ, "PYTHONPATH": chemin})
+
+
+def noyaux_jupyter() -> set:
+    """Noyaux Jupyter installés ; aucun si Jupyter manque."""
+    try:
+        from jupyter_client.kernelspec import KernelSpecManager
+    except ImportError:
+        return set()
+    return set(KernelSpecManager().find_kernel_specs())
+
+
+def exporter_notebook_julia(data_dir: str, output_dir: str) -> None:
+    """
+    Exécute le notebook Julia et l'exporte en HTML dans `output_dir`. Quand l'export n'est
+    pas possible, le précédent reste en place, sur les données d'un run antérieur : le journal
+    le signale.
+    """
+    export = os.path.join(output_dir, "gdp_analysis_notebook_julia.html")
+    # Le notebook lit data/ à la racine du dépôt, quel que soit --data-dir
+    if os.path.realpath(data_dir) != os.path.realpath(os.path.join(DOSSIER, "data")):
+        logging.warning(f"Le notebook Julia lit data/ à la racine du dépôt, pas {data_dir} : "
+                        f"{export} n'est pas mis à jour.")
+        return
+    if NOYAU_JULIA not in noyaux_jupyter():
+        logging.warning(f"Noyau Jupyter {NOYAU_JULIA} absent : {export} n'est pas mis à jour "
+                        "(installation : section Notebooks du README).")
+        return
+    arguments = ["nbconvert", "--to", "html", "--execute",
+                 f"--ExecutePreprocessor.kernel_name={NOYAU_JULIA}", NOTEBOOK_JULIA,
+                 "--output-dir", output_dir]
+    logging.info(f"$ jupyter {' '.join(arguments)}")
+    subprocess.run([sys.executable, "-m", *arguments], check=True)
 
 
 def main():
@@ -47,6 +82,8 @@ def main():
                         help="Ne pas interroger l'API du FMI : ni éditions récentes du WEO, ni archivage")
     parser.add_argument("--sans-millesimes-bm", action="store_true",
                         help="Ne pas collecter les éditions archivées des WDI (Banque Mondiale)")
+    parser.add_argument("--sans-notebook-julia", action="store_true",
+                        help="Ne pas exporter le notebook Julia en HTML")
     parser.add_argument("--data-dir", type=str, default="data")
     parser.add_argument("--output-dir", type=str, default="outputs")
     args = parser.parse_args()
@@ -88,6 +125,9 @@ def main():
             lancer("millesimes_bm", "--data-dir", data_dir)
             lancer("visualize_gdp", "--data-dir", data_dir, "--output-dir", output_dir)
             lancer("build_results_page", "--data-dir", data_dir, "--output-dir", output_dir)
+        # Le notebook Julia ne lit que le rapport de référence
+        if not args.sans_notebook_julia:
+            exporter_notebook_julia(args.data_dir, args.output_dir)
         # Chiffres cités dans la documentation : ce qui a changé, et où le corriger
         lancer("chiffres_cles", "--data-dir", args.data_dir)
     except subprocess.CalledProcessError as e:

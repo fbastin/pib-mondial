@@ -16,7 +16,7 @@ source ~/.venvs/gdp/bin/activate
 python produire_rapports.py        # depuis la racine du dépôt
 ```
 
-La commande enchaîne collecte, calcul, évaluation des prévisions, graphiques et page de résultats. À ouvrir ensuite : `outputs/resultats_gdp.html` (synthèse commentée) et `outputs/gdp_master_dataset.xlsx` (toutes les données). Si la dernière année publiée est encore incomplète, un second rapport est produit dans `outputs/plus_recent/` (voir *Deux rapports*).
+La commande enchaîne collecte, calcul, évaluation des prévisions, graphiques et page de résultats, puis exporte le notebook Julia si son noyau est installé. À ouvrir ensuite : `outputs/resultats_gdp.html` (synthèse commentée) et `outputs/gdp_master_dataset.xlsx` (toutes les données). Si la dernière année publiée est encore incomplète, un second rapport est produit dans `outputs/plus_recent/` (voir *Deux rapports*).
 
 Le venv est créé hors du dépôt : les dépendances ne sont ni versionnées ni synchronisées.
 
@@ -121,6 +121,7 @@ Les chiffres suivis (`docs/chiffres_cles.json`) ne couvrent pas tout : les autre
 | Éditions archivées des WDI : collecte, puis révisions du réalisé | `python -m pib.millesimes_bm --collecter` ; `python -m pib.millesimes_bm --data-dir data` |
 | Graphiques et tableau de bord | `python -m pib.visualize_gdp` |
 | Page de résultats | `python -m pib.build_results_page [--pays FRA]` |
+| Export HTML du notebook Julia (rapport de référence ; dans la chaîne si le noyau `julia-1.12` est installé) | voir *Notebooks* |
 | Chiffres cités dans la documentation qui ont changé, et où les corriger ; puis publication des nouvelles valeurs | `python -m pib.chiffres_cles [--enregistrer]` |
 | Copie du dépôt et de ses sorties vers un dossier partagé (seulement ce qui a changé, sans rien supprimer) | `python miroir.py --destination DOSSIER [--simulation]` |
 | Classeur Excel reconstruit depuis les CSV d'un rapport (sorties d'une sauvegarde qui n'a gardé que les données) | `python -m pib.classeur [--data-dir data] [--output-dir outputs]` |
@@ -148,7 +149,7 @@ Deux notebooks, dans `notebooks/`, couvrent les mêmes sept sections (chargement
 
 Un troisième notebook, `notebooks/forecast_vs_actual_notebook.ipynb`, confronte les prévisions de croissance du FMI au réalisé : erreur absolue moyenne et biais par horizon, distribution des erreurs à un an, plus gros ratés (plus de 10 points). Il lit les sorties de `python -m pib.evaluate_forecasts` et retrouve lui aussi seul la racine du dépôt. Sans script générateur, il se modifie directement.
 
-Les deux premiers notebooks se régénèrent par leur script (`python notebooks/create_notebook.py`, `python notebooks/create_notebook_julia.py`). L'export HTML du notebook Julia, dans `outputs/`, s'obtient par :
+Les deux premiers notebooks se régénèrent par leur script (`python notebooks/create_notebook.py`, `python notebooks/create_notebook_julia.py`). `python produire_rapports.py` exporte le notebook Julia en HTML dans `outputs/` quand le noyau `julia-1.12` est installé ; sinon, son journal signale que l'export n'est pas mis à jour (`--sans-notebook-julia` pour s'en passer). À la main :
 
 ```bash
 jupyter nbconvert --to html --execute --ExecutePreprocessor.kernel_name=julia-1.12 \
@@ -158,7 +159,7 @@ jupyter nbconvert --to html --execute --ExecutePreprocessor.kernel_name=julia-1.
 ### Tests
 
 ```bash
-pytest                      # 233 tests, sans accès réseau
+pytest                      # 238 tests, sans accès réseau
 pytest -m "not donnees"     # sans les contrôles sur les fichiers produits
 ```
 
@@ -503,7 +504,7 @@ Pour chaque rapport (`data/` et `outputs/` ; `plus_recent/` pour le plus récent
 | `outputs/gdp_source_discrepancy_<année>.png` | Écart entre sources et marche évitée |
 | `outputs/gdp_forecast_accuracy.png` | Exactitude des prévisions du FMI depuis 1990 |
 | `outputs/gdp_forecast_level_errors.png` | PIB prévu et PIB réalisé : erreur de niveau par horizon et groupe de revenu |
-| `outputs/gdp_analysis_notebook_julia.html` | Export du notebook Julia (référence seulement) |
+| `outputs/gdp_analysis_notebook_julia.html` | Export du notebook Julia (référence seulement, si le noyau `julia-1.12` est installé) |
 
 Onglets du classeur Excel : `Top30_Economies` ; `Synthese_Pays` (PIB aux années de référence — 2000, 2010, 2024, 2031 —, CAGR historique et prévisionnel, rangs sur le panel décrit plus haut, population et PIB en volume par habitant) ; `Series_Temporelles_<début>_<horizon>` ; `Donnees_Historiques_Brutes` et `Previsions_FMI_Brutes` (extractions des API) ; `Fourchettes_<horizon>` (fourchettes empiriques, ajoutées par l'évaluation).
 
@@ -521,7 +522,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 
 ## ✅ Tests des invariants
 
-233 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
+238 tests, dans `tests/`, sans accès réseau. Ils portent sur les propriétés que les défauts rencontrés violaient **sans lever d'erreur** — le mode de défaillance de ce projet est la colonne vide ou le classement faux, pas l'exception :
 
 | Invariant | Ce qu'il empêche |
 |---|---|
@@ -550,6 +551,7 @@ Ce fichier désigne aussi la série du dernier run. Plusieurs `gdp_unified_<déb
 | Récessions : pire année des horizons 1 à h, interrompue au premier réalisé manquant ; premières économies comptées par édition | Un recul de l'année de l'édition compté comme imprévu, ou « 20 premières économies » qui n'en comptaient que 10 |
 | Révisions entre éditions consécutives seulement, étapes dans l'ordre ; historique contrôlé sur une année observée ; changements de norme et d'année de base lus dans les métadonnées du FMI, indéterminés quand elles manquent | Une révision calculée par-dessus une édition manquante, une révision de l'inflation prévue prise pour un changement d'année de base, ou un changement d'année de base manqué faute d'inflation |
 | Classeur reconstruit depuis les CSV identique, cellule par cellule, à celui du pipeline, fourchettes comprises ; flottants relus sans arrondi | Des sorties restaurées dont le classeur arrondit, omet ou intervertit des données |
+| Notebook Julia exporté par la chaîne, une fois, pour le rapport de référence, avant les chiffres clés ; sans son noyau, ou sur d'autres données que celles qu'il lit, un avertissement | Un export HTML resté sur l'édition précédente sans que rien ne le signale |
 | Commentaires de la page déduits des chiffres | Une conclusion écrite d'avance que la prochaine édition démentirait |
 | Scénarios pour le trafic : bornes et corrections dans le bon sens, croissance de l'OCDE du pays sinon de sa région, variantes de population de l'ONU appliquées aux seules années projetées | Un scénario bas plus haut que le central, ou une population « basse » qui modifie le passé observé |
 | Au-delà de l'horizon du FMI : dérive tirée des seules années connues à la date de l'édition ; loi ajustée sur les horizons assez fournis, y compris quand un quantile change de signe ; fourchette du pays conservée à l'horizon du FMI puis élargie, bornes basse et haute dans le bon sens | Une dérive qui connaît l'année en cours, une loi tirée de deux éditions, ou une fourchette qui saute en 2032 |

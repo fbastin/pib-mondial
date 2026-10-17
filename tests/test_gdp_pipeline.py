@@ -1810,6 +1810,66 @@ class TestClasseur:
         assert not any(o.startswith("Fourchettes") for o in self._identiques(sorties / classeur.NOM, restaure))
 
 
+class TestNotebookJulia:
+    """
+    La chaîne exporte le notebook Julia quand son noyau est installé ; sinon le journal le dit,
+    au lieu de laisser l'export d'un run antérieur passer pour à jour.
+    """
+
+    @staticmethod
+    def _exporter(monkeypatch, data_dir, sorties, noyaux):
+        import produire_rapports
+        commandes = []
+        monkeypatch.setattr(produire_rapports, "noyaux_jupyter", lambda: set(noyaux))
+        monkeypatch.setattr(produire_rapports.subprocess, "run",
+                            lambda commande, **_: commandes.append(commande))
+        produire_rapports.exporter_notebook_julia(data_dir, sorties)
+        return commandes
+
+    def test_exporte_avec_le_noyau(self, tmp_path, monkeypatch):
+        import produire_rapports
+        racine = os.path.join(produire_rapports.DOSSIER, "data")
+        commandes = self._exporter(monkeypatch, racine, str(tmp_path), {"python3", "julia-1.12"})
+        assert len(commandes) == 1
+        commande = commandes[0]
+        assert commande[1:5] == ["-m", "nbconvert", "--to", "html"] and "--execute" in commande
+        assert "--ExecutePreprocessor.kernel_name=julia-1.12" in commande
+        assert produire_rapports.NOTEBOOK_JULIA in commande
+        assert commande[-2:] == ["--output-dir", str(tmp_path)]
+
+    @pytest.mark.parametrize("noyaux, a_la_racine", [({"python3", "julia-1.13"}, True),
+                                                     ({"julia-1.12"}, False)])
+    def test_sinon_le_journal_le_dit(self, tmp_path, monkeypatch, caplog, noyaux, a_la_racine):
+        """Sans le noyau, ou sur d'autres données que celles qu'il lit, pas d'export."""
+        import produire_rapports
+        data_dir = os.path.join(produire_rapports.DOSSIER, "data") if a_la_racine else str(tmp_path)
+        with caplog.at_level("WARNING"):
+            assert self._exporter(monkeypatch, data_dir, str(tmp_path), noyaux) == []
+        assert "gdp_analysis_notebook_julia.html n'est pas mis à jour" in caplog.text
+
+    @pytest.mark.parametrize("option", [[], ["--sans-notebook-julia"]])
+    def test_dans_la_chaine(self, tmp_path, monkeypatch, option):
+        """Une fois, pour le rapport de référence, avant les chiffres clés ; jamais si on l'écarte."""
+        import sys
+        import produire_rapports
+        data, sorties = str(tmp_path / "data"), str(tmp_path / "outputs")
+        os.makedirs(os.path.join(data, "plus_recent"))
+        etapes = []
+        monkeypatch.setattr(produire_rapports, "lancer", lambda module, *_: etapes.append(module))
+        monkeypatch.setattr(produire_rapports, "exporter_notebook_julia",
+                            lambda *rapport: etapes.append(rapport))
+        monkeypatch.setattr(sys, "argv", ["produire_rapports.py", "--sans-editions-api",
+                                          "--sans-millesimes-bm", "--data-dir", data,
+                                          "--output-dir", sorties, *option])
+        produire_rapports.main()
+        assert etapes.count("build_results_page") == 2
+        exports = [e for e in etapes if isinstance(e, tuple)]
+        if option:
+            assert exports == [] and etapes[-1] == "chiffres_cles"
+        else:
+            assert exports == [(data, sorties)] and etapes[-2:] == [(data, sorties), "chiffres_cles"]
+
+
 class TestPopulationONU:
     """
     Erreurs passées des projections de population de l'ONU, et bornes calibrées pour

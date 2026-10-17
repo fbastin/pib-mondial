@@ -5,6 +5,15 @@ L'usage courant est décrit dans le `README.md`, la méthode dans `documentation
 
 ---
 
+## 📓 Le Notebook Julia Exporté par la Chaîne (17 Octobre 2026)
+
+Après la relance d'octobre, `outputs/gdp_analysis_notebook_julia.html` montrait encore l'édition d'avril : `produire_rapports.py` ne l'exportait pas, et rien ne le signalait. Régénéré à la main le 17 octobre (France 2031 : 4 047 Md$ au lieu de 4 116), il fait désormais partie de la chaîne.
+
+- **Nouvelle étape :** après les graphiques et pages des rapports, avant les chiffres clés, `produire_rapports.py` exécute le notebook Julia et l'exporte en HTML dans `outputs/`, pour le rapport de référence, qui est celui que lit le notebook. Le noyau Jupyter `julia-1.12` démarre Julia par son chemin complet : Julia n'a pas à être sur le PATH.
+- **Quand l'export n'est pas possible**, le précédent reste en place, mais le journal l'écrit : noyau absent, ou `--data-dir` autre que `data/` à la racine, la seule que le notebook lit. `--sans-notebook-julia` écarte l'étape ; une exécution en échec arrête la chaîne, comme toute étape.
+
+238 tests ; sept mutations (noyau ignoré, données ignorées, mauvais dossier de sortie, noyau non transmis, option ignorée, export après les chiffres clés, export pour chaque rapport), rattrapées.
+
 ## 🗂️ Reconstruire le Classeur Excel depuis les CSV (16 Octobre 2026)
 
 Peut-on restaurer les sorties d'une sauvegarde qui n'a gardé que les données ? La relance d'octobre a remplacé sur le Drive les sorties d'avril avant qu'elles soient copiées ; seuls `data/processed/` et `data/plus_recent/` l'avaient été. Graphiques, tableaux de bord et pages de résultats se régénèrent depuis ces CSV par `pib.visualize_gdp` et `pib.build_results_page` : avec le code de `bb750f9`, les graphiques d'avril restés en place sont reproduits octet pour octet. Le classeur Excel, lui, n'était écrit que par le pipeline, depuis les données en mémoire.
