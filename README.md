@@ -146,7 +146,9 @@ Deux notebooks, dans `notebooks/`, couvrent les mêmes sept sections (chargement
 
   Le noyau IJulia démarre avec `--project=@.` : depuis `notebooks/`, il remonte jusqu'au `Project.toml` de la racine, où le notebook trouve aussi les données.
 
-Les notebooks se régénèrent par leur script (`python notebooks/create_notebook.py`, `python notebooks/create_notebook_julia.py`). L'export HTML du notebook Julia, dans `outputs/`, s'obtient par :
+Un troisième notebook, `notebooks/forecast_vs_actual_notebook.ipynb`, confronte les prévisions de croissance du FMI au réalisé : erreur absolue moyenne et biais par horizon, distribution des erreurs à un an, plus gros ratés (plus de 10 points). Il lit les sorties de `python -m pib.evaluate_forecasts` et retrouve lui aussi seul la racine du dépôt. Sans script générateur, il se modifie directement.
+
+Les deux premiers notebooks se régénèrent par leur script (`python notebooks/create_notebook.py`, `python notebooks/create_notebook_julia.py`). L'export HTML du notebook Julia, dans `outputs/`, s'obtient par :
 
 ```bash
 jupyter nbconvert --to html --execute --ExecutePreprocessor.kernel_name=julia-1.12 \
