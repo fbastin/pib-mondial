@@ -166,7 +166,7 @@ Les niveaux de prévision à parité étant obtenus par chaînage à partir du d
 \begin{itemize}
     \item \texttt{produire\_rapports.py}, à la racine: point d'entrée unique, qui enchaîne la chaîne complète pour le rapport de référence et, le cas échéant, le plus récent, puis exporte le notebook Julia en HTML si son noyau est installé.
     \item \texttt{pib/}: le code, en paquet Python (détail ci-dessous).
-    \item \texttt{notebooks/}: les deux notebooks d'analyse (Python et Julia) et leurs générateurs.
+    \item \texttt{notebooks/}: les deux notebooks d'analyse (Python et Julia) et leurs générateurs, et un troisième qui confronte les prévisions du FMI au réalisé.
     \item \texttt{tests/}: les tests des invariants (pytest).
     \item \texttt{docs/}: la présente documentation, source \LaTeX{} et PDF.
     \item \texttt{data/raw/}: les sources versionnées --- classeur WEO historique, complément lu dans l'API du FMI, et leur notice.
@@ -414,5 +414,7 @@ Ils couvrent les mêmes sections:
 \end{enumerate}
 
 Lancés depuis Jupyter, ils s'exécutent dans \texttt{notebooks/} et retrouvent seuls la racine du dépôt, où sont les données: le notebook Python remonte jusqu'au dossier qui contient le paquet \texttt{pib}, le notebook Julia s'appuie sur l'environnement activé par son noyau (\texttt{-{}-project=@.}), celui du \texttt{Project.toml} de la racine. Leurs titres et libellés suivent les bornes du run. Ils se régénèrent par \texttt{notebooks/create\_notebook.py} et \texttt{notebooks/create\_notebook\_julia.py}. \texttt{produire\_rapports.py} exporte le notebook Julia en HTML dans \texttt{outputs/} quand le noyau \texttt{julia-1.12} est installé; sinon, son journal signale que l'export n'est pas mis à jour.
+
+Un troisième notebook, \texttt{forecast\_vs\_actual\_notebook.ipynb}, confronte les prévisions de croissance du FMI au réalisé: erreur absolue moyenne et biais par horizon, distribution des erreurs à un an, plus gros ratés (plus de 10 points). Il lit les sorties de \texttt{pib.evaluate\_forecasts} et retrouve lui aussi seul la racine du dépôt. Sans script générateur, il se modifie directement.
 
 \end{document}
