@@ -589,42 +589,62 @@ def plot_level_errors(data_dir: str = "data", output_dir: str = "outputs"):
 
 def create_interactive_dashboard(df_unified: pd.DataFrame, df_summary: pd.DataFrame, years: dict, output_dir: str = "outputs"):
     """
-    Génère un tableau de bord HTML interactif complet avec Plotly.
+    Génère un tableau de bord HTML interactif complet avec Plotly : PIB nominal en haut,
+    population en dessous, sur un axe des années partagé.
     """
     logging.info("Génération du tableau de bord HTML interactif (Plotly)...")
-    
+
     top20_codes = df_summary.head(20)["country_code"].tolist()
     df_top20 = df_unified[df_unified["country_code"].isin(top20_codes)].copy()
-    
-    fig = px.line(
-        df_top20,
-        x="year",
-        y="GDP_Nominal_Billions_USD",
-        color="country_name",
-        line_dash="is_forecast",
-        title=f"<b>Tableau de Bord Interactif du PIB Mondial ({years['start']} - {years['end']})</b><br><sup>Ligne continue = Historique (Banque Mondiale) | Ligne pointillée = Prévision (FMI WEO)</sup>",
-        labels={
-            "year": "Année",
-            "GDP_Nominal_Billions_USD": "PIB Nominal (Milliards USD)",
-            "country_name": "Pays",
-            "is_forecast": "Est une prévision"
-        },
-        hover_data=["GDP_Growth_Pct", "GDP_Per_Capita_USD", "GDP_Real_Billions_USD"]
-    )
-    
+
+    # Un panneau par indicateur : (colonne, titre de l'axe, données de survol)
+    panneaux = [("GDP_Nominal_Billions_USD", "PIB Nominal (Milliards USD)",
+                 ["GDP_Growth_Pct", "GDP_Per_Capita_USD", "GDP_Real_Billions_USD"])]
+    if "Population_Millions" in df_top20.columns and df_top20["Population_Millions"].notna().any():
+        panneaux.append(("Population_Millions", "Population (Millions d'habitants)", None))
+    else:
+        logging.warning("Population absente : tableau de bord sans panneau de population.")
+
+    fig = make_subplots(rows=len(panneaux), cols=1, shared_xaxes=True, vertical_spacing=0.06)
+    for rang, (colonne, titre, survol) in enumerate(panneaux, start=1):
+        panneau = px.line(
+            df_top20,
+            x="year",
+            y=colonne,
+            color="country_name",
+            line_dash="is_forecast",
+            labels={
+                "year": "Année",
+                colonne: titre,
+                "country_name": "Pays",
+                "is_forecast": "Est une prévision"
+            },
+            hover_data=survol
+        )
+        # Mêmes pays dans le même ordre, donc mêmes couleurs et mêmes groupes de légende :
+        # une seule entrée par série, qui masque ou affiche le pays dans tous les panneaux.
+        for trace in panneau.data:
+            trace.showlegend = rang == 1
+            fig.add_trace(trace, row=rang, col=1)
+        fig.update_yaxes(title_text=titre, row=rang, col=1)
+
     fig.update_layout(
         template="plotly_white",
         font=dict(family="Inter, Roboto, Helvetica, Arial, sans-serif", size=12),
         hovermode="x unified",
+        title=f"<b>Tableau de Bord Interactif du PIB Mondial ({years['start']} - {years['end']})</b><br><sup>Ligne continue = Historique (Banque Mondiale) | Ligne pointillée = Prévision (FMI WEO)</sup>",
         legend=dict(title="Pays & Statut", orientation="v", y=1, x=1.02),
-        xaxis=dict(dtick=2, range=[years["start"], years["end"]]),
-        yaxis=dict(title="PIB Nominal (Milliards USD)"),
-        height=700
+        height=700 if len(panneaux) == 1 else 1000
     )
-    
-    # Ajout d'une ligne verticale pour 2024
-    fig.add_vline(x=years["boundary"], line_width=1.5, line_dash="dash", line_color="red",
-                  annotation_text=f"Frontière {years['boundary']} (Prévisions ->)", annotation_position="top left")
+    fig.update_xaxes(dtick=2, range=[years["start"], years["end"]])
+    fig.update_xaxes(title_text="Année", row=len(panneaux), col=1)
+
+    # Ligne verticale à la frontière historique/prévision, dans chaque panneau, annotée une fois
+    for rang in range(1, len(panneaux) + 1):
+        fig.add_vline(x=years["boundary"], line_width=1.5, line_dash="dash", line_color="red", row=rang, col=1)
+    fig.add_annotation(x=years["boundary"], y=1, xref="x", yref="y domain", yanchor="top",
+                       xanchor="right", showarrow=False,
+                       text=f"Frontière {years['boundary']} (Prévisions ->)")
     
     dashboard_html = os.path.join(output_dir, "gdp_dashboard_interactive.html")
     fig.write_html(dashboard_html)
